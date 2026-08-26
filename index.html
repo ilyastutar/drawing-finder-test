@@ -26,7 +26,7 @@
 <div class="buttons"><button id="undoZone" class="secondary" disabled>Undo</button><button id="clearZones" class="secondary" disabled>Clear</button><button id="saveZones" class="secondary" disabled>Save zones</button><button id="loadZones" class="secondary">Load zones</button></div>
 <h3>Tag rules</h3>
 <label>Known 2-letter codes (correction hints only)</label><input id="knownCodes" type="text" value="AA,GH,CP,CT" />
-<label>Known / expected tags (optional, one per line)</label><textarea id="expected" placeholder="Paste tags that you know must exist. This gives us a real recall %.\nExample:\n20NDB34GH013"></textarea>
+<label>Known / expected tags (optional)</label><div class="small" style="margin-bottom:6px">You can paste tags with commas, spaces, semicolons, or one per line.</div><textarea id="expected" placeholder="Paste tags separated by commas, spaces, semicolons, or new lines.\nExample:\n20NDB34GH013, 20NDB35GH013"></textarea>
 <h3>Benchmark settings</h3>
 <div class="two"><div><label>Render scale</label><select id="scale"><option>2.5</option><option selected>3</option><option>3.5</option><option>4</option></select></div><div><label>Max PDFs</label><input id="maxPdfs" type="number" value="5" min="1" max="500" /></div></div>
 <div class="two"><div><label>Max pages / PDF</label><input id="maxPages" type="number" value="1" min="1" max="100" /></div><div><label>Paddle min rec score</label><input id="paddleScore" type="number" value="0.20" min="0" max="1" step="0.05" /></div></div>
@@ -93,7 +93,17 @@ async function loadPaddle(){if(paddleOCR)return paddleOCR;$('log').textContent+=
 const PaddleOCR=mod.PaddleOCR;if(!PaddleOCR)throw new Error('PaddleOCR export was not found.');$('log').textContent+='\nInitializing PP-OCRv5 English model. First run downloads OCR models and can take a while...';paddleOCR=await PaddleOCR.create({lang:'en',ocrVersion:'PP-OCRv5',worker:false,textDetectionBatchSize:1,textRecognitionBatchSize:8,ortOptions:{backend:'wasm',wasmPaths:'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/',numThreads:1,simd:true}});$('log').textContent+='\nPaddleOCR initialized.';return paddleOCR}
 async function runPaddle(c,meta){const ocr=await loadPaddle(),score=Number($('paddleScore').value);const [r]=await ocr.predict(c,{textDetLimitSideLen:2048,textDetLimitType:'max',textDetMaxSideLimit:4096,textDetThresh:.20,textDetBoxThresh:.35,textDetUnclipRatio:1.5,textRecScoreThresh:score});let hits=[];for(const item of (r.items||[])){for(const raw of rawCandidates(item.text||'')){const t=processRaw(raw);if(t)hits.push({tag:t,...meta,raw,score:item.score??null,source:'PaddleOCR',poly:item.poly||null})}}return hits}
 function uniq(rows){const m=new Map();for(const r of rows){const k=`${r.tag}|${r.path}|${r.page}|${r.zone}`;if(!m.has(k)||((r.score??0)>(m.get(k).score??0)))m.set(k,r)}return [...m.values()]}
-function setTags(rows){return new Set(rows.map(r=>r.tag))}function expectedSet(){return new Set($('expected').value.toUpperCase().split(/\r?\n/).map(x=>x.trim()).filter(Boolean))}
+function setTags(rows){return new Set(rows.map(r=>r.tag))}
+function expectedSet(){
+  // Accept comma, semicolon, spaces/tabs, or new lines.
+  // This prevents "TAG1,TAG2,TAG3" from being treated as one expected tag.
+  const tokens=$('expected').value
+    .toUpperCase()
+    .split(/[\s,;]+/)
+    .map(x=>x.replace(/[^A-Z0-9]/g,"").trim())
+    .filter(Boolean);
+  return new Set(tokens);
+}
 function renderReport(){tessRows=uniq(tessRows);paddleRows=uniq(paddleRows);const ts=setTags(tessRows),ps=setTags(paddleRows),po=[...ps].filter(x=>!ts.has(x)).sort(),to=[...ts].filter(x=>!ps.has(x)).sort();$('tessMetric').textContent=ts.size;$('paddleMetric').textContent=ps.size;$('paddleOnly').innerHTML=po.length?po.map(x=>`<span class="pill">${x}</span>`).join(''):'<span class="small">None.</span>';$('tessOnly').innerHTML=to.length?to.map(x=>`<span class="pill">${x}</span>`).join(''):'<span class="small">None.</span>';$('tessSummary').innerHTML=`${tessRows.length} occurrences · ${ts.size} unique tags`;$('paddleSummary').innerHTML=`${paddleRows.length} occurrences · ${ps.size} unique tags`;
 const ex=expectedSet();if(!ex.size){$('expectedMetric').textContent='—';$('expectedTable').innerHTML='<span class="small">Add expected tags to calculate recall.</span>';return}let th=0,ph=0,rows='';for(const t of ex){const a=ts.has(t),b=ps.has(t);if(a)th++;if(b)ph++;rows+=`<tr><td><code>${t}</code></td><td class="${a?'ok':'bad'}">${a?'✓':'✗'}</td><td class="${b?'ok':'bad'}">${b?'✓':'✗'}</td></tr>`}$('expectedMetric').textContent=`T ${th}/${ex.size} · P ${ph}/${ex.size}`;$('expectedTable').innerHTML=`<table><thead><tr><th>Expected tag</th><th>Tesseract</th><th>PaddleOCR</th></tr></thead><tbody>${rows}</tbody></table><p class="small">Recall: Tesseract <strong>${(th/ex.size*100).toFixed(1)}%</strong> · PaddleOCR <strong>${(ph/ex.size*100).toFixed(1)}%</strong></p>`}
 
