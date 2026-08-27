@@ -1,116 +1,462 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Drawing Finder v0.4 — OCR Benchmark</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drawing Finder v0.5 Step 1 — Automatic Zone Tiler</title>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
 <style>
-:root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--paddle:#a371f7}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}main{max-width:1450px;margin:auto;padding:24px 18px 60px}h1{margin:0 0 5px;font-size:28px}h2{margin:0 0 12px;font-size:18px}h3{margin:17px 0 8px;font-size:14px}p{color:var(--muted);line-height:1.45}.note{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--muted);margin:14px 0 18px}.grid{display:grid;grid-template-columns:minmax(340px,.9fr) minmax(620px,1.6fr);gap:16px;align-items:start}.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}.small{font-size:12px;color:var(--muted)}label{display:block;font-size:13px;color:var(--muted);margin:11px 0 6px}input[type=file],input[type=text],input[type=number],textarea,select{width:100%;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:8px;padding:10px 11px;font:inherit}textarea{min-height:130px;resize:vertical}button{border:0;border-radius:8px;padding:10px 14px;font:inherit;font-weight:650;cursor:pointer;background:var(--accent);color:#07111c}button.secondary{background:#21262d;color:var(--text);border:1px solid var(--border)}button:disabled{opacity:.45;cursor:not-allowed}.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.checks{display:grid;gap:7px;margin-top:12px}.check{display:flex;gap:8px;align-items:flex-start;color:var(--muted);font-size:13px}.preview-shell{position:relative;width:100%;overflow:auto;max-height:560px;background:#1b1f24;border:1px solid var(--border);border-radius:9px;padding:8px;user-select:none}.canvas-wrap{position:relative;width:max-content;margin:0 auto}#previewCanvas,#overlayCanvas{display:block}#overlayCanvas{position:absolute;left:0;top:0;cursor:crosshair;touch-action:none}.zone-list{display:grid;gap:7px;margin-top:8px}.zone-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:8px 9px;border:1px solid var(--border);background:var(--panel2);border-radius:8px;font-size:12px}.zone-row span{color:var(--muted);font-size:11px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.metric{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:9px}.metric strong{display:block;font-size:19px}.metric span{font-size:11px;color:var(--muted)}.progress-wrap{margin-top:13px;border:1px solid var(--border);background:var(--bg);border-radius:999px;overflow:hidden;height:18px}.progress{height:100%;width:0;background:var(--accent);transition:width .15s}.status{min-height:22px;margin-top:9px;color:var(--muted);font-size:13px}.engine-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.engine{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:13px}.engine h3{margin:0 0 6px}.paddle h3{color:var(--paddle)}.tess h3{color:var(--accent)}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top}th{color:var(--muted);font-weight:600}code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-radius:5px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.diffs{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tagbox{border:1px solid var(--border);border-radius:9px;background:var(--panel2);padding:10px;max-height:350px;overflow:auto}.pill{display:inline-block;margin:3px;padding:5px 7px;border:1px solid var(--border);border-radius:999px;font-family:ui-monospace,monospace;font-size:11px}.log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--muted);font-size:11px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.folder{border:1px dashed var(--border);border-radius:9px;padding:11px;background:var(--panel2)}
-@media(max-width:1000px){.grid,.engine-grid,.diffs{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
+:root{
+  color-scheme:dark;
+  --bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;
+  --text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--ok:#3fb950;
+  --warn:#d29922;--bad:#f85149;--zone:#ff4fd8;--tile:#39d353;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:1480px;margin:0 auto;padding:24px 18px 60px}
+h1{margin:0 0 6px;font-size:28px}h2{margin:0 0 12px;font-size:18px}h3{font-size:15px;margin:18px 0 8px}
+p{color:var(--muted);line-height:1.5}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}
+.grid{display:grid;grid-template-columns:minmax(360px,.85fr) minmax(620px,1.65fr);gap:16px;align-items:start}
+.note{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:11px 13px;color:var(--muted);font-size:13px;margin:14px 0 18px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+input,select{width:100%;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:8px;padding:10px 12px;font:inherit}
+button{border:0;border-radius:8px;padding:10px 14px;font:inherit;font-weight:650;cursor:pointer;background:var(--accent);color:#07111c}
+button.secondary{background:#21262d;color:var(--text);border:1px solid var(--border)}
+button.danger{background:transparent;color:var(--bad);border:1px solid var(--border)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.buttons{display:flex;flex-wrap:wrap;gap:9px;margin-top:13px}
+.small{font-size:12px;color:var(--muted)}
+.preview-shell{position:relative;width:100%;overflow:auto;max-height:700px;background:#1b1f24;border:1px solid var(--border);border-radius:9px;padding:8px;user-select:none}
+.canvas-wrap{position:relative;width:max-content;margin:0 auto}
+#previewCanvas,#overlayCanvas{display:block}
+#overlayCanvas{position:absolute;left:0;top:0;cursor:crosshair;touch-action:none}
+.zone-list,.tile-list{display:grid;gap:8px;margin-top:10px}
+.row{padding:9px 10px;border:1px solid var(--border);background:var(--panel2);border-radius:8px;font-size:13px}
+.row-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.row strong{display:block}.row span{color:var(--muted);font-size:11px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.metric{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:9px}
+.metric strong{display:block;font-size:18px}.metric span{color:var(--muted);font-size:11px}
+.status{margin-top:10px;color:var(--muted);font-size:13px;min-height:20px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+code{background:var(--bg);border:1px solid var(--border);padding:2px 6px;border-radius:5px}
+.progress-wrap{margin-top:14px;border:1px solid var(--border);background:var(--bg);border-radius:999px;overflow:hidden;height:18px}
+.progress{width:0;height:100%;background:var(--accent);transition:width .12s linear}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
+.swatch{display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:-2px;border:2px solid}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.4 — OCR Benchmark</h1>
-<p>This version intentionally pauses feature development and compares the current Tesseract approach against PaddleOCR PP-OCRv5 on the same drawings and the same OCR zones.</p>
-<div class="note"><strong>Goal:</strong> measure recall before choosing the production OCR engine. PaddleOCR's browser SDK performs text detection + recognition and returns each line with coordinates and a confidence score; this benchmark keeps those results for later Related Tag/row clustering.</div>
+<h1>Drawing Finder v0.5 — Step 1</h1>
+<p>Automatic high-resolution OCR zone tiling for Google Document OCR. No OCR is sent anywhere in this step.</p>
+
+<div class="note">
+  <strong>Goal of this step:</strong> load one drawing, draw one or more reusable OCR zones, and let the browser
+  automatically split each zone into Google-safe high-resolution tiles. Default output is <strong>500 dpi</strong>,
+  maximum <strong>35 MP per tile</strong>, maximum dimension <strong>9,500 px</strong>, with overlap so a tag on a tile
+  boundary is not lost. Once this behaves correctly, Step 2 will send these exact tiles automatically to Google OCR.
+</div>
+
 <div class="grid">
 <section class="card">
-<h2>1. Reusable OCR zones</h2>
-<label>Sample PDF</label><input id="samplePdf" type="file" accept=".pdf,application/pdf" />
-<p class="small">Draw broad zones once (for example the right-side tables + upper JB table). The same percentage coordinates are applied to every benchmark PDF.</p>
+<h2>1. Load sample drawing</h2>
+<label>PDF drawing</label>
+<input id="pdfInput" type="file" accept=".pdf,application/pdf">
+
+<div class="buttons">
+  <button id="prevPage" class="secondary" disabled>← Page</button>
+  <button id="nextPage" class="secondary" disabled>Page →</button>
+</div>
+<div id="pageInfo" class="status">No PDF loaded.</div>
+
+<h2 style="margin-top:22px">2. Draw OCR zones</h2>
+<p class="small">Drag a rectangle on the preview. Use broad zones; exact table-column cropping is not required.</p>
 <div id="zoneList" class="zone-list"><div class="small">No zones yet.</div></div>
-<div class="buttons"><button id="undoZone" class="secondary" disabled>Undo</button><button id="clearZones" class="secondary" disabled>Clear</button><button id="saveZones" class="secondary" disabled>Save zones</button><button id="loadZones" class="secondary">Load zones</button></div>
-<h3>Tag rules</h3>
-<label>Known 2-letter codes (correction hints only)</label><input id="knownCodes" type="text" value="AA,GH,CP,CT" />
-<label>Known / expected tags (optional)</label><div class="small" style="margin-bottom:6px">You can paste tags with commas, spaces, semicolons, or one per line.</div><textarea id="expected" placeholder="Paste tags separated by commas, spaces, semicolons, or new lines.\nExample:\n20NDB34GH013, 20NDB35GH013"></textarea>
-<h3>Benchmark settings</h3>
-<div class="two"><div><label>Render scale</label><select id="scale"><option>2.5</option><option selected>3</option><option>3.5</option><option>4</option></select></div><div><label>Max PDFs</label><input id="maxPdfs" type="number" value="5" min="1" max="500" /></div></div>
-<div class="two"><div><label>Max pages / PDF</label><input id="maxPages" type="number" value="1" min="1" max="100" /></div><div><label>Paddle min rec score</label><input id="paddleScore" type="number" value="0.20" min="0" max="1" step="0.05" /></div></div>
-<div class="checks"><div class="check"><input id="useTess" type="checkbox" checked /><label for="useTess" style="margin:0">Run current Tesseract engine (sparse + segmented row OCR)</label></div><div class="check"><input id="usePaddle" type="checkbox" checked /><label for="usePaddle" style="margin:0">Run PaddleOCR PP-OCRv5 (English) on each broad zone</label></div></div>
+<div class="buttons">
+  <button id="undoZone" class="secondary" disabled>Undo</button>
+  <button id="clearZones" class="secondary" disabled>Clear zones</button>
+</div>
+
+<h2 style="margin-top:22px">3. Google-safe tile settings</h2>
+<label>Render DPI</label>
+<select id="dpi">
+  <option value="300">300 dpi</option>
+  <option value="400">400 dpi</option>
+  <option value="500" selected>500 dpi — current test quality</option>
+  <option value="600">600 dpi</option>
+</select>
+
+<label>Maximum megapixels per tile</label>
+<input id="maxMP" type="number" min="10" max="39" step="1" value="35">
+
+<label>Maximum width / height per tile (px)</label>
+<input id="maxDim" type="number" min="3000" max="9900" step="100" value="9500">
+
+<label>Overlap between neighboring tiles</label>
+<select id="overlapPct">
+  <option value="0.02">2%</option>
+  <option value="0.04" selected>4% — recommended</option>
+  <option value="0.06">6%</option>
+  <option value="0.08">8%</option>
+</select>
+
+<div class="buttons">
+  <button id="planTiles" disabled>Plan tiles</button>
+  <button id="exportZip" class="secondary" disabled>Generate tile ZIP</button>
+</div>
+
+<div class="progress-wrap"><div id="progress" class="progress"></div></div>
+<div id="status" class="status">Load a PDF and draw at least one zone.</div>
+
+<div class="metrics">
+  <div class="metric"><strong id="zoneCount">0</strong><span>Zones</span></div>
+  <div class="metric"><strong id="tileCount">0</strong><span>Planned tiles</span></div>
+  <div class="metric"><strong id="maxTileMP">0</strong><span>Largest tile MP</span></div>
+  <div class="metric"><strong id="coverage">0%</strong><span>Page coverage</span></div>
+</div>
+
+<h3>Tile plan</h3>
+<div id="tileList" class="tile-list"><div class="small">No tile plan yet.</div></div>
 </section>
+
 <section class="card">
-<h2>Zone preview</h2><div class="preview-shell"><div class="canvas-wrap"><canvas id="previewCanvas"></canvas><canvas id="overlayCanvas"></canvas></div></div>
+<h2>Drawing preview</h2>
+<p class="small">Pink = OCR zone. Green = automatic Google OCR tile boundaries.</p>
+<div class="legend">
+  <span><i class="swatch" style="border-color:#ff4fd8"></i>OCR zone</span>
+  <span><i class="swatch" style="border-color:#39d353"></i>Google-safe tile</span>
+</div>
+<div class="preview-shell">
+  <div class="canvas-wrap">
+    <canvas id="previewCanvas"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+  </div>
+</div>
+<div class="note" style="margin-bottom:0">
+  The ZIP contains PNG tiles plus <code>manifest.json</code>. The manifest stores the original PDF name,
+  page number, zone number, normalized coordinates, DPI and tile coordinates. This is the metadata we will
+  reuse in Step 2 to merge Google OCR results back into the drawing index.
+</div>
 </section>
 </div>
-<section class="card" style="margin-top:16px">
-<h2>2. Benchmark folder</h2>
-<div class="folder"><div class="buttons"><button id="pickFolder">Select Folder</button></div><label>Fallback folder selector</label><input id="folderFallback" type="file" webkitdirectory directory multiple accept=".pdf,application/pdf" /></div>
-<div id="folderInfo" class="status">No folder selected.</div>
-<div class="buttons"><button id="runBtn" disabled>Run OCR Benchmark</button><button id="stopBtn" class="secondary" disabled>Stop</button><button id="exportBtn" class="secondary" disabled>Export comparison CSV</button></div>
-<div class="progress-wrap"><div id="progress" class="progress"></div></div><div id="status" class="status">Waiting.</div>
-<div class="metrics"><div class="metric"><strong id="pdfMetric">0</strong><span>PDFs processed</span></div><div class="metric"><strong id="tessMetric">0</strong><span>Tesseract unique tags</span></div><div class="metric"><strong id="paddleMetric">0</strong><span>Paddle unique tags</span></div><div class="metric"><strong id="expectedMetric">—</strong><span>Expected-tag comparison</span></div></div>
-<div class="engine-grid"><div class="engine tess"><h3>Tesseract</h3><div id="tessSummary" class="small">Not run.</div></div><div class="engine paddle"><h3>PaddleOCR</h3><div id="paddleSummary" class="small">Not run.</div></div></div>
-</section>
-<section class="card" style="margin-top:16px">
-<h2>3. Difference report</h2>
-<div class="diffs"><div><h3>Paddle found, Tesseract missed</h3><div id="paddleOnly" class="tagbox"><span class="small">No results yet.</span></div></div><div><h3>Tesseract found, Paddle missed</h3><div id="tessOnly" class="tagbox"><span class="small">No results yet.</span></div></div></div>
-<h3>Expected tags</h3><div id="expectedTable"><span class="small">Add expected tags to calculate recall.</span></div>
-<details style="margin-top:15px"><summary>Technical log</summary><pre id="log" class="log">Paddle module will be loaded only when the benchmark starts.</pre></details>
-</section>
 </main>
+
 <script>
-(() => {
-'use strict';
-const MASK12='99AAA99AA999',MASK13='99AAA99AA999A';
-if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-const $=id=>document.getElementById(id);
-const samplePdf=$('samplePdf'),pc=$('previewCanvas'),oc=$('overlayCanvas'),pctx=pc.getContext('2d'),octx=oc.getContext('2d');
-let sampleDoc=null,zones=[],drawing=false,start=null,current=null,files=[],stop=false,tessWorker=null,paddleOCR=null;
-let tessRows=[],paddleRows=[];
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-samplePdf.onchange=async()=>{const f=samplePdf.files?.[0];if(!f)return;const data=new Uint8Array(await f.arrayBuffer());sampleDoc=await pdfjsLib.getDocument({data}).promise;await preview();$('saveZones').disabled=false};
-async function preview(){const page=await sampleDoc.getPage(1),b=page.getViewport({scale:1}),s=Math.min(1.2,1180/b.width),vp=page.getViewport({scale:s});pc.width=Math.ceil(vp.width);pc.height=Math.ceil(vp.height);oc.width=pc.width;oc.height=pc.height;await page.render({canvasContext:pctx,viewport:vp,background:'white'}).promise;drawZones()}
-function pt(e){const r=oc.getBoundingClientRect();return{x:(e.clientX-r.left)*oc.width/r.width,y:(e.clientY-r.top)*oc.height/r.height}}
-oc.onpointerdown=e=>{if(!sampleDoc)return;drawing=true;oc.setPointerCapture(e.pointerId);start=pt(e);current=start;drawZones()};oc.onpointermove=e=>{if(!drawing)return;current=pt(e);drawZones()};oc.onpointerup=e=>{if(!drawing)return;current=pt(e);const x1=Math.max(0,Math.min(start.x,current.x)),y1=Math.max(0,Math.min(start.y,current.y)),x2=Math.min(oc.width,Math.max(start.x,current.x)),y2=Math.min(oc.height,Math.max(start.y,current.y));if(x2-x1>12&&y2-y1>12)zones.push({x:x1/oc.width,y:y1/oc.height,w:(x2-x1)/oc.width,h:(y2-y1)/oc.height,name:`Zone ${zones.length+1}`});drawing=false;start=current=null;drawZones();buttons()};
-function drawZones(){octx.clearRect(0,0,oc.width,oc.height);zones.forEach((z,i)=>{const x=z.x*oc.width,y=z.y*oc.height,w=z.w*oc.width,h=z.h*oc.height;octx.fillStyle='rgba(163,113,247,.12)';octx.strokeStyle='#a371f7';octx.lineWidth=2;octx.fillRect(x,y,w,h);octx.strokeRect(x,y,w,h);octx.fillStyle='#a371f7';octx.font='bold 13px sans-serif';octx.fillText(String(i+1),x+5,y+16)});if(drawing&&start&&current){const x=Math.min(start.x,current.x),y=Math.min(start.y,current.y),w=Math.abs(start.x-current.x),h=Math.abs(start.y-current.y);octx.strokeStyle='#58a6ff';octx.setLineDash([7,5]);octx.strokeRect(x,y,w,h);octx.setLineDash([])}renderZoneList()}
-function renderZoneList(){const z=$('zoneList');if(!zones.length){z.innerHTML='<div class="small">No zones yet.</div>';return}z.innerHTML='';zones.forEach((q,i)=>{const d=document.createElement('div');d.className='zone-row';d.innerHTML=`<div><strong>${q.name}</strong><br><span>X ${(q.x*100).toFixed(1)}% Y ${(q.y*100).toFixed(1)}% W ${(q.w*100).toFixed(1)}% H ${(q.h*100).toFixed(1)}%</span></div><button class="secondary" data-i="${i}">Delete</button>`;d.querySelector('button').onclick=()=>{zones.splice(i,1);zones.forEach((x,j)=>x.name=`Zone ${j+1}`);drawZones();buttons()};z.appendChild(d)})}
-$('undoZone').onclick=()=>{zones.pop();drawZones();buttons()};$('clearZones').onclick=()=>{zones=[];drawZones();buttons()};$('saveZones').onclick=()=>{localStorage.setItem('df-v04-zones',JSON.stringify({zones,knownCodes:$('knownCodes').value}));alert('Zones saved in this browser.')};$('loadZones').onclick=()=>{const raw=localStorage.getItem('df-v04-zones');if(!raw)return alert('No saved zones.');const p=JSON.parse(raw);zones=p.zones||[];if(p.knownCodes)$('knownCodes').value=p.knownCodes;drawZones();buttons()};
-function buttons(){$('undoZone').disabled=!zones.length;$('clearZones').disabled=!zones.length;$('runBtn').disabled=!zones.length||!files.length}
+const $ = id => document.getElementById(id);
+let pdfDoc=null, pdfBytes=null, pageNum=1, previewViewport=null;
+let zones=[], tilePlan=[], drawing=false, startPt=null, tempRect=null;
 
-$('pickFolder').onclick=async()=>{if(!window.showDirectoryPicker)return alert('Folder picker unavailable here; use fallback.');try{const h=await showDirectoryPicker({mode:'read'});files=[];await walk(h,'');selected(h.name)}catch(e){if(e.name!=='AbortError')alert(e.message||e)}};
-async function walk(h,path){for await(const [name,e] of h.entries()){const rel=path?path+'/'+name:name;if(e.kind==='directory')await walk(e,rel);else if(e.kind==='file'&&name.toLowerCase().endsWith('.pdf'))files.push({file:await e.getFile(),path:rel})}}
-$('folderFallback').onchange=()=>{files=[...($('folderFallback').files||[])].filter(f=>f.name.toLowerCase().endsWith('.pdf')).map(f=>({file:f,path:f.webkitRelativePath||f.name}));selected('fallback folder')};function selected(name){files.sort((a,b)=>a.path.localeCompare(b.path));$('folderInfo').textContent=`${name}: ${files.length} PDF(s) found.`;buttons()}
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function fmt(n,d=1){ return Number(n).toFixed(d); }
 
-function num(c){const m={O:'0',Q:'0',D:'0',I:'1',L:'1',Z:'2',S:'5',G:'6',B:'8'};if(/[0-9]/.test(c))return c;return m[c]||null}function alpha(c){const m={'0':'O','1':'I','2':'Z','5':'S','6':'G','8':'B'};if(/[A-Z]/.test(c))return c;return m[c]||null}
-function maskNorm(raw,mask){raw=raw.toUpperCase().replace(/[^A-Z0-9]/g,'');if(raw.length!==mask.length)return null;let out='';for(let i=0;i<mask.length;i++){const c=mask[i]==='9'?num(raw[i]):alpha(raw[i]);if(c==null)return null;out+=c}return out}
-function codes(){return new Set($('knownCodes').value.toUpperCase().split(/[,;\s]+/).filter(x=>/^[A-Z]{2}$/.test(x)))}
-function correctCode(tag){if(!tag||tag.length<12)return tag;const set=codes(),c=tag.slice(7,9);if(!set.size||set.has(c))return tag;const sw=c[1]+c[0];if(set.has(sw))return tag.slice(0,7)+sw+tag.slice(9);const near=[...set].filter(k=>(k[0]!==c[0])+(k[1]!==c[1])===1);return near.length===1?tag.slice(0,7)+near[0]+tag.slice(9):tag}
-function processRaw(raw){raw=raw.toUpperCase().replace(/[^A-Z0-9]/g,'');let t=null;if(raw.length===12)t=maskNorm(raw,MASK12);else if(raw.length===13&&/[A-Z]$/.test(raw))t=maskNorm(raw,MASK13);else if(raw.length===13&&/[0-9]$/.test(raw)){let cand=[];for(let i=0;i<13;i++){const n=maskNorm(raw.slice(0,i)+raw.slice(i+1),MASK12);if(n)cand.push({n,i})}const boundary=cand.filter(x=>x.i===9);if(boundary.length===1)t=boundary[0].n;else{const u=[...new Set(cand.map(x=>x.n))];if(u.length===1)t=u[0]}}return t?correctCode(t):null}
-function rawCandidates(text){const out=[];const u=(text||'').toUpperCase();for(const t of (u.match(/[A-Z0-9]{11,14}/g)||[]))out.push(t);for(const line of u.split(/\r?\n/)){const c=line.replace(/[^A-Z0-9]/g,'');if(c.length>=11&&c.length<=14)out.push(c)}return [...new Set(out)]}
-function zoneRect(z,vp){return{x:Math.floor(z.x*vp.width),y:Math.floor(z.y*vp.height),w:Math.ceil(z.w*vp.width),h:Math.ceil(z.h*vp.height)}}
-async function renderZone(page,vp,r){const c=document.createElement('canvas');c.width=Math.max(1,r.w);c.height=Math.max(1,r.h);const cx=c.getContext('2d',{willReadFrequently:true});cx.fillStyle='white';cx.fillRect(0,0,c.width,c.height);await page.render({canvasContext:cx,viewport:vp,transform:[1,0,0,1,-r.x,-r.y],background:'white'}).promise;return c}
-
-// Tesseract current engine: sparse + row segmentation.
-function darkMask(c){const x=c.getContext('2d',{willReadFrequently:true}),im=x.getImageData(0,0,c.width,c.height).data,m=new Uint8Array(c.width*c.height);for(let i=0,p=0;i<im.length;i+=4,p++){const y=.299*im[i]+.587*im[i+1]+.114*im[i+2];m[p]=y<175?1:0}return m}function runs(a,g=1){if(!a.length)return[];let out=[],s=a[0],p=a[0];for(let i=1;i<a.length;i++){if(a[i]-p>g){out.push([s,p]);s=a[i]}p=a[i]}out.push([s,p]);return out}function lines(c){const w=c.width,h=c.height,m=darkMask(c),H=[],V=[];for(let y=0;y<h;y++){let d=0,o=y*w;for(let x=0;x<w;x++)d+=m[o+x];if(d/w>.32)H.push(y)}for(let x=0;x<w;x++){let d=0;for(let y=0;y<h;y++)d+=m[y*w+x];if(d/h>.28)V.push(x)}return{h:runs(H,2).map(([a,b])=>Math.round((a+b)/2)).filter(v=>v>2&&v<h-3),v:runs(V,2).map(([a,b])=>Math.round((a+b)/2)).filter(v=>v>2&&v<w-3)}}function rowBands(c,l){let b=[0,...l.h,c.height-1].sort((a,b)=>a-b).filter((v,i,a)=>i===0||v-a[i-1]>3),r=[];for(let i=0;i<b.length-1;i++){let y1=b[i]+2,y2=b[i+1]-2,h=y2-y1;if(h>=18&&h<=Math.max(250,c.height*.18))r.push({x:0,y:y1,w:c.width,h})}return r}function cleanRow(src,r,vl){const c=document.createElement('canvas');c.width=r.w;c.height=r.h;let x=c.getContext('2d',{willReadFrequently:true});x.fillStyle='white';x.fillRect(0,0,c.width,c.height);x.drawImage(src,r.x,r.y,r.w,r.h,0,0,r.w,r.h);x.fillStyle='white';for(const p of vl)x.fillRect(Math.max(0,p-3),0,7,c.height);let im=x.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const y=.299*d[i]+.587*d[i+1]+.114*d[i+2],v=y<190?0:255;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}x.putImageData(im,0,0);if(c.height<110){const s=110/c.height,u=document.createElement('canvas');u.width=Math.round(c.width*s);u.height=110;let ux=u.getContext('2d');ux.imageSmoothingEnabled=false;ux.fillStyle='white';ux.fillRect(0,0,u.width,u.height);ux.drawImage(c,0,0,u.width,u.height);return u}return c}
-async function tessRecognize(c,psm){await tessWorker.setParameters({tessedit_pageseg_mode:String(psm),tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'});const r=await tessWorker.recognize(c);return r.data.text||''}
-async function runTess(c,meta){let hits=[];const sparse=await tessRecognize(c,11);for(const raw of rawCandidates(sparse)){const t=processRaw(raw);if(t)hits.push({tag:t,...meta,raw,score:null,source:'Tesseract sparse'})}const l=lines(c),rs=rowBands(c,l);if(rs.length>=2&&l.v.length){for(let i=0;i<rs.length;i++){if(stop)break;const rc=cleanRow(c,rs[i],l.v),text=await tessRecognize(rc,7);for(const raw of rawCandidates(text)){const t=processRaw(raw);if(t)hits.push({tag:t,...meta,raw,score:null,source:'Tesseract row'})}rc.width=1;rc.height=1}}return hits}
-
-async function loadPaddle(){if(paddleOCR)return paddleOCR;$('log').textContent+='\nLoading official PaddleOCR.js 0.4.2...';let mod=null,err1=null;try{mod=await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm')}catch(e){err1=e;$('log').textContent+='\njsDelivr ESM failed: '+(e.message||e)+'\nTrying esm.sh...';mod=await import('https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle')}
-const PaddleOCR=mod.PaddleOCR;if(!PaddleOCR)throw new Error('PaddleOCR export was not found.');$('log').textContent+='\nInitializing PP-OCRv5 English model. First run downloads OCR models and can take a while...';paddleOCR=await PaddleOCR.create({lang:'en',ocrVersion:'PP-OCRv5',worker:false,textDetectionBatchSize:1,textRecognitionBatchSize:8,ortOptions:{backend:'wasm',wasmPaths:'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/',numThreads:1,simd:true}});$('log').textContent+='\nPaddleOCR initialized.';return paddleOCR}
-async function runPaddle(c,meta){const ocr=await loadPaddle(),score=Number($('paddleScore').value);const [r]=await ocr.predict(c,{textDetLimitSideLen:2048,textDetLimitType:'max',textDetMaxSideLimit:4096,textDetThresh:.20,textDetBoxThresh:.35,textDetUnclipRatio:1.5,textRecScoreThresh:score});let hits=[];for(const item of (r.items||[])){for(const raw of rawCandidates(item.text||'')){const t=processRaw(raw);if(t)hits.push({tag:t,...meta,raw,score:item.score??null,source:'PaddleOCR',poly:item.poly||null})}}return hits}
-function uniq(rows){const m=new Map();for(const r of rows){const k=`${r.tag}|${r.path}|${r.page}|${r.zone}`;if(!m.has(k)||((r.score??0)>(m.get(k).score??0)))m.set(k,r)}return [...m.values()]}
-function setTags(rows){return new Set(rows.map(r=>r.tag))}
-function expectedSet(){
-  // Accept comma, semicolon, spaces/tabs, or new lines.
-  // This prevents "TAG1,TAG2,TAG3" from being treated as one expected tag.
-  const tokens=$('expected').value
-    .toUpperCase()
-    .split(/[\s,;]+/)
-    .map(x=>x.replace(/[^A-Z0-9]/g,"").trim())
-    .filter(Boolean);
-  return new Set(tokens);
+async function loadPdf(file){
+  pdfBytes = new Uint8Array(await file.arrayBuffer());
+  pdfDoc = await pdfjsLib.getDocument({data:pdfBytes}).promise;
+  pageNum=1; zones=[]; tilePlan=[];
+  await renderPreview();
+  updateUI();
 }
-function renderReport(){tessRows=uniq(tessRows);paddleRows=uniq(paddleRows);const ts=setTags(tessRows),ps=setTags(paddleRows),po=[...ps].filter(x=>!ts.has(x)).sort(),to=[...ts].filter(x=>!ps.has(x)).sort();$('tessMetric').textContent=ts.size;$('paddleMetric').textContent=ps.size;$('paddleOnly').innerHTML=po.length?po.map(x=>`<span class="pill">${x}</span>`).join(''):'<span class="small">None.</span>';$('tessOnly').innerHTML=to.length?to.map(x=>`<span class="pill">${x}</span>`).join(''):'<span class="small">None.</span>';$('tessSummary').innerHTML=`${tessRows.length} occurrences · ${ts.size} unique tags`;$('paddleSummary').innerHTML=`${paddleRows.length} occurrences · ${ps.size} unique tags`;
-const ex=expectedSet();if(!ex.size){$('expectedMetric').textContent='—';$('expectedTable').innerHTML='<span class="small">Add expected tags to calculate recall.</span>';return}let th=0,ph=0,rows='';for(const t of ex){const a=ts.has(t),b=ps.has(t);if(a)th++;if(b)ph++;rows+=`<tr><td><code>${t}</code></td><td class="${a?'ok':'bad'}">${a?'✓':'✗'}</td><td class="${b?'ok':'bad'}">${b?'✓':'✗'}</td></tr>`}$('expectedMetric').textContent=`T ${th}/${ex.size} · P ${ph}/${ex.size}`;$('expectedTable').innerHTML=`<table><thead><tr><th>Expected tag</th><th>Tesseract</th><th>PaddleOCR</th></tr></thead><tbody>${rows}</tbody></table><p class="small">Recall: Tesseract <strong>${(th/ex.size*100).toFixed(1)}%</strong> · PaddleOCR <strong>${(ph/ex.size*100).toFixed(1)}%</strong></p>`}
 
-$('runBtn').onclick=async()=>{if(!zones.length||!files.length)return;stop=false;tessRows=[];paddleRows=[];$('runBtn').disabled=true;$('stopBtn').disabled=false;$('exportBtn').disabled=true;$('progress').style.width='0%';$('log').textContent='Benchmark started.';const useT=$('useTess').checked,useP=$('usePaddle').checked;if(!useT&&!useP){alert('Select at least one OCR engine.');$('runBtn').disabled=false;return}try{if(useT)tessWorker=await Tesseract.createWorker('eng',1,{logger:()=>{}});if(useP)await loadPaddle();const max=Math.min(files.length,Math.max(1,Number($('maxPdfs').value))),scale=Number($('scale').value),maxPages=Math.max(1,Number($('maxPages').value));let done=0;const t0=performance.now();for(let fi=0;fi<max;fi++){if(stop)break;const item=files[fi];$('status').textContent=`${fi+1}/${max} · ${item.path}`;try{const data=new Uint8Array(await item.file.arrayBuffer()),pdf=await pdfjsLib.getDocument({data}).promise,pages=Math.min(pdf.numPages,maxPages);for(let p=1;p<=pages;p++){if(stop)break;const page=await pdf.getPage(p),vp=page.getViewport({scale});for(let zi=0;zi<zones.length;zi++){if(stop)break;const c=await renderZone(page,vp,zoneRect(zones[zi],vp)),meta={drawing:item.file.name,path:item.path,page:p,zone:zones[zi].name};if(useT){$('status').textContent=`${fi+1}/${max} · ${item.file.name} · ${zones[zi].name} · Tesseract`;tessRows.push(...await runTess(c,meta))}if(useP&&!stop){$('status').textContent=`${fi+1}/${max} · ${item.file.name} · ${zones[zi].name} · PaddleOCR`;paddleRows.push(...await runPaddle(c,meta))}c.width=1;c.height=1;renderReport()}}}catch(e){$('log').textContent+=`\nERROR ${item.path}: ${e.stack||e.message||e}`;}done++;$('pdfMetric').textContent=done;$('progress').style.width=`${Math.round(done/max*100)}%`;await new Promise(r=>setTimeout(r,0))}const sec=((performance.now()-t0)/1000).toFixed(1);$('status').textContent=stop?`Stopped after ${done} PDF(s).`:`Finished ${done} PDF(s) in ${sec}s.`;renderReport();$('exportBtn').disabled=!(tessRows.length||paddleRows.length)}catch(e){$('status').textContent='Benchmark error: '+(e.message||e);$('log').textContent+='\nFATAL: '+(e.stack||e)}finally{if(tessWorker){try{await tessWorker.terminate()}catch(_){}tessWorker=null}$('runBtn').disabled=false;$('stopBtn').disabled=true}};
-$('stopBtn').onclick=()=>{stop=true;$('status').textContent='Stopping after current OCR operation...'};
-$('exportBtn').onclick=()=>{const rows=[['engine','tag','drawing','relative_path','page','zone','raw','score'],...tessRows.map(r=>['Tesseract',r.tag,r.drawing,r.path,r.page,r.zone,r.raw,'']),...paddleRows.map(r=>['PaddleOCR',r.tag,r.drawing,r.path,r.page,r.zone,r.raw,r.score??''])];const csv=rows.map(a=>a.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n'),blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='drawing-finder-ocr-benchmark.csv';a.click();URL.revokeObjectURL(u)};
-buttons();
-})();
+async function renderPreview(){
+  if(!pdfDoc) return;
+  const page = await pdfDoc.getPage(pageNum);
+  const base = page.getViewport({scale:1});
+  const maxW=1000, maxH=680;
+  const scale=Math.min(maxW/base.width,maxH/base.height,1.5);
+  previewViewport=page.getViewport({scale});
+  const c=$('previewCanvas'), o=$('overlayCanvas');
+  c.width=o.width=Math.ceil(previewViewport.width);
+  c.height=o.height=Math.ceil(previewViewport.height);
+  await page.render({canvasContext:c.getContext('2d'),viewport:previewViewport}).promise;
+  redrawOverlay();
+  $('pageInfo').textContent=`Page ${pageNum} / ${pdfDoc.numPages} — preview ${c.width} × ${c.height}px`;
+  $('prevPage').disabled=pageNum<=1;
+  $('nextPage').disabled=pageNum>=pdfDoc.numPages;
+}
+
+function pointerPos(ev){
+  const r=$('overlayCanvas').getBoundingClientRect();
+  return {
+    x:(ev.clientX-r.left)*$('overlayCanvas').width/r.width,
+    y:(ev.clientY-r.top)*$('overlayCanvas').height/r.height
+  };
+}
+
+$('overlayCanvas').addEventListener('pointerdown',ev=>{
+  if(!pdfDoc) return;
+  drawing=true; startPt=pointerPos(ev); tempRect={x:startPt.x,y:startPt.y,w:0,h:0};
+  $('overlayCanvas').setPointerCapture(ev.pointerId);
+});
+$('overlayCanvas').addEventListener('pointermove',ev=>{
+  if(!drawing) return;
+  const p=pointerPos(ev);
+  tempRect={
+    x:Math.min(startPt.x,p.x), y:Math.min(startPt.y,p.y),
+    w:Math.abs(p.x-startPt.x), h:Math.abs(p.y-startPt.y)
+  };
+  redrawOverlay();
+});
+$('overlayCanvas').addEventListener('pointerup',ev=>{
+  if(!drawing) return;
+  drawing=false;
+  if(tempRect && tempRect.w>15 && tempRect.h>15){
+    zones.push({
+      page:pageNum,
+      x:tempRect.x/$('overlayCanvas').width,
+      y:tempRect.y/$('overlayCanvas').height,
+      w:tempRect.w/$('overlayCanvas').width,
+      h:tempRect.h/$('overlayCanvas').height
+    });
+    tilePlan=[];
+  }
+  tempRect=null; redrawOverlay(); updateUI();
+});
+
+function redrawOverlay(){
+  const c=$('overlayCanvas'), ctx=c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  ctx.lineWidth=2;
+
+  zones.forEach((z,i)=>{
+    if(z.page!==pageNum) return;
+    ctx.strokeStyle='#ff4fd8';
+    ctx.fillStyle='rgba(255,79,216,.08)';
+    const x=z.x*c.width,y=z.y*c.height,w=z.w*c.width,h=z.h*c.height;
+    ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle='#ff4fd8'; ctx.font='bold 13px sans-serif';
+    ctx.fillText(`Z${i+1}`,x+5,y+16);
+  });
+
+  tilePlan.forEach((t,i)=>{
+    if(t.page!==pageNum) return;
+    ctx.strokeStyle='#39d353';
+    ctx.setLineDash([7,5]);
+    const x=t.nx*c.width,y=t.ny*c.height,w=t.nw*c.width,h=t.nh*c.height;
+    ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle='#39d353'; ctx.font='bold 11px sans-serif';
+    ctx.fillText(`T${i+1}`,x+4,y+13);
+    ctx.setLineDash([]);
+  });
+
+  if(tempRect){
+    ctx.strokeStyle='#ff4fd8'; ctx.setLineDash([6,4]);
+    ctx.strokeRect(tempRect.x,tempRect.y,tempRect.w,tempRect.h);
+    ctx.setLineDash([]);
+  }
+}
+
+function computeCoverage(){
+  // Simple sum; overlaps between manually drawn zones are intentionally not union-computed here.
+  return Math.min(1,zones.reduce((a,z)=>a+z.w*z.h,0));
+}
+
+function updateUI(){
+  $('zoneCount').textContent=zones.length;
+  $('tileCount').textContent=tilePlan.length;
+  $('coverage').textContent=`${fmt(computeCoverage()*100,1)}%`;
+
+  $('undoZone').disabled=!zones.length;
+  $('clearZones').disabled=!zones.length;
+  $('planTiles').disabled=!pdfDoc || !zones.length;
+  $('exportZip').disabled=!tilePlan.length;
+
+  if(!zones.length){
+    $('zoneList').innerHTML='<div class="small">No zones yet.</div>';
+  }else{
+    $('zoneList').innerHTML=zones.map((z,i)=>`
+      <div class="row row-grid">
+        <div><strong>Zone ${i+1} — page ${z.page}</strong>
+        <span>x ${fmt(z.x*100)}% · y ${fmt(z.y*100)}% · w ${fmt(z.w*100)}% · h ${fmt(z.h*100)}%</span></div>
+        <button class="secondary" style="padding:6px 9px" onclick="removeZone(${i})">×</button>
+      </div>`).join('');
+  }
+
+  let maxmp=0;
+  for(const t of tilePlan) maxmp=Math.max(maxmp,t.pixelW*t.pixelH/1e6);
+  $('maxTileMP').textContent=tilePlan.length?fmt(maxmp,1):'0';
+
+  if(!tilePlan.length){
+    $('tileList').innerHTML='<div class="small">No tile plan yet.</div>';
+  }else{
+    $('tileList').innerHTML=tilePlan.map((t,i)=>`
+      <div class="row">
+        <strong>Tile ${i+1} · Zone ${t.zoneIndex+1} · Page ${t.page}</strong>
+        <span>${t.pixelW} × ${t.pixelH}px · ${fmt(t.pixelW*t.pixelH/1e6,1)} MP · overlap-aware</span>
+      </div>`).join('');
+  }
+}
+
+window.removeZone=i=>{
+  zones.splice(i,1); tilePlan=[]; redrawOverlay(); updateUI();
+};
+
+$('undoZone').onclick=()=>{zones.pop();tilePlan=[];redrawOverlay();updateUI()};
+$('clearZones').onclick=()=>{zones=[];tilePlan=[];redrawOverlay();updateUI()};
+
+$('pdfInput').addEventListener('change',async e=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  try{
+    $('status').textContent='Loading PDF…';
+    await loadPdf(f);
+    $('status').innerHTML='<span class="ok">PDF loaded. Draw OCR zones on the preview.</span>';
+  }catch(err){
+    console.error(err); $('status').innerHTML=`<span class="bad">PDF load error: ${err.message}</span>`;
+  }
+});
+
+$('prevPage').onclick=async()=>{if(pageNum>1){pageNum--;await renderPreview()}};
+$('nextPage').onclick=async()=>{if(pdfDoc&&pageNum<pdfDoc.numPages){pageNum++;await renderPreview()}};
+
+async function buildTilePlan(){
+  if(!pdfDoc || !zones.length) return;
+  const dpi=Number($('dpi').value);
+  const maxMP=Number($('maxMP').value);
+  const maxDim=Number($('maxDim').value);
+  const overlapPct=Number($('overlapPct').value);
+  const scale=dpi/72;
+
+  const out=[];
+  for(let zi=0;zi<zones.length;zi++){
+    const z=zones[zi];
+    const page=await pdfDoc.getPage(z.page);
+    const vp=page.getViewport({scale});
+    const zx=z.x*vp.width, zy=z.y*vp.height, zw=z.w*vp.width, zh=z.h*vp.height;
+
+    // Start from dimension-limited tile size and shrink to fit megapixel cap.
+    let targetW=Math.min(zw,maxDim);
+    let targetH=Math.min(zh,maxDim);
+    const mp=targetW*targetH/1e6;
+    if(mp>maxMP){
+      const s=Math.sqrt(maxMP/mp);
+      targetW*=s; targetH*=s;
+    }
+
+    // Grid steps are reduced by overlap. Number of tiles is computed to guarantee full coverage.
+    const stepX=Math.max(1,targetW*(1-overlapPct));
+    const stepY=Math.max(1,targetH*(1-overlapPct));
+    const cols=Math.max(1,Math.ceil((zw-targetW)/stepX)+1);
+    const rows=Math.max(1,Math.ceil((zh-targetH)/stepY)+1);
+
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        let x=zx + c*stepX;
+        let y=zy + r*stepY;
+        if(x+targetW>zx+zw) x=Math.max(zx,zx+zw-targetW);
+        if(y+targetH>zy+zh) y=Math.max(zy,zy+zh-targetH);
+        const w=Math.min(targetW,zx+zw-x);
+        const h=Math.min(targetH,zy+zh-y);
+
+        out.push({
+          zoneIndex:zi,page:z.page,dpi,scale,
+          x,y,w,h,
+          pixelW:Math.max(1,Math.ceil(w)),
+          pixelH:Math.max(1,Math.ceil(h)),
+          nx:x/vp.width, ny:y/vp.height, nw:w/vp.width, nh:h/vp.height
+        });
+      }
+    }
+  }
+  tilePlan=out;
+  redrawOverlay(); updateUI();
+  $('status').innerHTML=`<span class="ok">Tile plan ready: ${tilePlan.length} tile(s). No tile exceeds the configured limits.</span>`;
+}
+
+$('planTiles').onclick=()=>buildTilePlan();
+
+function canvasToBlob(canvas){
+  return new Promise((resolve,reject)=>{
+    canvas.toBlob(b=>b?resolve(b):reject(new Error('Could not create PNG blob')),'image/png');
+  });
+}
+
+async function renderTile(tile){
+  const page=await pdfDoc.getPage(tile.page);
+  const viewport=page.getViewport({scale:tile.scale});
+  const canvas=document.createElement('canvas');
+  canvas.width=tile.pixelW; canvas.height=tile.pixelH;
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Shift the full high-DPI page so only the selected tile is painted into this small canvas.
+  await page.render({
+    canvasContext:ctx,
+    viewport,
+    transform:[1,0,0,1,-tile.x,-tile.y]
+  }).promise;
+  return canvas;
+}
+
+$('exportZip').onclick=async()=>{
+  if(!tilePlan.length) return;
+  const file=$('pdfInput').files?.[0];
+  const zip=new JSZip();
+  const manifest={
+    version:'0.5-step1',
+    sourcePdf:file?.name||'drawing.pdf',
+    generatedAt:new Date().toISOString(),
+    settings:{
+      dpi:Number($('dpi').value),
+      maxMP:Number($('maxMP').value),
+      maxDim:Number($('maxDim').value),
+      overlapPct:Number($('overlapPct').value)
+    },
+    zones:zones,
+    tiles:[]
+  };
+
+  $('exportZip').disabled=true;
+  $('planTiles').disabled=true;
+  $('progress').style.width='0%';
+
+  try{
+    for(let i=0;i<tilePlan.length;i++){
+      const t=tilePlan[i];
+      $('status').textContent=`Rendering tile ${i+1} / ${tilePlan.length}…`;
+      const canvas=await renderTile(t);
+      const blob=await canvasToBlob(canvas);
+      const name=`page-${String(t.page).padStart(3,'0')}_zone-${String(t.zoneIndex+1).padStart(2,'0')}_tile-${String(i+1).padStart(3,'0')}_${t.dpi}dpi.png`;
+      zip.file(name,blob);
+      manifest.tiles.push({...t,file:name});
+      $('progress').style.width=`${((i+1)/tilePlan.length)*90}%`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+    zip.file('manifest.json',JSON.stringify(manifest,null,2));
+    $('status').textContent='Compressing ZIP…';
+    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:5}},m=>{
+      $('progress').style.width=`${90+m.percent*0.1}%`;
+    });
+    const a=document.createElement('a');
+    const safe=(file?.name||'drawing').replace(/\.pdf$/i,'').replace(/[^a-z0-9_-]+/gi,'_');
+    a.href=URL.createObjectURL(blob);
+    a.download=`${safe}_google_ocr_tiles.zip`;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    $('progress').style.width='100%';
+    $('status').innerHTML='<span class="ok">ZIP generated. Step 1 complete.</span>';
+  }catch(err){
+    console.error(err);
+    $('status').innerHTML=`<span class="bad">Tile generation error: ${err.message}</span>`;
+  }finally{
+    $('exportZip').disabled=false;
+    $('planTiles').disabled=false;
+  }
+};
+
+['dpi','maxMP','maxDim','overlapPct'].forEach(id=>{
+  $(id).addEventListener('change',()=>{tilePlan=[];redrawOverlay();updateUI();$('status').textContent='Settings changed. Click Plan tiles again.'});
+});
+
+updateUI();
 </script>
-</body></html>
+</body>
+</html>
