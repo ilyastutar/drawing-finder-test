@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6 — Dual OCR Verification</title>
+<title>Drawing Finder v0.6.1 — Dual OCR Verification</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6 — Dual OCR Verification</h1>
+<h1>Drawing Finder v0.6.1 — Dual OCR Verification</h1>
 <p>Google Document OCR + PaddleOCR PP-OCRv5 on the same OCR zones and the same drawing coordinates.</p>
 
 <div class="note">
@@ -140,7 +140,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <h2 style="margin-top:18px">Verification results</h2>
 <div class="note">
- Safe normalization may remove whitespace/separators, e.g. <code>00N DB33CP001 → 00NDB33CP001</code>.
+ Safe normalization removes whitespace inside a tag, e.g. <code>00N DB33CP001 → 00NDB33CP001</code>, while preserving punctuation boundaries.
  It never performs character substitutions such as O↔0, I↔1, F↔P or GH↔HG.
 </div>
 <div class="result-scroll">
@@ -180,7 +180,14 @@ function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':
 function endpoint(){return $('endpoint').value.trim().replace(/\/+$/,'')}
 function compactText(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
 function exactTag(s){const c=compactText(s);return TAG_EXACT.test(c)?c:null}
-function tagsInside(s){const c=compactText(s);return [...c.matchAll(TAG_GLOBAL)].map(m=>m[0])}
+function tagsInside(s){
+ // Preserve punctuation so a following field such as "-C3Z0-..." cannot be
+ // swallowed as an optional trailing tag letter. Only whitespace INSIDE the
+ // tag is ignored, e.g. "00N DB33CP001" -> "00NDB33CP001".
+ const raw=String(s||'').toUpperCase();
+ const re=/(?<![A-Z0-9])([0-9]\s*[0-9]\s*[A-Z]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[0-9]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[0-9]\s*[0-9](?:[A-Z])?)(?![A-Z0-9])/g;
+ return [...raw.matchAll(re)].map(m=>m[1].replace(/\s+/g,''));
+}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function pct(v){return (Number(v||0)*100).toFixed(1)+'%'}
 
