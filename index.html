@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.1 — Dual OCR Verification</title>
+<title>Drawing Finder v0.6.2 — Column-Aware Dual OCR</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,11 +54,11 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.1 — Dual OCR Verification</h1>
-<p>Google Document OCR + PaddleOCR PP-OCRv5 on the same OCR zones and the same drawing coordinates.</p>
+<h1>Drawing Finder v0.6.2 — Column-Aware Dual OCR</h1>
+<p>Google Document OCR + lightweight PaddleOCR verification + table-header-aware tag / pipeline classification.</p>
 
 <div class="note">
- <strong>Verification rule:</strong> Google confidence and Paddle confidence remain the OCR engines' own scores.
+ <strong>Column-aware rule:</strong> KKS-looking pipeline prefixes are not tags unless they sit under a recognized tag column. Google confidence and Paddle confidence remain the OCR engines' own scores.
  A tag becomes <strong>Verified</strong> only when both engines read the same tag at the same location.
  Different readings at the same location are shown as <strong>Conflict</strong>; the app does not silently correct characters.
 </div>
@@ -77,7 +77,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 <h2 style="margin-top:20px">2. Sample PDF + OCR zones</h2>
 <input id="pdfInput" type="file" accept=".pdf,application/pdf">
 <div id="pageInfo" class="status">No PDF loaded.</div>
-<p class="small">Every drag adds another reusable OCR zone.</p>
+<p class="small"><strong>Include the table header row inside every zone.</strong> Every drag adds another reusable OCR zone.</p>
 <div id="zoneList"><div class="row">No OCR zones yet.</div></div>
 <div class="buttons">
  <button id="undoZone" class="secondary" disabled>Undo last zone</button>
@@ -93,6 +93,10 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
  <div><label>Maximum MP / Google tile</label><input id="maxMP" type="number" value="35" min="10" max="39"></div>
  <div><label>Maximum tile dimension</label><input id="maxDim" type="number" value="9500" min="3000" max="9900"></div>
 </div>
+<div class="two">
+ <div><label>Paddle verification DPI</label><select id="paddleDpi"><option>220</option><option selected>300</option><option>350</option></select></div>
+ <div><label>Paddle max crop side</label><select id="paddleMaxSide"><option>2800</option><option selected>3500</option><option>4096</option></select></div>
+</div>
 <label>Tile overlap</label>
 <select id="overlapPct">
  <option value=".04">4%</option>
@@ -102,7 +106,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <div class="buttons">
  <button id="plan" disabled>Plan tiles</button>
- <button id="runDual" disabled>Run Dual OCR Verification</button>
+ <button id="runDual" disabled>Run Column-Aware Dual OCR</button>
  <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
 </div>
 
@@ -138,17 +142,19 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
  </div>
 </div>
 
-<h2 style="margin-top:18px">Verification results</h2>
+<h2 style="margin-top:18px">Detected table structure</h2>
+<div id="columnReport"><div class="row">No table headers detected yet.</div></div>
+
+<h2 style="margin-top:18px">Searchable tag records</h2>
 <div class="note">
- Safe normalization removes whitespace inside a tag, e.g. <code>00N DB33CP001 → 00NDB33CP001</code>, while preserving punctuation boundaries.
- It never performs character substitutions such as O↔0, I↔1, F↔P or GH↔HG.
+ Only values under recognized tag headers are searchable tags. Recognized examples: <strong>Instrument KKS</strong>, <strong>Valve TAG</strong>, <strong>BOX TAG</strong>, <strong>JB TAG</strong>, <strong>Equipment TAG</strong>, <strong>Tag Number</strong>. Pipeline Name / Line Number are stored separately as related pipeline metadata.
 </div>
 <div class="result-scroll">
 <table>
 <thead><tr>
- <th>Status</th><th>Tag / readings</th><th>Google OCR confidence</th><th>Paddle OCR confidence</th><th>Zone / position</th>
+ <th>Status</th><th>Tag</th><th>Column</th><th>Related Tag</th><th>Related Pipeline</th><th>Description</th><th>Google</th><th>Paddle</th>
 </tr></thead>
-<tbody id="results"><tr><td colspan="5" class="small">No verification results yet.</td></tr></tbody>
+<tbody id="results"><tr><td colspan="8" class="small">No records yet.</td></tr></tbody>
 </table>
 </div>
 
@@ -615,5 +621,111 @@ $('exportCsv').onclick=()=>{
 
 update();renderResults();renderAudit();
 </script>
+
+<script>
+// ===== v0.6.2 column-aware + performance overrides =====
+const DF_HEADERS=[
+ {role:'TAG',subtype:'INSTRUMENT_TAG',aliases:['INSTRUMENT KKS','INSTRUMENT TAG','INSTRUMENT TAG NUMBER']},
+ {role:'TAG',subtype:'VALVE_TAG',aliases:['VALVE TAG','VALVE KKS']},
+ {role:'TAG',subtype:'BOX_TAG',aliases:['BOX TAG','JB TAG','JUNCTION BOX TAG','JUNCTION BOX KKS']},
+ {role:'TAG',subtype:'EQUIPMENT_TAG',aliases:['EQUIPMENT TAG','EQUIPMENT KKS','TAG NUMBER','TAG NO']},
+ {role:'PIPELINE',subtype:'PIPELINE',aliases:['PIPELINE NAME','LINE NUMBER','LINE NO','PIPELINE KKS','PIPE LINE NAME']},
+ {role:'DESCRIPTION',subtype:'DESCRIPTION',aliases:['DESCRIPTION','DESC']},
+ {role:'IGNORE',subtype:'NO',aliases:['NO','NR','NUMBER','ITEM NO']}
+];
+let dfGoogleLines=[],dfGoogleTokens=[],dfColumnModels=[],dfRecords=[];
+
+function dfCleanHeader(s){return String(s||'').toUpperCase().replace(/[_\-./:]+/g,' ').replace(/\s+/g,' ').trim()}
+function dfLev(a,b){const n=b.length,d=Array(n+1);for(let j=0;j<=n;j++)d[j]=j;for(let i=1;i<=a.length;i++){let prev=d[0];d[0]=i;for(let j=1;j<=n;j++){const tmp=d[j];d[j]=Math.min(d[j]+1,d[j-1]+1,prev+(a[i-1]===b[j-1]?0:1));prev=tmp}}return d[n]}
+function dfHeaderMatch(s){const t=dfCleanHeader(s);if(!t)return null;let best=null;for(const g of DF_HEADERS)for(const alias of g.aliases){const a=dfCleanHeader(alias);let score=t===a?1:(t.includes(a)||a.includes(t)?Math.min(t.length,a.length)/Math.max(t.length,a.length):1-dfLev(t,a)/Math.max(t.length,a.length));if(score>=.78&&(!best||score>best.score))best={...g,alias,score}}return best}
+function dfGBox(verts,tile){const b=bboxFromVerts(verts);return localToGlobalBBox(b,tile)}
+function dfCollectGooglePage(pg,tile,tileNo){
+ for(const ln of (pg.lines||[])){const b=dfGBox(ln.vertices||[],tile);if(b)dfGoogleLines.push({text:ln.text||'',confidence:Number(ln.confidence||0),bbox:b,page:tile.page,zone:tile.zoneIndex+1,tile:tileNo})}
+ for(const tk of (pg.tokens||[])){const b=dfGBox(tk.vertices||[],tile);if(b)dfGoogleTokens.push({text:tk.text||'',confidence:Number(tk.confidence||0),bbox:b,page:tile.page,zone:tile.zoneIndex+1,tile:tileNo})}
+}
+function dfSameTextRow(a,b){if(a.page!==b.page||a.zone!==b.zone||dfCleanHeader(a.text)!==dfCleanHeader(b.text))return false;const ca=center(a.bbox),cb=center(b.bbox),h=Math.max(boxH(a.bbox),boxH(b.bbox),.001);return Math.abs(ca.x-cb.x)<Math.max(.004,boxW(a.bbox)*.45)&&Math.abs(ca.y-cb.y)<Math.max(.002,h*.8)}
+function dfDedupeText(rows){const s=[...rows].sort((a,b)=>b.confidence-a.confidence),o=[];for(const r of s)if(!o.some(x=>dfSameTextRow(x,r)))o.push(r);return o}
+function dfBuildColumns(){
+ dfGoogleLines=dfDedupeText(dfGoogleLines);dfGoogleTokens=dfDedupeText(dfGoogleTokens);dfColumnModels=[];
+ for(let zi=0;zi<zones.length;zi++){
+  const z=zones[zi],zone=zi+1,cands=[];
+  for(const ln of dfGoogleLines){if(ln.zone!==zone)continue;const m=dfHeaderMatch(ln.text);if(m)cands.push({...m,text:ln.text,bbox:ln.bbox,confidence:ln.confidence})}
+  const best=new Map();for(const h of cands){const cy=center(h.bbox).y,rank=h.score+h.confidence*.08-(cy>z.y+z.h*.62?.12:0);if(!best.has(h.subtype)||rank>best.get(h.subtype)._rank)best.set(h.subtype,{...h,_rank:rank})}
+  const hs=[...best.values()].sort((a,b)=>center(a.bbox).x-center(b.bbox).x),cols=[];
+  for(let i=0;i<hs.length;i++){const h=hs[i],cx=center(h.bbox).x,left=i===0?z.x:(center(hs[i-1].bbox).x+cx)/2,right=i===hs.length-1?z.x+z.w:(cx+center(hs[i+1].bbox).x)/2;cols.push({...h,left,right,headerBottom:h.bbox.y1})}
+  dfColumnModels.push({zone,headers:hs,columns:cols});
+ }
+ dfRenderColumns();
+}
+function dfModel(zone){return dfColumnModels.find(m=>m.zone===zone)}
+function dfClassify(b,zone){const m=dfModel(zone);if(!m)return null;const c=center(b);return m.columns.find(x=>c.x>=x.left&&c.x<=x.right&&c.y>=x.headerBottom-.002)||null}
+function dfRenderColumns(){
+ const el=$('columnReport');if(!dfColumnModels.length){el.innerHTML='<div class="row">No table headers detected yet.</div>';return}
+ el.innerHTML=dfColumnModels.map(m=>m.headers.length?`<div class="row"><strong>Zone ${m.zone}</strong><br>${m.headers.map(h=>`<span class="${h.role==='TAG'?'ok':h.role==='PIPELINE'?'warn':''}">${escapeHtml(h.text)} → ${h.subtype} (${Math.round(h.score*100)}% header match)</span>`).join('<br>')}</div>`:`<div class="row"><strong>Zone ${m.zone}</strong><br><span class="bad">No recognized table header. Include the header row in this zone.</span></div>`).join('');
+}
+function dfSameVisualRow(a,b){const ca=center(a.bbox),cb=center(b.bbox),h=Math.max(boxH(a.bbox),boxH(b.bbox),.0015);return a.zone===b.zone&&a.page===b.page&&Math.abs(ca.y-cb.y)<=Math.max(.0025,h*1.35)}
+function dfGoogleTagCandidates(){
+ const toks=dfGoogleTokens,out=[],seen=new Set();
+ for(let i=0;i<toks.length;i++)for(let len=1;len<=4&&i+len<=toks.length;len++){
+  const seq=toks.slice(i,i+len);if(seq.some(x=>x.zone!==seq[0].zone||x.page!==seq[0].page))break;let row=true;for(let k=1;k<seq.length;k++)if(!dfSameVisualRow(seq[k-1],seq[k]))row=false;if(!row)continue;
+  const tag=exactTag(seq.map(x=>x.text).join(''));if(!tag)continue;const b=unionBboxes(seq.map(x=>x.bbox)),col=dfClassify(b,seq[0].zone);if(!b||!col||col.role!=='TAG')continue;
+  const c=center(b),key=tag+'|'+seq[0].zone+'|'+Math.round(c.x*10000)+'|'+Math.round(c.y*10000);if(seen.has(key))continue;seen.add(key);
+  out.push({engine:'Google',tag,raw:seq.map(x=>x.text).join(' '),confidence:Math.min(...seq.map(x=>x.confidence||0)),bbox:b,page:seq[0].page,zone:seq[0].zone,column:col.subtype,tile:seq[0].tile});
+ }
+ return out;
+}
+function dfMetadata(){
+ const pipes=[],descs=[];for(const ln of dfGoogleLines){const col=dfClassify(ln.bbox,ln.zone);if(!col||dfHeaderMatch(ln.text))continue;
+  if(col.role==='PIPELINE'){const v=String(ln.text||'').toUpperCase().replace(/\s+/g,'').trim();if(v.length>=12&&(v.includes('-')||v.includes('_')))pipes.push({...ln,value:v})}
+  if(col.role==='DESCRIPTION'){const v=String(ln.text||'').trim();if(v.length>1)descs.push({...ln,value:v})}
+ }
+ return{pipes:dfDedupeText(pipes.map(x=>({...x,text:x.value}))).map(x=>({...x,value:x.text})),descs:dfDedupeText(descs.map(x=>({...x,text:x.value}))).map(x=>({...x,value:x.text}))};
+}
+async function dfRenderNormCrop(pageNo,norm,dpi,maxSide){
+ const page=await pdfDoc.getPage(pageNo),baseScale=dpi/72,b=page.getViewport({scale:baseScale});let w=norm.w*b.width,h=norm.h*b.height,scale=baseScale;
+ if(Math.max(w,h)>maxSide){scale*=maxSide/Math.max(w,h)}const vp=page.getViewport({scale});const x=norm.x*vp.width,y=norm.y*vp.height;c=document.createElement('canvas');c.width=Math.max(1,Math.ceil(norm.w*vp.width));c.height=Math.max(1,Math.ceil(norm.h*vp.height));const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);await page.render({canvasContext:ctx,viewport:vp,transform:[1,0,0,1,-x,-y]}).promise;return c;
+}
+function dfPolyGlobal(poly,c,crop){const b=bboxFromVerts(poly);if(!b)return null;return{x0:crop.x+b.x0/c.width*crop.w,y0:crop.y+b.y0/c.height*crop.h,x1:crop.x+b.x1/c.width*crop.w,y1:crop.y+b.y1/c.height*crop.h}}
+async function dfPaddleColumnCandidates(){
+ const ocr=await loadPaddle(),dpi=Number($('paddleDpi').value||300),maxSide=Number($('paddleMaxSide').value||3500),score=Number($('paddleScore').value),out=[];
+ for(const model of dfColumnModels){const z=zones[model.zone-1];for(const col of model.columns.filter(c=>c.role==='TAG')){
+   const margin=Math.max(.002,(col.right-col.left)*.08),crop={x:Math.max(z.x,col.left-margin),y:Math.max(z.y,col.headerBottom-.004),w:Math.min(z.x+z.w,col.right+margin)-Math.max(z.x,col.left-margin),h:z.y+z.h-Math.max(z.y,col.headerBottom-.004)};
+   if(crop.w<=0||crop.h<=0)continue;$('status').textContent=`Paddle verification: Zone ${model.zone} / ${col.subtype}…`;const c=await dfRenderNormCrop(z.page,crop,dpi,maxSide);
+   const [r]=await ocr.predict(c,{textDetLimitSideLen:Math.min(2048,maxSide),textDetLimitType:'max',textDetMaxSideLimit:maxSide,textDetThresh:.20,textDetBoxThresh:.35,textDetUnclipRatio:1.5,textRecScoreThresh:score});
+   for(const item of (r.items||[])){const tag=exactTag(item.text||'');if(!tag)continue;const b=dfPolyGlobal(item.poly||[],c,crop);if(!b)continue;out.push({engine:'Paddle',tag,raw:item.text||'',confidence:Number(item.score||0),bbox:b,page:z.page,zone:model.zone,column:col.subtype,tile:0})}
+   c.width=1;c.height=1;await new Promise(r=>setTimeout(r,0));
+  }}return out;
+}
+function dfVerify(grows,prows){
+ const g=dedupeEngine(grows),p=dedupeEngine(prows),used=new Set(),out=[];
+ for(let gi=0;gi<g.length;gi++){let best=-1,ds=1e9;for(let pi=0;pi<p.length;pi++){if(used.has(pi)||p[pi].tag!==g[gi].tag||p[pi].column!==g[gi].column)continue;const d=positionScore(g[gi],p[pi]);if(d<=1.4&&d<ds){best=pi;ds=d}}if(best>=0){used.add(best);g[gi]._m=true;out.push({status:'VERIFIED',tag:g[gi].tag,google:g[gi],paddle:p[best],page:g[gi].page,zone:g[gi].zone,bbox:g[gi].bbox,column:g[gi].column})}}
+ for(let gi=0;gi<g.length;gi++)if(!g[gi]._m){let best=-1,ds=1e9;for(let pi=0;pi<p.length;pi++){if(used.has(pi)||p[pi].tag===g[gi].tag||p[pi].column!==g[gi].column)continue;const d=positionScore(g[gi],p[pi]);if(d<=.55&&d<ds){best=pi;ds=d}}if(best>=0){used.add(best);g[gi]._m=true;out.push({status:'CONFLICT',tag:null,google:g[gi],paddle:p[best],page:g[gi].page,zone:g[gi].zone,bbox:g[gi].bbox,column:g[gi].column})}}
+ for(const x of g)if(!x._m)out.push({status:'GOOGLE_ONLY',tag:x.tag,google:x,paddle:null,page:x.page,zone:x.zone,bbox:x.bbox,column:x.column});for(let pi=0;pi<p.length;pi++)if(!used.has(pi))out.push({status:'PADDLE_ONLY',tag:p[pi].tag,google:null,paddle:p[pi],page:p[pi].page,zone:p[pi].zone,bbox:p[pi].bbox,column:p[pi].column});return out;
+}
+function dfBuildRecords(){
+ const {pipes,descs}=dfMetadata(),rows=verificationRows.filter(r=>r.status!=='CONFLICT'),out=[];
+ for(const r of rows){const related=rows.filter(x=>x!==r&&x.zone===r.zone&&x.page===r.page&&x.column!==r.column&&dfSameVisualRow({bbox:r.bbox,zone:r.zone,page:r.page},{bbox:x.bbox,zone:x.zone,page:x.page})).map(x=>x.tag).filter(Boolean);
+  const pp=pipes.filter(x=>x.zone===r.zone&&x.page===r.page&&dfSameVisualRow({bbox:r.bbox,zone:r.zone,page:r.page},x)).sort((a,b)=>Math.abs(center(a.bbox).y-center(r.bbox).y)-Math.abs(center(b.bbox).y-center(r.bbox).y))[0];
+  const dd=descs.filter(x=>x.zone===r.zone&&x.page===r.page&&dfSameVisualRow({bbox:r.bbox,zone:r.zone,page:r.page},x)).sort((a,b)=>Math.abs(center(a.bbox).y-center(r.bbox).y)-Math.abs(center(b.bbox).y-center(r.bbox).y))[0];
+  out.push({...r,related:[...new Set(related)],pipeline:pp?.value||'',description:dd?.value||''});}
+ dfRecords=out;
+}
+function dfBadge(s){return s==='VERIFIED'?'<span class="badge verified">✅ Verified</span>':s==='CONFLICT'?'<span class="badge conflict">⚠ Conflict</span>':s==='GOOGLE_ONLY'?'<span class="badge google">Google only</span>':'<span class="badge paddle">Paddle only</span>'}
+renderResults=function(){if(!dfRecords.length){$('results').innerHTML='<tr><td colspan="8" class="small">No records yet.</td></tr>';return}$('results').innerHTML=[...dfRecords].sort((a,b)=>(a.tag||'').localeCompare(b.tag||'')).map(r=>`<tr><td>${dfBadge(r.status)}</td><td><code>${escapeHtml(r.tag)}</code></td><td>${escapeHtml(r.column)}</td><td>${r.related.length?r.related.map(t=>`<code>${escapeHtml(t)}</code>`).join(' '):'—'}</td><td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}</td><td>${escapeHtml(r.description||'—')}</td><td>${r.google?pct(r.google.confidence):'—'}</td><td>${r.paddle?pct(r.paddle.confidence):'—'}</td></tr>`).join('')};
+updateMetrics=function(){const g=dedupeEngine(googleCandidates),p=dedupeEngine(paddleCandidates);$('googleCount').textContent=g.length;$('paddleCount').textContent=p.length;$('verifiedCount').textContent=verificationRows.filter(x=>x.status==='VERIFIED').length;$('conflictCount').textContent=verificationRows.filter(x=>x.status==='CONFLICT').length;$('googleOnlyCount').textContent=verificationRows.filter(x=>x.status==='GOOGLE_ONLY').length;$('paddleOnlyCount').textContent=verificationRows.filter(x=>x.status==='PADDLE_ONLY').length;$('exportCsv').disabled=!dfRecords.length};
+$('runDual').onclick=async()=>{
+ if(!tiles.length||!endpoint())return;resetResults();dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];$('runDual').disabled=true;$('plan').disabled=true;
+ try{
+  // Google high-res pass first. Free every huge canvas before the next tile / before Paddle.
+  for(let i=0;i<tiles.length;i++){const t=tiles[i];$('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;const c=await renderTile(t),b=await canvasBlob(c),fd=new FormData();fd.append('file',b,`tile-${i+1}.png`);const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);for(const pg of (j.pages||[]))dfCollectGooglePage(pg,t,i+1);c.width=1;c.height=1;$('progress').style.width=`${((i+1)/tiles.length)*58}%`;await new Promise(r=>setTimeout(r,0));}
+  dfBuildColumns();if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG')))throw new Error('No searchable tag header recognized. Include headers such as Instrument KKS, Valve TAG or BOX TAG in the selected zone.');
+  googleCandidates=dfGoogleTagCandidates();
+  // Paddle verifies ONLY narrow recognized tag columns at low resolution.
+  paddleCandidates=await dfPaddleColumnCandidates();$('progress').style.width='92%';verificationRows=dfVerify(googleCandidates,paddleCandidates);dfBuildRecords();renderResults();renderAudit();updateMetrics();$('progress').style.width='100%';$('status').innerHTML='<span class="ok">Column-aware dual OCR complete.</span>';
+ }catch(e){console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>'}finally{$('runDual').disabled=false;$('plan').disabled=false;update()}
+};
+$('exportCsv').onclick=()=>{if(!dfRecords.length)return;const rows=[['status','tag','column_type','related_tag','related_pipeline','description','google_confidence','paddle_confidence','page','zone','global_x_percent','global_y_percent']];for(const r of dfRecords){const c=center(r.bbox);rows.push([r.status,r.tag,r.column,r.related.join(';'),r.pipeline,r.description,r.google?.confidence??'',r.paddle?.confidence??'',r.page,r.zone,c.x*100,c.y*100])}const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n'),blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='drawing-finder-v0.6.2-column-aware.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)};
+</script>
+
 </body>
 </html>
