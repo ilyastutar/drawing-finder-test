@@ -3,294 +3,610 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.5.1 Step 2 — Multi-Zone Google OCR</title>
+<title>Drawing Finder v0.6 — Dual OCR Verification</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
-:root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--zone:#ff4fd8;--tile:#39d353}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
-main{max-width:1500px;margin:0 auto;padding:22px 18px 60px}h1{margin:0 0 6px;font-size:27px}h2{font-size:18px;margin:0 0 10px}p{color:var(--muted)}
-.grid{display:grid;grid-template-columns:minmax(370px,.85fr) minmax(650px,1.6fr);gap:16px;align-items:start}
+:root{
+ color-scheme:dark;--bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;
+ --text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--ok:#3fb950;--warn:#d29922;
+ --bad:#f85149;--purple:#a371f7;--cyan:#39c5cf
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:1560px;margin:0 auto;padding:22px 18px 60px}
+h1{margin:0 0 6px;font-size:28px}h2{font-size:18px;margin:0 0 10px}h3{font-size:14px;margin:18px 0 8px}
+p{color:var(--muted);line-height:1.45}
+.grid{display:grid;grid-template-columns:minmax(390px,.85fr) minmax(700px,1.65fr);gap:16px;align-items:start}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px}
 .note{border:1px solid var(--border);background:var(--panel2);border-radius:9px;padding:10px 12px;color:var(--muted);font-size:13px;margin:12px 0}
 label{display:block;color:var(--muted);font-size:12px;margin:11px 0 5px}
 input,select{width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);font:inherit}
 button{border:0;border-radius:8px;padding:10px 13px;font:inherit;font-weight:650;cursor:pointer;background:var(--accent);color:#07111c}
-button.secondary{background:#21262d;color:var(--text);border:1px solid var(--border)}button:disabled{opacity:.45;cursor:not-allowed}
-.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}.small{font-size:12px;color:var(--muted)}
-.preview-shell{position:relative;width:100%;overflow:auto;max-height:680px;background:#1b1f24;border:1px solid var(--border);border-radius:9px;padding:8px;user-select:none}
-.canvas-wrap{position:relative;width:max-content;margin:0 auto}#previewCanvas,#overlayCanvas{display:block}#overlayCanvas{position:absolute;left:0;top:0;cursor:crosshair;touch-action:none}
-.row{padding:8px 10px;border:1px solid var(--border);background:var(--panel2);border-radius:7px;margin-top:7px;font-size:13px}.row span{color:var(--muted);font-size:11px}
-.status{min-height:20px;margin-top:10px;color:var(--muted);font-size:13px}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.metric{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px}.metric strong{display:block;font-size:19px}.metric span{font-size:11px;color:var(--muted)}
-.tags{display:flex;flex-wrap:wrap;gap:6px}.tag{padding:5px 7px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-family:ui-monospace,monospace;font-size:12px}
-table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;border-bottom:1px solid var(--border);vertical-align:top;text-align:left}th{color:var(--muted)}
-.progress-wrap{height:17px;border:1px solid var(--border);background:var(--bg);border-radius:999px;overflow:hidden;margin-top:12px}.progress{height:100%;width:0;background:var(--accent)}
-@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+button.secondary{background:#21262d;color:var(--text);border:1px solid var(--border)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
+.small{font-size:12px;color:var(--muted)}
+.preview-shell{position:relative;width:100%;overflow:auto;max-height:650px;background:#1b1f24;border:1px solid var(--border);border-radius:9px;padding:8px;user-select:none}
+.canvas-wrap{position:relative;width:max-content;margin:0 auto}
+#previewCanvas,#overlayCanvas{display:block}
+#overlayCanvas{position:absolute;left:0;top:0;cursor:crosshair;touch-action:none}
+.row{padding:8px 10px;border:1px solid var(--border);background:var(--panel2);border-radius:7px;margin-top:7px;font-size:13px}
+.row span{color:var(--muted);font-size:11px}
+.status{min-height:20px;margin-top:10px;color:var(--muted);font-size:13px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.purple{color:var(--purple)}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.metric{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px}
+.metric strong{display:block;font-size:19px}.metric span{font-size:11px;color:var(--muted)}
+.progress-wrap{height:17px;border:1px solid var(--border);background:var(--bg);border-radius:999px;overflow:hidden;margin-top:12px}
+.progress{height:100%;width:0;background:var(--accent);transition:width .12s}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:7px;border-bottom:1px solid var(--border);vertical-align:top;text-align:left}
+th{color:var(--muted);position:sticky;top:0;background:var(--panel);z-index:1}
+code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-radius:5px}
+.badge{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:4px 7px;font-size:11px;font-weight:700;white-space:nowrap}
+.badge.verified{color:var(--ok)}.badge.conflict{color:var(--bad)}.badge.google{color:var(--accent)}.badge.paddle{color:var(--purple)}
+.result-scroll{overflow:auto;max-height:520px;border:1px solid var(--border);border-radius:8px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:7px 0 10px}
+.swatch{display:inline-block;width:12px;height:12px;border:2px solid;margin-right:5px;vertical-align:-2px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:1050px){.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.5.1 — Step 2 Multi-Zone</h1>
-<p>Multiple OCR zones → overlapping high-resolution tiles → Google Document OCR → safe tag normalization.</p>
-<div class="note"><strong>This step intentionally processes one sample drawing.</strong> When the tag list is stable, the next step will apply the same profile automatically to a project folder.</div>
+<h1>Drawing Finder v0.6 — Dual OCR Verification</h1>
+<p>Google Document OCR + PaddleOCR PP-OCRv5 on the same OCR zones and the same drawing coordinates.</p>
+
+<div class="note">
+ <strong>Verification rule:</strong> Google confidence and Paddle confidence remain the OCR engines' own scores.
+ A tag becomes <strong>Verified</strong> only when both engines read the same tag at the same location.
+ Different readings at the same location are shown as <strong>Conflict</strong>; the app does not silently correct characters.
+</div>
 
 <div class="grid">
 <section class="card">
 <h2>1. Google OCR backend</h2>
 <label>Cloud Run endpoint</label>
-<input id="endpoint" placeholder="https://drawing-finder-ocr-xxxxx.run.app">
-<div class="buttons"><button id="saveEndpoint" class="secondary">Save endpoint</button><button id="health" class="secondary">Test connection</button></div>
+<input id="endpoint" placeholder="https://drawing-finder-ocr-api-....run.app">
+<div class="buttons">
+ <button id="saveEndpoint" class="secondary">Save endpoint</button>
+ <button id="health" class="secondary">Test connection</button>
+</div>
 <div id="healthStatus" class="status"></div>
 
 <h2 style="margin-top:20px">2. Sample PDF + OCR zones</h2>
 <input id="pdfInput" type="file" accept=".pdf,application/pdf">
 <div id="pageInfo" class="status">No PDF loaded.</div>
-<p class="small">Draw as many broad OCR zones as you need. Each drag adds another zone.</p>
+<p class="small">Every drag adds another reusable OCR zone.</p>
 <div id="zoneList"><div class="row">No OCR zones yet.</div></div>
 <div class="buttons">
-  <button id="undoZone" class="secondary" disabled>Undo last zone</button>
-  <button id="clearZones" class="secondary" disabled>Clear all zones</button>
+ <button id="undoZone" class="secondary" disabled>Undo last zone</button>
+ <button id="clearZones" class="secondary" disabled>Clear all zones</button>
 </div>
 
-<h2 style="margin-top:20px">3. Tile settings</h2>
-<label>DPI</label><select id="dpi"><option>400</option><option selected>500</option><option>600</option></select>
-<label>Maximum megapixels</label><input id="maxMP" type="number" value="35" min="10" max="39">
-<label>Maximum dimension</label><input id="maxDim" type="number" value="9500" min="3000" max="9900">
-<label>Overlap</label>
-<select id="overlapPct"><option value=".04">4%</option><option value=".08" selected>8% + minimum 600 px</option><option value=".10">10% + minimum 600 px</option></select>
+<h2 style="margin-top:20px">3. OCR / tile settings</h2>
+<div class="two">
+ <div><label>Google render DPI</label><select id="dpi"><option>400</option><option selected>500</option><option>600</option></select></div>
+ <div><label>Paddle min recognition score</label><input id="paddleScore" type="number" value="0.20" min="0" max="1" step="0.05"></div>
+</div>
+<div class="two">
+ <div><label>Maximum MP / Google tile</label><input id="maxMP" type="number" value="35" min="10" max="39"></div>
+ <div><label>Maximum tile dimension</label><input id="maxDim" type="number" value="9500" min="3000" max="9900"></div>
+</div>
+<label>Tile overlap</label>
+<select id="overlapPct">
+ <option value=".04">4%</option>
+ <option value=".08" selected>8% + minimum 600 px</option>
+ <option value=".10">10% + minimum 600 px</option>
+</select>
 
-<div class="buttons"><button id="plan" disabled>Plan tiles</button><button id="runGoogle" disabled>Run Google OCR</button></div>
+<div class="buttons">
+ <button id="plan" disabled>Plan tiles</button>
+ <button id="runDual" disabled>Run Dual OCR Verification</button>
+ <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
+</div>
+
 <div class="progress-wrap"><div id="progress" class="progress"></div></div>
 <div id="status" class="status">Load a PDF and draw one or more OCR zones.</div>
 
-<div class="metrics" style="grid-template-columns:repeat(4,1fr)">
-<div class="metric"><strong id="zoneCount">0</strong><span>OCR zones</span></div>
-<div class="metric"><strong id="tileCount">0</strong><span>Tiles</span></div>
-<div class="metric"><strong id="tagCount">0</strong><span>Unique valid tags</span></div>
-<div class="metric"><strong id="rawLineCount">0</strong><span>Google OCR lines</span></div>
+<div class="metrics">
+ <div class="metric"><strong id="zoneCount">0</strong><span>OCR zones</span></div>
+ <div class="metric"><strong id="tileCount">0</strong><span>Google-safe tiles</span></div>
+ <div class="metric"><strong id="googleCount">0</strong><span>Google occurrences</span></div>
+ <div class="metric"><strong id="paddleCount">0</strong><span>Paddle occurrences</span></div>
+</div>
+<div class="metrics">
+ <div class="metric"><strong id="verifiedCount">0</strong><span>✅ Verified</span></div>
+ <div class="metric"><strong id="conflictCount">0</strong><span>⚠ Conflicts</span></div>
+ <div class="metric"><strong id="googleOnlyCount">0</strong><span>Google only</span></div>
+ <div class="metric"><strong id="paddleOnlyCount">0</strong><span>Paddle only</span></div>
 </div>
 
-<h2>Detected tags</h2>
-<div id="tags" class="tags"><span class="small">None yet.</span></div>
+<div id="paddleStatus" class="status">PaddleOCR model will load when verification starts.</div>
 </section>
 
 <section class="card">
 <h2>Drawing preview</h2>
-<p class="small">Colored rectangles = OCR zones. Green dashed rectangles = overlapping OCR tiles.</p>
-<div class="preview-shell"><div class="canvas-wrap"><canvas id="previewCanvas"></canvas><canvas id="overlayCanvas"></canvas></div></div>
+<div class="legend">
+ <span><i class="swatch" style="border-color:#ff4fd8"></i>OCR zones</span>
+ <span><i class="swatch" style="border-color:#39d353"></i>Google-safe overlapping tiles</span>
+</div>
+<div class="preview-shell">
+ <div class="canvas-wrap">
+  <canvas id="previewCanvas"></canvas>
+  <canvas id="overlayCanvas"></canvas>
+ </div>
+</div>
 
-<h2 style="margin-top:18px">Normalization audit</h2>
+<h2 style="margin-top:18px">Verification results</h2>
 <div class="note">
-Google text is never silently character-corrected. Safe normalization only removes separators/whitespace and extracts a string that already satisfies the project tag structure
-<code>99AAA99AA999</code> or optional trailing letter.
+ Safe normalization may remove whitespace/separators, e.g. <code>00N DB33CP001 → 00NDB33CP001</code>.
+ It never performs character substitutions such as O↔0, I↔1, F↔P or GH↔HG.
 </div>
-<div style="overflow:auto;max-height:380px">
-<table><thead><tr><th>Zone</th><th>Tile</th><th>Google line</th><th>Normalized candidate(s)</th><th>Confidence</th></tr></thead><tbody id="audit"><tr><td colspan="4" class="small">No OCR results yet.</td></tr></tbody></table>
+<div class="result-scroll">
+<table>
+<thead><tr>
+ <th>Status</th><th>Tag / readings</th><th>Google OCR confidence</th><th>Paddle OCR confidence</th><th>Zone / position</th>
+</tr></thead>
+<tbody id="results"><tr><td colspan="5" class="small">No verification results yet.</td></tr></tbody>
+</table>
 </div>
+
+<details style="margin-top:14px">
+ <summary>OCR candidate audit</summary>
+ <div class="result-scroll" style="margin-top:8px;max-height:350px">
+ <table>
+ <thead><tr><th>Engine</th><th>Tag</th><th>Raw OCR</th><th>Score</th><th>Zone</th><th>Tile</th></tr></thead>
+ <tbody id="audit"><tr><td colspan="6" class="small">No OCR candidates yet.</td></tr></tbody>
+ </table>
+ </div>
+</details>
 </section>
 </div>
 </main>
 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
 const $=id=>document.getElementById(id);
-let pdfDoc=null,pageNum=1,viewport=null,zones=[],tiles=[],drawing=false,startPt=null,temp=null,allAudit=[],allTags=new Set();
+const TAG_EXACT=/^[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}[A-Z]?$/;
+const TAG_GLOBAL=/[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}[A-Z]?/g;
 
-const TAG_RE=/[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}[A-Z]?/g;
+let pdfDoc=null,pageNum=1,viewport=null,zones=[],tiles=[];
+let drawing=false,startPt=null,temp=null,paddleOCR=null;
+let googleCandidates=[],paddleCandidates=[],verificationRows=[];
 
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function endpoint(){return $('endpoint').value.trim().replace(/\/+$/,'')}
-$('endpoint').value=localStorage.getItem('df_google_endpoint')||'';
-$('saveEndpoint').onclick=()=>{localStorage.setItem('df_google_endpoint',endpoint());$('healthStatus').innerHTML='<span class="ok">Saved.</span>'};
+function compactText(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
+function exactTag(s){const c=compactText(s);return TAG_EXACT.test(c)?c:null}
+function tagsInside(s){const c=compactText(s);return [...c.matchAll(TAG_GLOBAL)].map(m=>m[0])}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function pct(v){return (Number(v||0)*100).toFixed(1)+'%'}
 
+$('endpoint').value=localStorage.getItem('df_google_endpoint')||'';
+$('saveEndpoint').onclick=()=>{
+ localStorage.setItem('df_google_endpoint',endpoint());
+ $('healthStatus').innerHTML='<span class="ok">Saved.</span>'; update();
+};
 $('health').onclick=async()=>{
  try{
-   $('healthStatus').textContent='Checking…';
-   const r=await fetch(endpoint()+'/health');
-   const j=await r.json();
-   if(!r.ok||!j.ok) throw new Error(j.error||r.statusText);
-   $('healthStatus').innerHTML='<span class="ok">Backend connected.</span>';
+  $('healthStatus').textContent='Checking…';
+  const r=await fetch(endpoint()+'/health'),j=await r.json();
+  if(!r.ok||!j.ok)throw new Error(j.error||r.statusText);
+  $('healthStatus').innerHTML='<span class="ok">Backend connected.</span>';
  }catch(e){$('healthStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>'}
 };
 
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function pt(ev){const r=$('overlayCanvas').getBoundingClientRect();return{x:(ev.clientX-r.left)*$('overlayCanvas').width/r.width,y:(ev.clientY-r.top)*$('overlayCanvas').height/r.height}}
+function pointerPos(ev){
+ const r=$('overlayCanvas').getBoundingClientRect();
+ return{x:(ev.clientX-r.left)*$('overlayCanvas').width/r.width,y:(ev.clientY-r.top)*$('overlayCanvas').height/r.height};
+}
 
 $('pdfInput').onchange=async e=>{
  const f=e.target.files?.[0];if(!f)return;
  try{
   pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
-  pageNum=1;zones=[];tiles=[];allAudit=[];allTags.clear();await renderPreview();update();
-  $('status').innerHTML='<span class="ok">PDF loaded. Draw the OCR zone.</span>';
+  pageNum=1;zones=[];tiles=[];resetResults();
+  await renderPreview();update();
+  $('status').innerHTML='<span class="ok">PDF loaded. Draw one or more OCR zones.</span>';
  }catch(err){$('status').innerHTML='<span class="bad">'+escapeHtml(err.message)+'</span>'}
 };
 
 async function renderPreview(){
- const page=await pdfDoc.getPage(pageNum);const b=page.getViewport({scale:1});
- const scale=Math.min(1000/b.width,680/b.height,1.5);viewport=page.getViewport({scale});
- const c=$('previewCanvas'),o=$('overlayCanvas');c.width=o.width=Math.ceil(viewport.width);c.height=o.height=Math.ceil(viewport.height);
- await page.render({canvasContext:c.getContext('2d'),viewport}).promise;drawOverlay();
+ const page=await pdfDoc.getPage(pageNum),b=page.getViewport({scale:1});
+ const scale=Math.min(1000/b.width,650/b.height,1.5);
+ viewport=page.getViewport({scale});
+ const c=$('previewCanvas'),o=$('overlayCanvas');
+ c.width=o.width=Math.ceil(viewport.width);c.height=o.height=Math.ceil(viewport.height);
+ await page.render({canvasContext:c.getContext('2d'),viewport}).promise;
+ drawOverlay();
  $('pageInfo').textContent=`Page ${pageNum}/${pdfDoc.numPages} · preview ${c.width}×${c.height}px`;
 }
 
-$('overlayCanvas').onpointerdown=e=>{if(!pdfDoc)return;drawing=true;startPt=pt(e);temp={x:startPt.x,y:startPt.y,w:0,h:0};$('overlayCanvas').setPointerCapture(e.pointerId)};
-$('overlayCanvas').onpointermove=e=>{if(!drawing)return;const p=pt(e);temp={x:Math.min(startPt.x,p.x),y:Math.min(startPt.y,p.y),w:Math.abs(p.x-startPt.x),h:Math.abs(p.y-startPt.y)};drawOverlay()};
+$('overlayCanvas').onpointerdown=e=>{
+ if(!pdfDoc)return;drawing=true;startPt=pointerPos(e);
+ temp={x:startPt.x,y:startPt.y,w:0,h:0};$('overlayCanvas').setPointerCapture(e.pointerId);
+};
+$('overlayCanvas').onpointermove=e=>{
+ if(!drawing)return;const p=pointerPos(e);
+ temp={x:Math.min(startPt.x,p.x),y:Math.min(startPt.y,p.y),w:Math.abs(p.x-startPt.x),h:Math.abs(p.y-startPt.y)};
+ drawOverlay();
+};
 $('overlayCanvas').onpointerup=e=>{
  if(!drawing)return;drawing=false;
  if(temp&&temp.w>15&&temp.h>15){
-   zones.push({
-     page:pageNum,
-     x:temp.x/$('overlayCanvas').width,
-     y:temp.y/$('overlayCanvas').height,
-     w:temp.w/$('overlayCanvas').width,
-     h:temp.h/$('overlayCanvas').height
-   });
+  zones.push({page:pageNum,x:temp.x/$('overlayCanvas').width,y:temp.y/$('overlayCanvas').height,w:temp.w/$('overlayCanvas').width,h:temp.h/$('overlayCanvas').height});
  }
- temp=null;tiles=[];drawOverlay();update();
+ temp=null;tiles=[];resetResults();drawOverlay();update();
 };
-
-$('undoZone').onclick=()=>{zones.pop();tiles=[];drawOverlay();update()};
-$('clearZones').onclick=()=>{zones=[];tiles=[];drawOverlay();update()};
-
-window.removeZone=(i)=>{
-  zones.splice(i,1);
-  tiles=[];
-  drawOverlay();
-  update();
-};
+$('undoZone').onclick=()=>{zones.pop();tiles=[];resetResults();drawOverlay();update()};
+$('clearZones').onclick=()=>{zones=[];tiles=[];resetResults();drawOverlay();update()};
+window.removeZone=i=>{zones.splice(i,1);tiles=[];resetResults();drawOverlay();update()};
 
 function drawOverlay(){
  const c=$('overlayCanvas'),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);ctx.lineWidth=2;
-
  zones.forEach((z,i)=>{
-   if(z.page!==pageNum)return;
-   const hue=(i*67)%360;
-   const stroke=`hsl(${hue} 90% 65%)`;
-   const fill=`hsl(${hue} 90% 65% / .07)`;
-   const x=z.x*c.width,y=z.y*c.height,w=z.w*c.width,h=z.h*c.height;
-   ctx.strokeStyle=stroke;ctx.fillStyle=fill;
-   ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);
-   ctx.fillStyle=stroke;ctx.font='bold 13px sans-serif';ctx.fillText(`Z${i+1}`,x+5,y+16);
+  if(z.page!==pageNum)return;
+  const hue=(i*67)%360,stroke=`hsl(${hue} 90% 65%)`,fill=`hsl(${hue} 90% 65% / .07)`;
+  const x=z.x*c.width,y=z.y*c.height,w=z.w*c.width,h=z.h*c.height;
+  ctx.strokeStyle=stroke;ctx.fillStyle=fill;ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle=stroke;ctx.font='bold 13px sans-serif';ctx.fillText(`Z${i+1}`,x+5,y+16);
  });
-
  ctx.setLineDash([7,5]);ctx.strokeStyle='#39d353';
  tiles.forEach((t,i)=>{
-   if(t.page!==pageNum)return;
-   ctx.strokeRect(t.nx*c.width,t.ny*c.height,t.nw*c.width,t.nh*c.height);
-   ctx.fillStyle='#39d353';ctx.font='bold 11px sans-serif';ctx.fillText(`T${i+1}`,t.nx*c.width+4,t.ny*c.height+13);
+  if(t.page!==pageNum)return;
+  ctx.strokeRect(t.nx*c.width,t.ny*c.height,t.nw*c.width,t.nh*c.height);
+  ctx.fillStyle='#39d353';ctx.font='bold 10px sans-serif';ctx.fillText(`T${i+1}`,t.nx*c.width+3,t.ny*c.height+12);
  });
  ctx.setLineDash([]);
-
  if(temp){ctx.strokeStyle='#ff4fd8';ctx.setLineDash([6,4]);ctx.strokeRect(temp.x,temp.y,temp.w,temp.h);ctx.setLineDash([])}
 }
-function update(){
- $('undoZone').disabled=!zones.length;
- $('clearZones').disabled=!zones.length;
- $('plan').disabled=!zones.length;
- $('runGoogle').disabled=!tiles.length||!endpoint();
 
- $('zoneCount').textContent=zones.length;
- $('tileCount').textContent=tiles.length;
- $('tagCount').textContent=allTags.size;
-
- if(!zones.length){
-   $('zoneList').innerHTML='<div class="row">No OCR zones yet.</div>';
- }else{
-   $('zoneList').innerHTML=zones.map((z,i)=>`
-     <div class="row" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
-       <div>
-         <strong>Zone ${i+1} — page ${z.page}</strong><br>
-         <span>x ${(z.x*100).toFixed(1)}% · y ${(z.y*100).toFixed(1)}% · w ${(z.w*100).toFixed(1)}% · h ${(z.h*100).toFixed(1)}%</span>
-       </div>
-       <button class="secondary" style="padding:5px 9px" onclick="removeZone(${i})">×</button>
-     </div>`).join('');
- }
- renderTags();renderAudit();
+function resetResults(){
+ googleCandidates=[];paddleCandidates=[];verificationRows=[];
+ $('progress').style.width='0%';
+ renderResults();renderAudit();updateMetrics();
 }
-['endpoint','dpi','maxMP','maxDim','overlapPct'].forEach(id=>$(id).addEventListener('change',()=>{if(id!=='endpoint')tiles=[];update();drawOverlay()}));
+
+function update(){
+ $('undoZone').disabled=!zones.length;$('clearZones').disabled=!zones.length;
+ $('plan').disabled=!zones.length;
+ $('runDual').disabled=!tiles.length||!endpoint();
+ $('exportCsv').disabled=!verificationRows.length;
+ $('zoneCount').textContent=zones.length;$('tileCount').textContent=tiles.length;
+
+ if(!zones.length)$('zoneList').innerHTML='<div class="row">No OCR zones yet.</div>';
+ else $('zoneList').innerHTML=zones.map((z,i)=>`
+  <div class="row" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+   <div><strong>Zone ${i+1} — page ${z.page}</strong><br>
+   <span>x ${(z.x*100).toFixed(1)}% · y ${(z.y*100).toFixed(1)}% · w ${(z.w*100).toFixed(1)}% · h ${(z.h*100).toFixed(1)}%</span></div>
+   <button class="secondary" style="padding:5px 9px" onclick="removeZone(${i})">×</button>
+  </div>`).join('');
+ updateMetrics();
+}
+
+['endpoint','dpi','maxMP','maxDim','overlapPct','paddleScore'].forEach(id=>{
+ $(id).addEventListener('change',()=>{
+  if(['dpi','maxMP','maxDim','overlapPct'].includes(id)){tiles=[];resetResults();drawOverlay()}
+  update();
+ });
+});
 
 async function planTiles(){
- const dpi=Number($('dpi').value),scale=dpi/72;
- const maxMP=Number($('maxMP').value),maxDim=Number($('maxDim').value),op=Number($('overlapPct').value);
- tiles=[];
+ const dpi=Number($('dpi').value),scale=dpi/72,maxMP=Number($('maxMP').value);
+ const maxDim=Number($('maxDim').value),op=Number($('overlapPct').value);
+ tiles=[];resetResults();
 
  for(let zi=0;zi<zones.length;zi++){
-   const zone=zones[zi];
-   const page=await pdfDoc.getPage(zone.page);
-   const vp=page.getViewport({scale});
+  const zone=zones[zi],page=await pdfDoc.getPage(zone.page),vp=page.getViewport({scale});
+  const zx=zone.x*vp.width,zy=zone.y*vp.height,zw=zone.w*vp.width,zh=zone.h*vp.height;
 
-   const zx=zone.x*vp.width,zy=zone.y*vp.height,zw=zone.w*vp.width,zh=zone.h*vp.height;
-   let tw=Math.min(zw,maxDim),th=Math.min(zh,maxDim);
-   let mp=tw*th/1e6;
-   if(mp>maxMP){const s=Math.sqrt(maxMP/mp);tw*=s;th*=s}
+  let tw=Math.min(zw,maxDim),th=Math.min(zh,maxDim),mp=tw*th/1e6;
+  if(mp>maxMP){const s=Math.sqrt(maxMP/mp);tw*=s;th*=s}
 
-   const overlapX=Math.min(tw*.45,Math.max(tw*op,600));
-   const overlapY=Math.min(th*.45,Math.max(th*op,600));
-   const sx=Math.max(1,tw-overlapX),sy=Math.max(1,th-overlapY);
-   const cols=Math.max(1,Math.ceil((zw-tw)/sx)+1),rows=Math.max(1,Math.ceil((zh-th)/sy)+1);
+  const overlapX=Math.min(tw*.45,Math.max(tw*op,600));
+  const overlapY=Math.min(th*.45,Math.max(th*op,600));
+  const sx=Math.max(1,tw-overlapX),sy=Math.max(1,th-overlapY);
+  const cols=Math.max(1,Math.ceil((zw-tw)/sx)+1),rows=Math.max(1,Math.ceil((zh-th)/sy)+1);
 
-   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
-     let x=zx+c*sx,y=zy+r*sy;
-     if(x+tw>zx+zw)x=Math.max(zx,zx+zw-tw);
-     if(y+th>zy+zh)y=Math.max(zy,zy+zh-th);
-     const w=Math.min(tw,zx+zw-x),h=Math.min(th,zy+zh-y);
-
-     tiles.push({
-       zoneIndex:zi,
-       page:zone.page,
-       x,y,w,h,pw:Math.ceil(w),ph:Math.ceil(h),
-       scale,dpi,
-       nx:x/vp.width,ny:y/vp.height,nw:w/vp.width,nh:h/vp.height
-     });
-   }
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+   let x=zx+c*sx,y=zy+r*sy;
+   if(x+tw>zx+zw)x=Math.max(zx,zx+zw-tw);
+   if(y+th>zy+zh)y=Math.max(zy,zy+zh-th);
+   const w=Math.min(tw,zx+zw-x),h=Math.min(th,zy+zh-y);
+   tiles.push({zoneIndex:zi,page:zone.page,x,y,w,h,pw:Math.ceil(w),ph:Math.ceil(h),scale,dpi,nx:x/vp.width,ny:y/vp.height,nw:w/vp.width,nh:h/vp.height});
+  }
  }
-
  drawOverlay();update();
- $('status').innerHTML=`<span class="ok">${zones.length} zone(s) → ${tiles.length} overlapping Google-safe tile(s) planned.</span>`;
+ $('status').innerHTML=`<span class="ok">${zones.length} zone(s) → ${tiles.length} overlapping tile(s) planned.</span>`;
 }
 $('plan').onclick=planTiles;
 
 async function renderTile(t){
  const page=await pdfDoc.getPage(t.page),vp=page.getViewport({scale:t.scale});
- const c=document.createElement('canvas');c.width=t.pw;c.height=t.ph;const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);
- await page.render({canvasContext:ctx,viewport:vp,transform:[1,0,0,1,-t.x,-t.y]}).promise;return c;
+ const c=document.createElement('canvas');c.width=t.pw;c.height=t.ph;
+ const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);
+ await page.render({canvasContext:ctx,viewport:vp,transform:[1,0,0,1,-t.x,-t.y]}).promise;
+ return c;
 }
-function blob(c){return new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(new Error('PNG creation failed')),'image/png'))}
+function canvasBlob(c){return new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(new Error('PNG creation failed')),'image/png'))}
 
-function safeTagsFromLine(line){
- // Safe only: uppercase + remove separators. No O↔0, I↔1, HG↔GH substitutions.
- const compact=String(line).toUpperCase().replace(/[^A-Z0-9]/g,'');
- return [...compact.matchAll(TAG_RE)].map(m=>m[0]);
+async function loadPaddle(){
+ if(paddleOCR)return paddleOCR;
+ $('paddleStatus').innerHTML='<span class="purple">Loading PaddleOCR PP-OCRv5 models… first load can take a while.</span>';
+ let mod;
+ try{mod=await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm')}
+ catch(e){mod=await import('https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle')}
+ const PaddleOCR=mod.PaddleOCR;if(!PaddleOCR)throw new Error('PaddleOCR module was not found.');
+ paddleOCR=await PaddleOCR.create({
+  lang:'en',ocrVersion:'PP-OCRv5',worker:false,textDetectionBatchSize:1,textRecognitionBatchSize:8,
+  ortOptions:{backend:'wasm',wasmPaths:'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/',numThreads:1,simd:true}
+ });
+ $('paddleStatus').innerHTML='<span class="ok">PaddleOCR PP-OCRv5 ready.</span>';
+ return paddleOCR;
 }
 
-$('runGoogle').onclick=async()=>{
- if(!endpoint())return;
- allAudit=[];allTags.clear();$('progress').style.width='0%';$('runGoogle').disabled=true;
- try{
-  let lineCount=0;
-  for(let i=0;i<tiles.length;i++){
-   $('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
-   const c=await renderTile(tiles[i]),b=await blob(c),fd=new FormData();fd.append('file',b,`tile-${i+1}.png`);
-   const r=await fetch(endpoint()+'/ocr',{method:'POST',body:fd});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||r.statusText);
-   for(const pg of (j.pages||[]))for(const ln of (pg.lines||[])){
-    lineCount++;const tags=safeTagsFromLine(ln.text);
-    tags.forEach(t=>allTags.add(t));
-    if(tags.length)allAudit.push({zone:(tiles[i].zoneIndex??0)+1,tile:i+1,text:ln.text,tags,confidence:ln.confidence});
+function downscaleForPaddle(src,maxSide=4096){
+ const longest=Math.max(src.width,src.height);
+ if(longest<=maxSide)return src;
+ const s=maxSide/longest,c=document.createElement('canvas');
+ c.width=Math.max(1,Math.round(src.width*s));c.height=Math.max(1,Math.round(src.height*s));
+ const x=c.getContext('2d',{alpha:false});x.fillStyle='white';x.fillRect(0,0,c.width,c.height);
+ x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,0,0,c.width,c.height);
+ return c;
+}
+
+function bboxFromVerts(verts){
+ if(!Array.isArray(verts)||!verts.length)return null;
+ const xs=[],ys=[];
+ for(const v of verts){
+  if(Array.isArray(v)&&v.length>=2){xs.push(Number(v[0]));ys.push(Number(v[1]))}
+  else if(v&&typeof v==='object'){xs.push(Number(v.x||0));ys.push(Number(v.y||0))}
+ }
+ if(!xs.length)return null;
+ return{x0:Math.min(...xs),y0:Math.min(...ys),x1:Math.max(...xs),y1:Math.max(...ys)};
+}
+function validBbox(b){return b&&isFinite(b.x0)&&isFinite(b.y0)&&isFinite(b.x1)&&isFinite(b.y1)&&b.x1>=b.x0&&b.y1>=b.y0}
+function unionBboxes(bs){
+ const a=bs.filter(validBbox);if(!a.length)return null;
+ return{x0:Math.min(...a.map(b=>b.x0)),y0:Math.min(...a.map(b=>b.y0)),x1:Math.max(...a.map(b=>b.x1)),y1:Math.max(...a.map(b=>b.y1))};
+}
+function center(b){return{x:(b.x0+b.x1)/2,y:(b.y0+b.y1)/2}}
+function boxW(b){return Math.max(0,b.x1-b.x0)}function boxH(b){return Math.max(0,b.y1-b.y0)}
+
+function localToGlobalBBox(local,tile){
+ if(!validBbox(local))return null;
+ return{
+  x0:tile.nx+local.x0*tile.nw,y0:tile.ny+local.y0*tile.nh,
+  x1:tile.nx+local.x1*tile.nw,y1:tile.ny+local.y1*tile.nh
+ };
+}
+
+function googleTokenCandidates(page,tile,tileNo){
+ const toks=(page.tokens||[]).map(t=>({
+  text:t.text||'',confidence:Number(t.confidence||0),bbox:bboxFromVerts(t.vertices||[])
+ })).filter(t=>t.text);
+ const out=[],seen=new Set();
+
+ // 1–4 adjacent Google tokens. This safely reconstructs OCR splits such as "00N" + "DB33CP001".
+ for(let i=0;i<toks.length;i++){
+  for(let len=1;len<=4&&i+len<=toks.length;len++){
+   const seq=toks.slice(i,i+len),tag=exactTag(seq.map(x=>x.text).join(''));
+   if(!tag)continue;
+
+   // Multi-token candidates must be on the same visual row and reasonably close horizontally.
+   let rowOK=true;
+   for(let k=1;k<seq.length;k++){
+    const a=seq[k-1].bbox,b=seq[k].bbox;
+    if(validBbox(a)&&validBbox(b)){
+     const ca=center(a),cb=center(b),h=Math.max(boxH(a),boxH(b),.001);
+     const gap=b.x0-a.x1;
+     if(Math.abs(ca.y-cb.y)>h*1.2 || gap>h*4.0)rowOK=false;
+    }
    }
-   $('rawLineCount').textContent=lineCount;$('progress').style.width=`${((i+1)/tiles.length)*100}%`;update();
+   if(!rowOK)continue;
+
+   const lb=unionBboxes(seq.map(x=>x.bbox)),gb=localToGlobalBBox(lb,tile);
+   if(!gb)continue;
+   const key=tag+'|'+Math.round(center(gb).x*100000)+'|'+Math.round(center(gb).y*100000);
+   if(seen.has(key))continue;seen.add(key);
+   out.push({engine:'Google',tag,raw:seq.map(x=>x.text).join(' '),confidence:Math.min(...seq.map(x=>x.confidence||0)),bbox:gb,page:tile.page,zone:tile.zoneIndex+1,tile:tileNo});
+  }
+ }
+
+ // Conservative line fallback only when the entire compact line itself is exactly one tag.
+ for(const ln of (page.lines||[])){
+  const tag=exactTag(ln.text||'');if(!tag)continue;
+  const gb=localToGlobalBBox(bboxFromVerts(ln.vertices||[]),tile);if(!gb)continue;
+  const key=tag+'|'+Math.round(center(gb).x*100000)+'|'+Math.round(center(gb).y*100000);
+  if(seen.has(key))continue;seen.add(key);
+  out.push({engine:'Google',tag,raw:ln.text||'',confidence:Number(ln.confidence||0),bbox:gb,page:tile.page,zone:tile.zoneIndex+1,tile:tileNo});
+ }
+ return out;
+}
+
+function paddlePolyBBox(poly,canvas){
+ const b=bboxFromVerts(poly);if(!b)return null;
+ // Paddle returns pixel coordinates. Convert to 0–1 tile-local coordinates.
+ return{x0:b.x0/canvas.width,y0:b.y0/canvas.height,x1:b.x1/canvas.width,y1:b.y1/canvas.height};
+}
+
+async function runPaddleOnTile(tileCanvas,tile,tileNo){
+ const ocr=await loadPaddle(),pc=downscaleForPaddle(tileCanvas,4096),score=Number($('paddleScore').value);
+ const [r]=await ocr.predict(pc,{
+  textDetLimitSideLen:2048,textDetLimitType:'max',textDetMaxSideLimit:4096,
+  textDetThresh:.20,textDetBoxThresh:.35,textDetUnclipRatio:1.5,textRecScoreThresh:score
+ });
+ const out=[];
+ for(const item of (r.items||[])){
+  const tags=tagsInside(item.text||'');if(!tags.length)continue;
+  const lb=paddlePolyBBox(item.poly||[],pc),gb=localToGlobalBBox(lb,tile);if(!gb)continue;
+  for(const tag of tags)out.push({engine:'Paddle',tag,raw:item.text||'',confidence:Number(item.score||0),bbox:gb,page:tile.page,zone:tile.zoneIndex+1,tile:tileNo});
+ }
+ if(pc!==tileCanvas){pc.width=1;pc.height=1}
+ return out;
+}
+
+function sameOccurrence(a,b){
+ if(a.page!==b.page||a.tag!==b.tag||!validBbox(a.bbox)||!validBbox(b.bbox))return false;
+ const ca=center(a.bbox),cb=center(b.bbox),h=Math.max(boxH(a.bbox),boxH(b.bbox),.0015),w=Math.max(boxW(a.bbox),boxW(b.bbox),.003);
+ return Math.abs(ca.y-cb.y)<=Math.max(.002,h*1.5) && Math.abs(ca.x-cb.x)<=Math.max(.003,w*.65);
+}
+function dedupeEngine(rows){
+ const sorted=[...rows].sort((a,b)=>(b.confidence||0)-(a.confidence||0)),out=[];
+ for(const r of sorted){
+  const hit=out.find(x=>sameOccurrence(x,r));
+  if(hit){
+   hit.sourceTiles=[...new Set([...(hit.sourceTiles||[hit.tile]),r.tile])];
+   if((r.confidence||0)>(hit.confidence||0))Object.assign(hit,{raw:r.raw,confidence:r.confidence,bbox:r.bbox,tile:r.tile});
+  }else out.push({...r,sourceTiles:[r.tile]});
+ }
+ return out;
+}
+
+function positionScore(a,b){
+ if(a.page!==b.page||!validBbox(a.bbox)||!validBbox(b.bbox))return Infinity;
+ const ca=center(a.bbox),cb=center(b.bbox);
+ const dx=Math.abs(ca.x-cb.x),dy=Math.abs(ca.y-cb.y);
+ const h=Math.max(boxH(a.bbox),boxH(b.bbox),.0015),w=Math.max(boxW(a.bbox),boxW(b.bbox),.003);
+ return Math.sqrt((dx/Math.max(w,.003))**2+(dy/Math.max(h,.0015))**2);
+}
+function closeForExact(a,b){return positionScore(a,b)<=1.25}
+function closeForConflict(a,b){
+ if(a.page!==b.page)return false;
+ const s=positionScore(a,b);
+ // Tight threshold for different strings to avoid confusing adjacent Related Tags.
+ return s<=0.55;
+}
+
+function verify(googleRows,paddleRows){
+ const g=dedupeEngine(googleRows),p=dedupeEngine(paddleRows),usedP=new Set(),out=[];
+
+ // Pass 1: same text + same global location => Verified.
+ for(let gi=0;gi<g.length;gi++){
+  let best=-1,bestScore=Infinity;
+  for(let pi=0;pi<p.length;pi++){
+   if(usedP.has(pi)||p[pi].tag!==g[gi].tag)continue;
+   const s=positionScore(g[gi],p[pi]);
+   if(closeForExact(g[gi],p[pi])&&s<bestScore){best=pi;bestScore=s}
+  }
+  if(best>=0){
+   usedP.add(best);
+   out.push({status:'VERIFIED',tag:g[gi].tag,google:g[gi],paddle:p[best],page:g[gi].page,zone:g[gi].zone,bbox:g[gi].bbox});
+   g[gi]._matched=true;
+  }
+ }
+
+ // Pass 2: different text but essentially same location => Conflict.
+ for(let gi=0;gi<g.length;gi++){
+  if(g[gi]._matched)continue;
+  let best=-1,bestScore=Infinity;
+  for(let pi=0;pi<p.length;pi++){
+   if(usedP.has(pi)||p[pi].tag===g[gi].tag)continue;
+   const s=positionScore(g[gi],p[pi]);
+   if(closeForConflict(g[gi],p[pi])&&s<bestScore){best=pi;bestScore=s}
+  }
+  if(best>=0){
+   usedP.add(best);g[gi]._matched=true;
+   out.push({status:'CONFLICT',tag:null,google:g[gi],paddle:p[best],page:g[gi].page,zone:g[gi].zone,bbox:g[gi].bbox});
+  }
+ }
+
+ for(const x of g)if(!x._matched)out.push({status:'GOOGLE_ONLY',tag:x.tag,google:x,paddle:null,page:x.page,zone:x.zone,bbox:x.bbox});
+ for(let pi=0;pi<p.length;pi++)if(!usedP.has(pi))out.push({status:'PADDLE_ONLY',tag:p[pi].tag,google:null,paddle:p[pi],page:p[pi].page,zone:p[pi].zone,bbox:p[pi].bbox});
+
+ const order={CONFLICT:0,GOOGLE_ONLY:1,PADDLE_ONLY:2,VERIFIED:3};
+ out.sort((a,b)=>order[a.status]-order[b.status] || (a.tag||a.google?.tag||'').localeCompare(b.tag||b.google?.tag||''));
+ return out;
+}
+
+$('runDual').onclick=async()=>{
+ if(!tiles.length||!endpoint())return;
+ resetResults();$('runDual').disabled=true;$('plan').disabled=true;
+ try{
+  await loadPaddle();
+  for(let i=0;i<tiles.length;i++){
+   const t=tiles[i];
+   $('status').textContent=`Tile ${i+1}/${tiles.length}: rendering…`;
+   const c=await renderTile(t);
+
+   $('status').textContent=`Tile ${i+1}/${tiles.length}: Google Document OCR…`;
+   const b=await canvasBlob(c),fd=new FormData();fd.append('file',b,`tile-${i+1}.png`);
+   const gr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),gj=await gr.json();
+   if(!gr.ok||!gj.ok)throw new Error(gj.error||gr.statusText);
+   for(const pg of (gj.pages||[]))googleCandidates.push(...googleTokenCandidates(pg,t,i+1));
+
+   $('progress').style.width=`${((i+.5)/tiles.length)*100}%`;
+   $('status').textContent=`Tile ${i+1}/${tiles.length}: PaddleOCR PP-OCRv5…`;
+   paddleCandidates.push(...await runPaddleOnTile(c,t,i+1));
+
+   c.width=1;c.height=1;
+   verificationRows=verify(googleCandidates,paddleCandidates);
+   renderResults();renderAudit();updateMetrics();
+   $('progress').style.width=`${((i+1)/tiles.length)*100}%`;
    await new Promise(r=>setTimeout(r,0));
   }
-  $('status').innerHTML=`<span class="ok">Google OCR complete: ${allTags.size} unique valid tag(s).</span>`;
- }catch(e){console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>'}
- finally{$('runGoogle').disabled=false;update()}
+  $('status').innerHTML='<span class="ok">Dual OCR verification complete.</span>';
+ }catch(e){
+  console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+ }finally{$('runDual').disabled=false;$('plan').disabled=false;update()}
 };
 
-function renderTags(){
- $('tags').innerHTML=allTags.size?[...allTags].sort().map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join(''):'<span class="small">None yet.</span>';
+function updateMetrics(){
+ const gd=dedupeEngine(googleCandidates),pd=dedupeEngine(paddleCandidates);
+ $('googleCount').textContent=gd.length;$('paddleCount').textContent=pd.length;
+ $('verifiedCount').textContent=verificationRows.filter(x=>x.status==='VERIFIED').length;
+ $('conflictCount').textContent=verificationRows.filter(x=>x.status==='CONFLICT').length;
+ $('googleOnlyCount').textContent=verificationRows.filter(x=>x.status==='GOOGLE_ONLY').length;
+ $('paddleOnlyCount').textContent=verificationRows.filter(x=>x.status==='PADDLE_ONLY').length;
+ $('exportCsv').disabled=!verificationRows.length;
 }
+
+function badge(status){
+ if(status==='VERIFIED')return '<span class="badge verified">✅ Verified</span>';
+ if(status==='CONFLICT')return '<span class="badge conflict">⚠ Conflict</span>';
+ if(status==='GOOGLE_ONLY')return '<span class="badge google">Google only</span>';
+ return '<span class="badge paddle">Paddle only</span>';
+}
+function posText(r){
+ const b=r.bbox;if(!validBbox(b))return `Z${r.zone}`;
+ const c=center(b);return `Z${r.zone} · x ${(c.x*100).toFixed(2)}% · y ${(c.y*100).toFixed(2)}%`;
+}
+function renderResults(){
+ if(!verificationRows.length){$('results').innerHTML='<tr><td colspan="5" class="small">No verification results yet.</td></tr>';return}
+ $('results').innerHTML=verificationRows.map(r=>{
+  let reading;
+  if(r.status==='CONFLICT')reading=`Google: <code>${escapeHtml(r.google.tag)}</code><br>Paddle: <code>${escapeHtml(r.paddle.tag)}</code>`;
+  else reading=`<code>${escapeHtml(r.tag)}</code>`;
+  const gc=r.google?pct(r.google.confidence):'—',pc=r.paddle?pct(r.paddle.confidence):'—';
+  return `<tr><td>${badge(r.status)}</td><td>${reading}</td><td>${gc}</td><td>${pc}</td><td>${escapeHtml(posText(r))}</td></tr>`;
+ }).join('');
+}
+
 function renderAudit(){
- $('audit').innerHTML=allAudit.length?allAudit.map(a=>`<tr><td>${a.zone}</td><td>${a.tile}</td><td>${escapeHtml(a.text)}</td><td>${a.tags.map(t=>`<code>${escapeHtml(t)}</code>`).join(' ')}</td><td>${(a.confidence*100).toFixed(1)}%</td></tr>`).join(''):'<tr><td colspan="5" class="small">No OCR results yet.</td></tr>';
+ const rows=[...dedupeEngine(googleCandidates),...dedupeEngine(paddleCandidates)];
+ if(!rows.length){$('audit').innerHTML='<tr><td colspan="6" class="small">No OCR candidates yet.</td></tr>';return}
+ $('audit').innerHTML=rows.sort((a,b)=>a.engine.localeCompare(b.engine)||a.tag.localeCompare(b.tag)).map(r=>
+  `<tr><td class="${r.engine==='Paddle'?'purple':''}">${r.engine}</td><td><code>${escapeHtml(r.tag)}</code></td><td>${escapeHtml(r.raw)}</td><td>${pct(r.confidence)}</td><td>${r.zone}</td><td>${r.sourceTiles?.join(', ')||r.tile}</td></tr>`
+ ).join('');
 }
-update();
+
+$('exportCsv').onclick=()=>{
+ const rows=[['status','tag','google_reading','google_confidence','paddle_reading','paddle_confidence','page','zone','global_x_percent','global_y_percent']];
+ for(const r of verificationRows){
+  const c=validBbox(r.bbox)?center(r.bbox):{x:'',y:''};
+  rows.push([
+   r.status,r.tag||'',r.google?.tag||'',r.google?.confidence??'',r.paddle?.tag||'',r.paddle?.confidence??'',
+   r.page,r.zone,c.x===''?'':c.x*100,c.y===''?'':c.y*100
+  ]);
+ }
+ const csv=rows.map(a=>a.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+ const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=u;a.download='drawing-finder-v0.6-dual-ocr-verification.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+update();renderResults();renderAudit();
 </script>
 </body>
 </html>
