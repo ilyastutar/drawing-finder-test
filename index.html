@@ -3,460 +3,214 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.5 Step 1 — Automatic Zone Tiler</title>
-
+<title>Drawing Finder v0.5 Step 2 — Google OCR</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
 <style>
-:root{
-  color-scheme:dark;
-  --bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;
-  --text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--ok:#3fb950;
-  --warn:#d29922;--bad:#f85149;--zone:#ff4fd8;--tile:#39d353;
-}
-*{box-sizing:border-box}
-body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
-main{max-width:1480px;margin:0 auto;padding:24px 18px 60px}
-h1{margin:0 0 6px;font-size:28px}h2{margin:0 0 12px;font-size:18px}h3{font-size:15px;margin:18px 0 8px}
-p{color:var(--muted);line-height:1.5}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}
-.grid{display:grid;grid-template-columns:minmax(360px,.85fr) minmax(620px,1.65fr);gap:16px;align-items:start}
-.note{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:11px 13px;color:var(--muted);font-size:13px;margin:14px 0 18px}
-label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
-input,select{width:100%;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:8px;padding:10px 12px;font:inherit}
-button{border:0;border-radius:8px;padding:10px 14px;font:inherit;font-weight:650;cursor:pointer;background:var(--accent);color:#07111c}
-button.secondary{background:#21262d;color:var(--text);border:1px solid var(--border)}
-button.danger{background:transparent;color:var(--bad);border:1px solid var(--border)}
-button:disabled{opacity:.45;cursor:not-allowed}
-.buttons{display:flex;flex-wrap:wrap;gap:9px;margin-top:13px}
-.small{font-size:12px;color:var(--muted)}
-.preview-shell{position:relative;width:100%;overflow:auto;max-height:700px;background:#1b1f24;border:1px solid var(--border);border-radius:9px;padding:8px;user-select:none}
-.canvas-wrap{position:relative;width:max-content;margin:0 auto}
-#previewCanvas,#overlayCanvas{display:block}
-#overlayCanvas{position:absolute;left:0;top:0;cursor:crosshair;touch-action:none}
-.zone-list,.tile-list{display:grid;gap:8px;margin-top:10px}
-.row{padding:9px 10px;border:1px solid var(--border);background:var(--panel2);border-radius:8px;font-size:13px}
-.row-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
-.row strong{display:block}.row span{color:var(--muted);font-size:11px}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
-.metric{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:9px}
-.metric strong{display:block;font-size:18px}.metric span{color:var(--muted);font-size:11px}
-.status{margin-top:10px;color:var(--muted);font-size:13px;min-height:20px}
-.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
-code{background:var(--bg);border:1px solid var(--border);padding:2px 6px;border-radius:5px}
-.progress-wrap{margin-top:14px;border:1px solid var(--border);background:var(--bg);border-radius:999px;overflow:hidden;height:18px}
-.progress{width:0;height:100%;background:var(--accent);transition:width .12s linear}
-.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
-.swatch{display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:-2px;border:2px solid}
-@media(max-width:1000px){.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
+:root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--zone:#ff4fd8;--tile:#39d353}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:1500px;margin:0 auto;padding:22px 18px 60px}h1{margin:0 0 6px;font-size:27px}h2{font-size:18px;margin:0 0 10px}p{color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(370px,.85fr) minmax(650px,1.6fr);gap:16px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px}
+.note{border:1px solid var(--border);background:var(--panel2);border-radius:9px;padding:10px 12px;color:var(--muted);font-size:13px;margin:12px 0}
+label{display:block;color:var(--muted);font-size:12px;margin:11px 0 5px}
+input,select{width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);font:inherit}
+button{border:0;border-radius:8px;padding:10px 13px;font:inherit;font-weight:650;cursor:pointer;background:var(--accent);color:#07111c}
+button.secondary{background:#21262d;color:var(--text);border:1px solid var(--border)}button:disabled{opacity:.45;cursor:not-allowed}
+.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}.small{font-size:12px;color:var(--muted)}
+.preview-shell{position:relative;width:100%;overflow:auto;max-height:680px;background:#1b1f24;border:1px solid var(--border);border-radius:9px;padding:8px;user-select:none}
+.canvas-wrap{position:relative;width:max-content;margin:0 auto}#previewCanvas,#overlayCanvas{display:block}#overlayCanvas{position:absolute;left:0;top:0;cursor:crosshair;touch-action:none}
+.row{padding:8px 10px;border:1px solid var(--border);background:var(--panel2);border-radius:7px;margin-top:7px;font-size:13px}.row span{color:var(--muted);font-size:11px}
+.status{min-height:20px;margin-top:10px;color:var(--muted);font-size:13px}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.metric{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px}.metric strong{display:block;font-size:19px}.metric span{font-size:11px;color:var(--muted)}
+.tags{display:flex;flex-wrap:wrap;gap:6px}.tag{padding:5px 7px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-family:ui-monospace,monospace;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;border-bottom:1px solid var(--border);vertical-align:top;text-align:left}th{color:var(--muted)}
+.progress-wrap{height:17px;border:1px solid var(--border);background:var(--bg);border-radius:999px;overflow:hidden;margin-top:12px}.progress{height:100%;width:0;background:var(--accent)}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.5 — Step 1</h1>
-<p>Automatic high-resolution OCR zone tiling for Google Document OCR. No OCR is sent anywhere in this step.</p>
-
-<div class="note">
-  <strong>Goal of this step:</strong> load one drawing, draw one or more reusable OCR zones, and let the browser
-  automatically split each zone into Google-safe high-resolution tiles. Default output is <strong>500 dpi</strong>,
-  maximum <strong>35 MP per tile</strong>, maximum dimension <strong>9,500 px</strong>, with overlap so a tag on a tile
-  boundary is not lost. Once this behaves correctly, Step 2 will send these exact tiles automatically to Google OCR.
-</div>
+<h1>Drawing Finder v0.5 — Step 2</h1>
+<p>Automatic zone → overlapping high-resolution tiles → Google Document OCR → safe tag normalization.</p>
+<div class="note"><strong>This step intentionally processes one sample drawing.</strong> When the tag list is stable, the next step will apply the same profile automatically to a project folder.</div>
 
 <div class="grid">
 <section class="card">
-<h2>1. Load sample drawing</h2>
-<label>PDF drawing</label>
+<h2>1. Google OCR backend</h2>
+<label>Cloud Run endpoint</label>
+<input id="endpoint" placeholder="https://drawing-finder-ocr-xxxxx.run.app">
+<div class="buttons"><button id="saveEndpoint" class="secondary">Save endpoint</button><button id="health" class="secondary">Test connection</button></div>
+<div id="healthStatus" class="status"></div>
+
+<h2 style="margin-top:20px">2. Sample PDF + zone</h2>
 <input id="pdfInput" type="file" accept=".pdf,application/pdf">
-
-<div class="buttons">
-  <button id="prevPage" class="secondary" disabled>← Page</button>
-  <button id="nextPage" class="secondary" disabled>Page →</button>
-</div>
 <div id="pageInfo" class="status">No PDF loaded.</div>
+<div id="zoneInfo" class="row">Draw one broad OCR zone on the preview.</div>
+<div class="buttons"><button id="clearZone" class="secondary" disabled>Clear zone</button></div>
 
-<h2 style="margin-top:22px">2. Draw OCR zones</h2>
-<p class="small">Drag a rectangle on the preview. Use broad zones; exact table-column cropping is not required.</p>
-<div id="zoneList" class="zone-list"><div class="small">No zones yet.</div></div>
-<div class="buttons">
-  <button id="undoZone" class="secondary" disabled>Undo</button>
-  <button id="clearZones" class="secondary" disabled>Clear zones</button>
-</div>
+<h2 style="margin-top:20px">3. Tile settings</h2>
+<label>DPI</label><select id="dpi"><option>400</option><option selected>500</option><option>600</option></select>
+<label>Maximum megapixels</label><input id="maxMP" type="number" value="35" min="10" max="39">
+<label>Maximum dimension</label><input id="maxDim" type="number" value="9500" min="3000" max="9900">
+<label>Overlap</label>
+<select id="overlapPct"><option value=".04">4%</option><option value=".08" selected>8% + minimum 600 px</option><option value=".10">10% + minimum 600 px</option></select>
 
-<h2 style="margin-top:22px">3. Google-safe tile settings</h2>
-<label>Render DPI</label>
-<select id="dpi">
-  <option value="300">300 dpi</option>
-  <option value="400">400 dpi</option>
-  <option value="500" selected>500 dpi — current test quality</option>
-  <option value="600">600 dpi</option>
-</select>
-
-<label>Maximum megapixels per tile</label>
-<input id="maxMP" type="number" min="10" max="39" step="1" value="35">
-
-<label>Maximum width / height per tile (px)</label>
-<input id="maxDim" type="number" min="3000" max="9900" step="100" value="9500">
-
-<label>Overlap between neighboring tiles</label>
-<select id="overlapPct">
-  <option value="0.02">2%</option>
-  <option value="0.04" selected>4% — recommended</option>
-  <option value="0.06">6%</option>
-  <option value="0.08">8%</option>
-</select>
-
-<div class="buttons">
-  <button id="planTiles" disabled>Plan tiles</button>
-  <button id="exportZip" class="secondary" disabled>Generate tile ZIP</button>
-</div>
-
+<div class="buttons"><button id="plan" disabled>Plan tiles</button><button id="runGoogle" disabled>Run Google OCR</button></div>
 <div class="progress-wrap"><div id="progress" class="progress"></div></div>
-<div id="status" class="status">Load a PDF and draw at least one zone.</div>
+<div id="status" class="status">Load a PDF and draw a zone.</div>
 
 <div class="metrics">
-  <div class="metric"><strong id="zoneCount">0</strong><span>Zones</span></div>
-  <div class="metric"><strong id="tileCount">0</strong><span>Planned tiles</span></div>
-  <div class="metric"><strong id="maxTileMP">0</strong><span>Largest tile MP</span></div>
-  <div class="metric"><strong id="coverage">0%</strong><span>Page coverage</span></div>
+<div class="metric"><strong id="tileCount">0</strong><span>Tiles</span></div>
+<div class="metric"><strong id="tagCount">0</strong><span>Unique valid tags</span></div>
+<div class="metric"><strong id="rawLineCount">0</strong><span>Google OCR lines</span></div>
 </div>
 
-<h3>Tile plan</h3>
-<div id="tileList" class="tile-list"><div class="small">No tile plan yet.</div></div>
+<h2>Detected tags</h2>
+<div id="tags" class="tags"><span class="small">None yet.</span></div>
 </section>
 
 <section class="card">
 <h2>Drawing preview</h2>
-<p class="small">Pink = OCR zone. Green = automatic Google OCR tile boundaries.</p>
-<div class="legend">
-  <span><i class="swatch" style="border-color:#ff4fd8"></i>OCR zone</span>
-  <span><i class="swatch" style="border-color:#39d353"></i>Google-safe tile</span>
+<p class="small">Pink = zone. Green dashed rectangles = overlapping OCR tiles.</p>
+<div class="preview-shell"><div class="canvas-wrap"><canvas id="previewCanvas"></canvas><canvas id="overlayCanvas"></canvas></div></div>
+
+<h2 style="margin-top:18px">Normalization audit</h2>
+<div class="note">
+Google text is never silently character-corrected. Safe normalization only removes separators/whitespace and extracts a string that already satisfies the project tag structure
+<code>99AAA99AA999</code> or optional trailing letter.
 </div>
-<div class="preview-shell">
-  <div class="canvas-wrap">
-    <canvas id="previewCanvas"></canvas>
-    <canvas id="overlayCanvas"></canvas>
-  </div>
-</div>
-<div class="note" style="margin-bottom:0">
-  The ZIP contains PNG tiles plus <code>manifest.json</code>. The manifest stores the original PDF name,
-  page number, zone number, normalized coordinates, DPI and tile coordinates. This is the metadata we will
-  reuse in Step 2 to merge Google OCR results back into the drawing index.
+<div style="overflow:auto;max-height:380px">
+<table><thead><tr><th>Tile</th><th>Google line</th><th>Normalized candidate(s)</th><th>Confidence</th></tr></thead><tbody id="audit"><tr><td colspan="4" class="small">No OCR results yet.</td></tr></tbody></table>
 </div>
 </section>
 </div>
 </main>
 
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $=id=>document.getElementById(id);
+let pdfDoc=null,pageNum=1,viewport=null,zone=null,tiles=[],drawing=false,startPt=null,temp=null,allAudit=[],allTags=new Set();
 
-const $ = id => document.getElementById(id);
-let pdfDoc=null, pdfBytes=null, pageNum=1, previewViewport=null;
-let zones=[], tilePlan=[], drawing=false, startPt=null, tempRect=null;
+const TAG_RE=/[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}[A-Z]?/g;
 
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-function fmt(n,d=1){ return Number(n).toFixed(d); }
+function endpoint(){return $('endpoint').value.trim().replace(/\/+$/,'')}
+$('endpoint').value=localStorage.getItem('df_google_endpoint')||'';
+$('saveEndpoint').onclick=()=>{localStorage.setItem('df_google_endpoint',endpoint());$('healthStatus').innerHTML='<span class="ok">Saved.</span>'};
 
-async function loadPdf(file){
-  pdfBytes = new Uint8Array(await file.arrayBuffer());
-  pdfDoc = await pdfjsLib.getDocument({data:pdfBytes}).promise;
-  pageNum=1; zones=[]; tilePlan=[];
-  await renderPreview();
-  updateUI();
-}
+$('health').onclick=async()=>{
+ try{
+   $('healthStatus').textContent='Checking…';
+   const r=await fetch(endpoint()+'/health');
+   const j=await r.json();
+   if(!r.ok||!j.ok) throw new Error(j.error||r.statusText);
+   $('healthStatus').innerHTML='<span class="ok">Backend connected.</span>';
+ }catch(e){$('healthStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>'}
+};
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function pt(ev){const r=$('overlayCanvas').getBoundingClientRect();return{x:(ev.clientX-r.left)*$('overlayCanvas').width/r.width,y:(ev.clientY-r.top)*$('overlayCanvas').height/r.height}}
+
+$('pdfInput').onchange=async e=>{
+ const f=e.target.files?.[0];if(!f)return;
+ try{
+  pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+  pageNum=1;zone=null;tiles=[];allAudit=[];allTags.clear();await renderPreview();update();
+  $('status').innerHTML='<span class="ok">PDF loaded. Draw the OCR zone.</span>';
+ }catch(err){$('status').innerHTML='<span class="bad">'+escapeHtml(err.message)+'</span>'}
+};
 
 async function renderPreview(){
-  if(!pdfDoc) return;
-  const page = await pdfDoc.getPage(pageNum);
-  const base = page.getViewport({scale:1});
-  const maxW=1000, maxH=680;
-  const scale=Math.min(maxW/base.width,maxH/base.height,1.5);
-  previewViewport=page.getViewport({scale});
-  const c=$('previewCanvas'), o=$('overlayCanvas');
-  c.width=o.width=Math.ceil(previewViewport.width);
-  c.height=o.height=Math.ceil(previewViewport.height);
-  await page.render({canvasContext:c.getContext('2d'),viewport:previewViewport}).promise;
-  redrawOverlay();
-  $('pageInfo').textContent=`Page ${pageNum} / ${pdfDoc.numPages} — preview ${c.width} × ${c.height}px`;
-  $('prevPage').disabled=pageNum<=1;
-  $('nextPage').disabled=pageNum>=pdfDoc.numPages;
+ const page=await pdfDoc.getPage(pageNum);const b=page.getViewport({scale:1});
+ const scale=Math.min(1000/b.width,680/b.height,1.5);viewport=page.getViewport({scale});
+ const c=$('previewCanvas'),o=$('overlayCanvas');c.width=o.width=Math.ceil(viewport.width);c.height=o.height=Math.ceil(viewport.height);
+ await page.render({canvasContext:c.getContext('2d'),viewport}).promise;drawOverlay();
+ $('pageInfo').textContent=`Page ${pageNum}/${pdfDoc.numPages} · preview ${c.width}×${c.height}px`;
 }
 
-function pointerPos(ev){
-  const r=$('overlayCanvas').getBoundingClientRect();
-  return {
-    x:(ev.clientX-r.left)*$('overlayCanvas').width/r.width,
-    y:(ev.clientY-r.top)*$('overlayCanvas').height/r.height
-  };
+$('overlayCanvas').onpointerdown=e=>{if(!pdfDoc)return;drawing=true;startPt=pt(e);temp={x:startPt.x,y:startPt.y,w:0,h:0};$('overlayCanvas').setPointerCapture(e.pointerId)};
+$('overlayCanvas').onpointermove=e=>{if(!drawing)return;const p=pt(e);temp={x:Math.min(startPt.x,p.x),y:Math.min(startPt.y,p.y),w:Math.abs(p.x-startPt.x),h:Math.abs(p.y-startPt.y)};drawOverlay()};
+$('overlayCanvas').onpointerup=e=>{
+ if(!drawing)return;drawing=false;
+ if(temp&&temp.w>15&&temp.h>15)zone={x:temp.x/$('overlayCanvas').width,y:temp.y/$('overlayCanvas').height,w:temp.w/$('overlayCanvas').width,h:temp.h/$('overlayCanvas').height};
+ temp=null;tiles=[];drawOverlay();update();
+};
+$('clearZone').onclick=()=>{zone=null;tiles=[];drawOverlay();update()};
+
+function drawOverlay(){
+ const c=$('overlayCanvas'),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);ctx.lineWidth=2;
+ if(zone){ctx.strokeStyle='#ff4fd8';ctx.fillStyle='rgba(255,79,216,.07)';const x=zone.x*c.width,y=zone.y*c.height,w=zone.w*c.width,h=zone.h*c.height;ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h)}
+ ctx.setLineDash([7,5]);ctx.strokeStyle='#39d353';tiles.forEach(t=>ctx.strokeRect(t.nx*c.width,t.ny*c.height,t.nw*c.width,t.nh*c.height));ctx.setLineDash([]);
+ if(temp){ctx.strokeStyle='#ff4fd8';ctx.setLineDash([6,4]);ctx.strokeRect(temp.x,temp.y,temp.w,temp.h);ctx.setLineDash([])}
 }
 
-$('overlayCanvas').addEventListener('pointerdown',ev=>{
-  if(!pdfDoc) return;
-  drawing=true; startPt=pointerPos(ev); tempRect={x:startPt.x,y:startPt.y,w:0,h:0};
-  $('overlayCanvas').setPointerCapture(ev.pointerId);
-});
-$('overlayCanvas').addEventListener('pointermove',ev=>{
-  if(!drawing) return;
-  const p=pointerPos(ev);
-  tempRect={
-    x:Math.min(startPt.x,p.x), y:Math.min(startPt.y,p.y),
-    w:Math.abs(p.x-startPt.x), h:Math.abs(p.y-startPt.y)
-  };
-  redrawOverlay();
-});
-$('overlayCanvas').addEventListener('pointerup',ev=>{
-  if(!drawing) return;
-  drawing=false;
-  if(tempRect && tempRect.w>15 && tempRect.h>15){
-    zones.push({
-      page:pageNum,
-      x:tempRect.x/$('overlayCanvas').width,
-      y:tempRect.y/$('overlayCanvas').height,
-      w:tempRect.w/$('overlayCanvas').width,
-      h:tempRect.h/$('overlayCanvas').height
-    });
-    tilePlan=[];
+function update(){
+ $('clearZone').disabled=!zone;$('plan').disabled=!zone;$('runGoogle').disabled=!tiles.length||!endpoint();
+ $('tileCount').textContent=tiles.length;$('tagCount').textContent=allTags.size;
+ $('zoneInfo').innerHTML=zone?`Zone: x ${(zone.x*100).toFixed(1)}% · y ${(zone.y*100).toFixed(1)}% · w ${(zone.w*100).toFixed(1)}% · h ${(zone.h*100).toFixed(1)}%`:'Draw one broad OCR zone on the preview.';
+ renderTags();renderAudit();
+}
+['endpoint','dpi','maxMP','maxDim','overlapPct'].forEach(id=>$(id).addEventListener('change',()=>{if(id!=='endpoint')tiles=[];update();drawOverlay()}));
+
+async function planTiles(){
+ const page=await pdfDoc.getPage(pageNum),dpi=Number($('dpi').value),scale=dpi/72,vp=page.getViewport({scale});
+ const maxMP=Number($('maxMP').value),maxDim=Number($('maxDim').value),op=Number($('overlapPct').value);
+ const zx=zone.x*vp.width,zy=zone.y*vp.height,zw=zone.w*vp.width,zh=zone.h*vp.height;
+ let tw=Math.min(zw,maxDim),th=Math.min(zh,maxDim);let mp=tw*th/1e6;if(mp>maxMP){const s=Math.sqrt(maxMP/mp);tw*=s;th*=s}
+ const overlapX=Math.min(tw*.45,Math.max(tw*op,600)),overlapY=Math.min(th*.45,Math.max(th*op,600));
+ const sx=Math.max(1,tw-overlapX),sy=Math.max(1,th-overlapY);
+ const cols=Math.max(1,Math.ceil((zw-tw)/sx)+1),rows=Math.max(1,Math.ceil((zh-th)/sy)+1);
+ tiles=[];
+ for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+  let x=zx+c*sx,y=zy+r*sy;if(x+tw>zx+zw)x=Math.max(zx,zx+zw-tw);if(y+th>zy+zh)y=Math.max(zy,zy+zh-th);
+  const w=Math.min(tw,zx+zw-x),h=Math.min(th,zy+zh-y);
+  tiles.push({x,y,w,h,pw:Math.ceil(w),ph:Math.ceil(h),scale,dpi,nx:x/vp.width,ny:y/vp.height,nw:w/vp.width,nh:h/vp.height});
+ }
+ drawOverlay();update();$('status').innerHTML=`<span class="ok">${tiles.length} overlapping tile(s) planned.</span>`;
+}
+$('plan').onclick=planTiles;
+
+async function renderTile(t){
+ const page=await pdfDoc.getPage(pageNum),vp=page.getViewport({scale:t.scale});
+ const c=document.createElement('canvas');c.width=t.pw;c.height=t.ph;const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);
+ await page.render({canvasContext:ctx,viewport:vp,transform:[1,0,0,1,-t.x,-t.y]}).promise;return c;
+}
+function blob(c){return new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(new Error('PNG creation failed')),'image/png'))}
+
+function safeTagsFromLine(line){
+ // Safe only: uppercase + remove separators. No O↔0, I↔1, HG↔GH substitutions.
+ const compact=String(line).toUpperCase().replace(/[^A-Z0-9]/g,'');
+ return [...compact.matchAll(TAG_RE)].map(m=>m[0]);
+}
+
+$('runGoogle').onclick=async()=>{
+ if(!endpoint())return;
+ allAudit=[];allTags.clear();$('progress').style.width='0%';$('runGoogle').disabled=true;
+ try{
+  let lineCount=0;
+  for(let i=0;i<tiles.length;i++){
+   $('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
+   const c=await renderTile(tiles[i]),b=await blob(c),fd=new FormData();fd.append('file',b,`tile-${i+1}.png`);
+   const r=await fetch(endpoint()+'/ocr',{method:'POST',body:fd});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||r.statusText);
+   for(const pg of (j.pages||[]))for(const ln of (pg.lines||[])){
+    lineCount++;const tags=safeTagsFromLine(ln.text);
+    tags.forEach(t=>allTags.add(t));
+    if(tags.length)allAudit.push({tile:i+1,text:ln.text,tags,confidence:ln.confidence});
+   }
+   $('rawLineCount').textContent=lineCount;$('progress').style.width=`${((i+1)/tiles.length)*100}%`;update();
+   await new Promise(r=>setTimeout(r,0));
   }
-  tempRect=null; redrawOverlay(); updateUI();
-});
-
-function redrawOverlay(){
-  const c=$('overlayCanvas'), ctx=c.getContext('2d');
-  ctx.clearRect(0,0,c.width,c.height);
-  ctx.lineWidth=2;
-
-  zones.forEach((z,i)=>{
-    if(z.page!==pageNum) return;
-    ctx.strokeStyle='#ff4fd8';
-    ctx.fillStyle='rgba(255,79,216,.08)';
-    const x=z.x*c.width,y=z.y*c.height,w=z.w*c.width,h=z.h*c.height;
-    ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h);
-    ctx.fillStyle='#ff4fd8'; ctx.font='bold 13px sans-serif';
-    ctx.fillText(`Z${i+1}`,x+5,y+16);
-  });
-
-  tilePlan.forEach((t,i)=>{
-    if(t.page!==pageNum) return;
-    ctx.strokeStyle='#39d353';
-    ctx.setLineDash([7,5]);
-    const x=t.nx*c.width,y=t.ny*c.height,w=t.nw*c.width,h=t.nh*c.height;
-    ctx.strokeRect(x,y,w,h);
-    ctx.fillStyle='#39d353'; ctx.font='bold 11px sans-serif';
-    ctx.fillText(`T${i+1}`,x+4,y+13);
-    ctx.setLineDash([]);
-  });
-
-  if(tempRect){
-    ctx.strokeStyle='#ff4fd8'; ctx.setLineDash([6,4]);
-    ctx.strokeRect(tempRect.x,tempRect.y,tempRect.w,tempRect.h);
-    ctx.setLineDash([]);
-  }
-}
-
-function computeCoverage(){
-  // Simple sum; overlaps between manually drawn zones are intentionally not union-computed here.
-  return Math.min(1,zones.reduce((a,z)=>a+z.w*z.h,0));
-}
-
-function updateUI(){
-  $('zoneCount').textContent=zones.length;
-  $('tileCount').textContent=tilePlan.length;
-  $('coverage').textContent=`${fmt(computeCoverage()*100,1)}%`;
-
-  $('undoZone').disabled=!zones.length;
-  $('clearZones').disabled=!zones.length;
-  $('planTiles').disabled=!pdfDoc || !zones.length;
-  $('exportZip').disabled=!tilePlan.length;
-
-  if(!zones.length){
-    $('zoneList').innerHTML='<div class="small">No zones yet.</div>';
-  }else{
-    $('zoneList').innerHTML=zones.map((z,i)=>`
-      <div class="row row-grid">
-        <div><strong>Zone ${i+1} — page ${z.page}</strong>
-        <span>x ${fmt(z.x*100)}% · y ${fmt(z.y*100)}% · w ${fmt(z.w*100)}% · h ${fmt(z.h*100)}%</span></div>
-        <button class="secondary" style="padding:6px 9px" onclick="removeZone(${i})">×</button>
-      </div>`).join('');
-  }
-
-  let maxmp=0;
-  for(const t of tilePlan) maxmp=Math.max(maxmp,t.pixelW*t.pixelH/1e6);
-  $('maxTileMP').textContent=tilePlan.length?fmt(maxmp,1):'0';
-
-  if(!tilePlan.length){
-    $('tileList').innerHTML='<div class="small">No tile plan yet.</div>';
-  }else{
-    $('tileList').innerHTML=tilePlan.map((t,i)=>`
-      <div class="row">
-        <strong>Tile ${i+1} · Zone ${t.zoneIndex+1} · Page ${t.page}</strong>
-        <span>${t.pixelW} × ${t.pixelH}px · ${fmt(t.pixelW*t.pixelH/1e6,1)} MP · overlap-aware</span>
-      </div>`).join('');
-  }
-}
-
-window.removeZone=i=>{
-  zones.splice(i,1); tilePlan=[]; redrawOverlay(); updateUI();
+  $('status').innerHTML=`<span class="ok">Google OCR complete: ${allTags.size} unique valid tag(s).</span>`;
+ }catch(e){console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>'}
+ finally{$('runGoogle').disabled=false;update()}
 };
 
-$('undoZone').onclick=()=>{zones.pop();tilePlan=[];redrawOverlay();updateUI()};
-$('clearZones').onclick=()=>{zones=[];tilePlan=[];redrawOverlay();updateUI()};
-
-$('pdfInput').addEventListener('change',async e=>{
-  const f=e.target.files?.[0]; if(!f) return;
-  try{
-    $('status').textContent='Loading PDF…';
-    await loadPdf(f);
-    $('status').innerHTML='<span class="ok">PDF loaded. Draw OCR zones on the preview.</span>';
-  }catch(err){
-    console.error(err); $('status').innerHTML=`<span class="bad">PDF load error: ${err.message}</span>`;
-  }
-});
-
-$('prevPage').onclick=async()=>{if(pageNum>1){pageNum--;await renderPreview()}};
-$('nextPage').onclick=async()=>{if(pdfDoc&&pageNum<pdfDoc.numPages){pageNum++;await renderPreview()}};
-
-async function buildTilePlan(){
-  if(!pdfDoc || !zones.length) return;
-  const dpi=Number($('dpi').value);
-  const maxMP=Number($('maxMP').value);
-  const maxDim=Number($('maxDim').value);
-  const overlapPct=Number($('overlapPct').value);
-  const scale=dpi/72;
-
-  const out=[];
-  for(let zi=0;zi<zones.length;zi++){
-    const z=zones[zi];
-    const page=await pdfDoc.getPage(z.page);
-    const vp=page.getViewport({scale});
-    const zx=z.x*vp.width, zy=z.y*vp.height, zw=z.w*vp.width, zh=z.h*vp.height;
-
-    // Start from dimension-limited tile size and shrink to fit megapixel cap.
-    let targetW=Math.min(zw,maxDim);
-    let targetH=Math.min(zh,maxDim);
-    const mp=targetW*targetH/1e6;
-    if(mp>maxMP){
-      const s=Math.sqrt(maxMP/mp);
-      targetW*=s; targetH*=s;
-    }
-
-    // Grid steps are reduced by overlap. Number of tiles is computed to guarantee full coverage.
-    const stepX=Math.max(1,targetW*(1-overlapPct));
-    const stepY=Math.max(1,targetH*(1-overlapPct));
-    const cols=Math.max(1,Math.ceil((zw-targetW)/stepX)+1);
-    const rows=Math.max(1,Math.ceil((zh-targetH)/stepY)+1);
-
-    for(let r=0;r<rows;r++){
-      for(let c=0;c<cols;c++){
-        let x=zx + c*stepX;
-        let y=zy + r*stepY;
-        if(x+targetW>zx+zw) x=Math.max(zx,zx+zw-targetW);
-        if(y+targetH>zy+zh) y=Math.max(zy,zy+zh-targetH);
-        const w=Math.min(targetW,zx+zw-x);
-        const h=Math.min(targetH,zy+zh-y);
-
-        out.push({
-          zoneIndex:zi,page:z.page,dpi,scale,
-          x,y,w,h,
-          pixelW:Math.max(1,Math.ceil(w)),
-          pixelH:Math.max(1,Math.ceil(h)),
-          nx:x/vp.width, ny:y/vp.height, nw:w/vp.width, nh:h/vp.height
-        });
-      }
-    }
-  }
-  tilePlan=out;
-  redrawOverlay(); updateUI();
-  $('status').innerHTML=`<span class="ok">Tile plan ready: ${tilePlan.length} tile(s). No tile exceeds the configured limits.</span>`;
+function renderTags(){
+ $('tags').innerHTML=allTags.size?[...allTags].sort().map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join(''):'<span class="small">None yet.</span>';
 }
-
-$('planTiles').onclick=()=>buildTilePlan();
-
-function canvasToBlob(canvas){
-  return new Promise((resolve,reject)=>{
-    canvas.toBlob(b=>b?resolve(b):reject(new Error('Could not create PNG blob')),'image/png');
-  });
+function renderAudit(){
+ $('audit').innerHTML=allAudit.length?allAudit.map(a=>`<tr><td>${a.tile}</td><td>${escapeHtml(a.text)}</td><td>${a.tags.map(t=>`<code>${escapeHtml(t)}</code>`).join(' ')}</td><td>${(a.confidence*100).toFixed(1)}%</td></tr>`).join(''):'<tr><td colspan="4" class="small">No OCR results yet.</td></tr>';
 }
-
-async function renderTile(tile){
-  const page=await pdfDoc.getPage(tile.page);
-  const viewport=page.getViewport({scale:tile.scale});
-  const canvas=document.createElement('canvas');
-  canvas.width=tile.pixelW; canvas.height=tile.pixelH;
-  const ctx=canvas.getContext('2d',{alpha:false});
-  ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  // Shift the full high-DPI page so only the selected tile is painted into this small canvas.
-  await page.render({
-    canvasContext:ctx,
-    viewport,
-    transform:[1,0,0,1,-tile.x,-tile.y]
-  }).promise;
-  return canvas;
-}
-
-$('exportZip').onclick=async()=>{
-  if(!tilePlan.length) return;
-  const file=$('pdfInput').files?.[0];
-  const zip=new JSZip();
-  const manifest={
-    version:'0.5-step1',
-    sourcePdf:file?.name||'drawing.pdf',
-    generatedAt:new Date().toISOString(),
-    settings:{
-      dpi:Number($('dpi').value),
-      maxMP:Number($('maxMP').value),
-      maxDim:Number($('maxDim').value),
-      overlapPct:Number($('overlapPct').value)
-    },
-    zones:zones,
-    tiles:[]
-  };
-
-  $('exportZip').disabled=true;
-  $('planTiles').disabled=true;
-  $('progress').style.width='0%';
-
-  try{
-    for(let i=0;i<tilePlan.length;i++){
-      const t=tilePlan[i];
-      $('status').textContent=`Rendering tile ${i+1} / ${tilePlan.length}…`;
-      const canvas=await renderTile(t);
-      const blob=await canvasToBlob(canvas);
-      const name=`page-${String(t.page).padStart(3,'0')}_zone-${String(t.zoneIndex+1).padStart(2,'0')}_tile-${String(i+1).padStart(3,'0')}_${t.dpi}dpi.png`;
-      zip.file(name,blob);
-      manifest.tiles.push({...t,file:name});
-      $('progress').style.width=`${((i+1)/tilePlan.length)*90}%`;
-      await new Promise(r=>setTimeout(r,0));
-    }
-    zip.file('manifest.json',JSON.stringify(manifest,null,2));
-    $('status').textContent='Compressing ZIP…';
-    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:5}},m=>{
-      $('progress').style.width=`${90+m.percent*0.1}%`;
-    });
-    const a=document.createElement('a');
-    const safe=(file?.name||'drawing').replace(/\.pdf$/i,'').replace(/[^a-z0-9_-]+/gi,'_');
-    a.href=URL.createObjectURL(blob);
-    a.download=`${safe}_google_ocr_tiles.zip`;
-    document.body.appendChild(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-    $('progress').style.width='100%';
-    $('status').innerHTML='<span class="ok">ZIP generated. Step 1 complete.</span>';
-  }catch(err){
-    console.error(err);
-    $('status').innerHTML=`<span class="bad">Tile generation error: ${err.message}</span>`;
-  }finally{
-    $('exportZip').disabled=false;
-    $('planTiles').disabled=false;
-  }
-};
-
-['dpi','maxMP','maxDim','overlapPct'].forEach(id=>{
-  $(id).addEventListener('change',()=>{tilePlan=[];redrawOverlay();updateUI();$('status').textContent='Settings changed. Click Plan tiles again.'});
-});
-
-updateUI();
+update();
 </script>
 </body>
 </html>
