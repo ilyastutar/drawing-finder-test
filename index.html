@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.5 Step 2 — Google OCR</title>
+<title>Drawing Finder v0.5.1 Step 2 — Multi-Zone Google OCR</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--zone:#ff4fd8;--tile:#39d353}
@@ -30,8 +30,8 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;borde
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.5 — Step 2</h1>
-<p>Automatic zone → overlapping high-resolution tiles → Google Document OCR → safe tag normalization.</p>
+<h1>Drawing Finder v0.5.1 — Step 2 Multi-Zone</h1>
+<p>Multiple OCR zones → overlapping high-resolution tiles → Google Document OCR → safe tag normalization.</p>
 <div class="note"><strong>This step intentionally processes one sample drawing.</strong> When the tag list is stable, the next step will apply the same profile automatically to a project folder.</div>
 
 <div class="grid">
@@ -42,11 +42,15 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;borde
 <div class="buttons"><button id="saveEndpoint" class="secondary">Save endpoint</button><button id="health" class="secondary">Test connection</button></div>
 <div id="healthStatus" class="status"></div>
 
-<h2 style="margin-top:20px">2. Sample PDF + zone</h2>
+<h2 style="margin-top:20px">2. Sample PDF + OCR zones</h2>
 <input id="pdfInput" type="file" accept=".pdf,application/pdf">
 <div id="pageInfo" class="status">No PDF loaded.</div>
-<div id="zoneInfo" class="row">Draw one broad OCR zone on the preview.</div>
-<div class="buttons"><button id="clearZone" class="secondary" disabled>Clear zone</button></div>
+<p class="small">Draw as many broad OCR zones as you need. Each drag adds another zone.</p>
+<div id="zoneList"><div class="row">No OCR zones yet.</div></div>
+<div class="buttons">
+  <button id="undoZone" class="secondary" disabled>Undo last zone</button>
+  <button id="clearZones" class="secondary" disabled>Clear all zones</button>
+</div>
 
 <h2 style="margin-top:20px">3. Tile settings</h2>
 <label>DPI</label><select id="dpi"><option>400</option><option selected>500</option><option>600</option></select>
@@ -57,9 +61,10 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;borde
 
 <div class="buttons"><button id="plan" disabled>Plan tiles</button><button id="runGoogle" disabled>Run Google OCR</button></div>
 <div class="progress-wrap"><div id="progress" class="progress"></div></div>
-<div id="status" class="status">Load a PDF and draw a zone.</div>
+<div id="status" class="status">Load a PDF and draw one or more OCR zones.</div>
 
-<div class="metrics">
+<div class="metrics" style="grid-template-columns:repeat(4,1fr)">
+<div class="metric"><strong id="zoneCount">0</strong><span>OCR zones</span></div>
 <div class="metric"><strong id="tileCount">0</strong><span>Tiles</span></div>
 <div class="metric"><strong id="tagCount">0</strong><span>Unique valid tags</span></div>
 <div class="metric"><strong id="rawLineCount">0</strong><span>Google OCR lines</span></div>
@@ -71,7 +76,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;borde
 
 <section class="card">
 <h2>Drawing preview</h2>
-<p class="small">Pink = zone. Green dashed rectangles = overlapping OCR tiles.</p>
+<p class="small">Colored rectangles = OCR zones. Green dashed rectangles = overlapping OCR tiles.</p>
 <div class="preview-shell"><div class="canvas-wrap"><canvas id="previewCanvas"></canvas><canvas id="overlayCanvas"></canvas></div></div>
 
 <h2 style="margin-top:18px">Normalization audit</h2>
@@ -80,7 +85,7 @@ Google text is never silently character-corrected. Safe normalization only remov
 <code>99AAA99AA999</code> or optional trailing letter.
 </div>
 <div style="overflow:auto;max-height:380px">
-<table><thead><tr><th>Tile</th><th>Google line</th><th>Normalized candidate(s)</th><th>Confidence</th></tr></thead><tbody id="audit"><tr><td colspan="4" class="small">No OCR results yet.</td></tr></tbody></table>
+<table><thead><tr><th>Zone</th><th>Tile</th><th>Google line</th><th>Normalized candidate(s)</th><th>Confidence</th></tr></thead><tbody id="audit"><tr><td colspan="4" class="small">No OCR results yet.</td></tr></tbody></table>
 </div>
 </section>
 </div>
@@ -89,7 +94,7 @@ Google text is never silently character-corrected. Safe normalization only remov
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const $=id=>document.getElementById(id);
-let pdfDoc=null,pageNum=1,viewport=null,zone=null,tiles=[],drawing=false,startPt=null,temp=null,allAudit=[],allTags=new Set();
+let pdfDoc=null,pageNum=1,viewport=null,zones=[],tiles=[],drawing=false,startPt=null,temp=null,allAudit=[],allTags=new Set();
 
 const TAG_RE=/[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}[A-Z]?/g;
 
@@ -114,7 +119,7 @@ $('pdfInput').onchange=async e=>{
  const f=e.target.files?.[0];if(!f)return;
  try{
   pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
-  pageNum=1;zone=null;tiles=[];allAudit=[];allTags.clear();await renderPreview();update();
+  pageNum=1;zones=[];tiles=[];allAudit=[];allTags.clear();await renderPreview();update();
   $('status').innerHTML='<span class="ok">PDF loaded. Draw the OCR zone.</span>';
  }catch(err){$('status').innerHTML='<span class="bad">'+escapeHtml(err.message)+'</span>'}
 };
@@ -131,46 +136,121 @@ $('overlayCanvas').onpointerdown=e=>{if(!pdfDoc)return;drawing=true;startPt=pt(e
 $('overlayCanvas').onpointermove=e=>{if(!drawing)return;const p=pt(e);temp={x:Math.min(startPt.x,p.x),y:Math.min(startPt.y,p.y),w:Math.abs(p.x-startPt.x),h:Math.abs(p.y-startPt.y)};drawOverlay()};
 $('overlayCanvas').onpointerup=e=>{
  if(!drawing)return;drawing=false;
- if(temp&&temp.w>15&&temp.h>15)zone={x:temp.x/$('overlayCanvas').width,y:temp.y/$('overlayCanvas').height,w:temp.w/$('overlayCanvas').width,h:temp.h/$('overlayCanvas').height};
+ if(temp&&temp.w>15&&temp.h>15){
+   zones.push({
+     page:pageNum,
+     x:temp.x/$('overlayCanvas').width,
+     y:temp.y/$('overlayCanvas').height,
+     w:temp.w/$('overlayCanvas').width,
+     h:temp.h/$('overlayCanvas').height
+   });
+ }
  temp=null;tiles=[];drawOverlay();update();
 };
-$('clearZone').onclick=()=>{zone=null;tiles=[];drawOverlay();update()};
+
+$('undoZone').onclick=()=>{zones.pop();tiles=[];drawOverlay();update()};
+$('clearZones').onclick=()=>{zones=[];tiles=[];drawOverlay();update()};
+
+window.removeZone=(i)=>{
+  zones.splice(i,1);
+  tiles=[];
+  drawOverlay();
+  update();
+};
 
 function drawOverlay(){
  const c=$('overlayCanvas'),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);ctx.lineWidth=2;
- if(zone){ctx.strokeStyle='#ff4fd8';ctx.fillStyle='rgba(255,79,216,.07)';const x=zone.x*c.width,y=zone.y*c.height,w=zone.w*c.width,h=zone.h*c.height;ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h)}
- ctx.setLineDash([7,5]);ctx.strokeStyle='#39d353';tiles.forEach(t=>ctx.strokeRect(t.nx*c.width,t.ny*c.height,t.nw*c.width,t.nh*c.height));ctx.setLineDash([]);
+
+ zones.forEach((z,i)=>{
+   if(z.page!==pageNum)return;
+   const hue=(i*67)%360;
+   const stroke=`hsl(${hue} 90% 65%)`;
+   const fill=`hsl(${hue} 90% 65% / .07)`;
+   const x=z.x*c.width,y=z.y*c.height,w=z.w*c.width,h=z.h*c.height;
+   ctx.strokeStyle=stroke;ctx.fillStyle=fill;
+   ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);
+   ctx.fillStyle=stroke;ctx.font='bold 13px sans-serif';ctx.fillText(`Z${i+1}`,x+5,y+16);
+ });
+
+ ctx.setLineDash([7,5]);ctx.strokeStyle='#39d353';
+ tiles.forEach((t,i)=>{
+   if(t.page!==pageNum)return;
+   ctx.strokeRect(t.nx*c.width,t.ny*c.height,t.nw*c.width,t.nh*c.height);
+   ctx.fillStyle='#39d353';ctx.font='bold 11px sans-serif';ctx.fillText(`T${i+1}`,t.nx*c.width+4,t.ny*c.height+13);
+ });
+ ctx.setLineDash([]);
+
  if(temp){ctx.strokeStyle='#ff4fd8';ctx.setLineDash([6,4]);ctx.strokeRect(temp.x,temp.y,temp.w,temp.h);ctx.setLineDash([])}
 }
-
 function update(){
- $('clearZone').disabled=!zone;$('plan').disabled=!zone;$('runGoogle').disabled=!tiles.length||!endpoint();
- $('tileCount').textContent=tiles.length;$('tagCount').textContent=allTags.size;
- $('zoneInfo').innerHTML=zone?`Zone: x ${(zone.x*100).toFixed(1)}% · y ${(zone.y*100).toFixed(1)}% · w ${(zone.w*100).toFixed(1)}% · h ${(zone.h*100).toFixed(1)}%`:'Draw one broad OCR zone on the preview.';
+ $('undoZone').disabled=!zones.length;
+ $('clearZones').disabled=!zones.length;
+ $('plan').disabled=!zones.length;
+ $('runGoogle').disabled=!tiles.length||!endpoint();
+
+ $('zoneCount').textContent=zones.length;
+ $('tileCount').textContent=tiles.length;
+ $('tagCount').textContent=allTags.size;
+
+ if(!zones.length){
+   $('zoneList').innerHTML='<div class="row">No OCR zones yet.</div>';
+ }else{
+   $('zoneList').innerHTML=zones.map((z,i)=>`
+     <div class="row" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+       <div>
+         <strong>Zone ${i+1} — page ${z.page}</strong><br>
+         <span>x ${(z.x*100).toFixed(1)}% · y ${(z.y*100).toFixed(1)}% · w ${(z.w*100).toFixed(1)}% · h ${(z.h*100).toFixed(1)}%</span>
+       </div>
+       <button class="secondary" style="padding:5px 9px" onclick="removeZone(${i})">×</button>
+     </div>`).join('');
+ }
  renderTags();renderAudit();
 }
 ['endpoint','dpi','maxMP','maxDim','overlapPct'].forEach(id=>$(id).addEventListener('change',()=>{if(id!=='endpoint')tiles=[];update();drawOverlay()}));
 
 async function planTiles(){
- const page=await pdfDoc.getPage(pageNum),dpi=Number($('dpi').value),scale=dpi/72,vp=page.getViewport({scale});
+ const dpi=Number($('dpi').value),scale=dpi/72;
  const maxMP=Number($('maxMP').value),maxDim=Number($('maxDim').value),op=Number($('overlapPct').value);
- const zx=zone.x*vp.width,zy=zone.y*vp.height,zw=zone.w*vp.width,zh=zone.h*vp.height;
- let tw=Math.min(zw,maxDim),th=Math.min(zh,maxDim);let mp=tw*th/1e6;if(mp>maxMP){const s=Math.sqrt(maxMP/mp);tw*=s;th*=s}
- const overlapX=Math.min(tw*.45,Math.max(tw*op,600)),overlapY=Math.min(th*.45,Math.max(th*op,600));
- const sx=Math.max(1,tw-overlapX),sy=Math.max(1,th-overlapY);
- const cols=Math.max(1,Math.ceil((zw-tw)/sx)+1),rows=Math.max(1,Math.ceil((zh-th)/sy)+1);
  tiles=[];
- for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
-  let x=zx+c*sx,y=zy+r*sy;if(x+tw>zx+zw)x=Math.max(zx,zx+zw-tw);if(y+th>zy+zh)y=Math.max(zy,zy+zh-th);
-  const w=Math.min(tw,zx+zw-x),h=Math.min(th,zy+zh-y);
-  tiles.push({x,y,w,h,pw:Math.ceil(w),ph:Math.ceil(h),scale,dpi,nx:x/vp.width,ny:y/vp.height,nw:w/vp.width,nh:h/vp.height});
+
+ for(let zi=0;zi<zones.length;zi++){
+   const zone=zones[zi];
+   const page=await pdfDoc.getPage(zone.page);
+   const vp=page.getViewport({scale});
+
+   const zx=zone.x*vp.width,zy=zone.y*vp.height,zw=zone.w*vp.width,zh=zone.h*vp.height;
+   let tw=Math.min(zw,maxDim),th=Math.min(zh,maxDim);
+   let mp=tw*th/1e6;
+   if(mp>maxMP){const s=Math.sqrt(maxMP/mp);tw*=s;th*=s}
+
+   const overlapX=Math.min(tw*.45,Math.max(tw*op,600));
+   const overlapY=Math.min(th*.45,Math.max(th*op,600));
+   const sx=Math.max(1,tw-overlapX),sy=Math.max(1,th-overlapY);
+   const cols=Math.max(1,Math.ceil((zw-tw)/sx)+1),rows=Math.max(1,Math.ceil((zh-th)/sy)+1);
+
+   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+     let x=zx+c*sx,y=zy+r*sy;
+     if(x+tw>zx+zw)x=Math.max(zx,zx+zw-tw);
+     if(y+th>zy+zh)y=Math.max(zy,zy+zh-th);
+     const w=Math.min(tw,zx+zw-x),h=Math.min(th,zy+zh-y);
+
+     tiles.push({
+       zoneIndex:zi,
+       page:zone.page,
+       x,y,w,h,pw:Math.ceil(w),ph:Math.ceil(h),
+       scale,dpi,
+       nx:x/vp.width,ny:y/vp.height,nw:w/vp.width,nh:h/vp.height
+     });
+   }
  }
- drawOverlay();update();$('status').innerHTML=`<span class="ok">${tiles.length} overlapping tile(s) planned.</span>`;
+
+ drawOverlay();update();
+ $('status').innerHTML=`<span class="ok">${zones.length} zone(s) → ${tiles.length} overlapping Google-safe tile(s) planned.</span>`;
 }
 $('plan').onclick=planTiles;
 
 async function renderTile(t){
- const page=await pdfDoc.getPage(pageNum),vp=page.getViewport({scale:t.scale});
+ const page=await pdfDoc.getPage(t.page),vp=page.getViewport({scale:t.scale});
  const c=document.createElement('canvas');c.width=t.pw;c.height=t.ph;const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);
  await page.render({canvasContext:ctx,viewport:vp,transform:[1,0,0,1,-t.x,-t.y]}).promise;return c;
 }
@@ -194,7 +274,7 @@ $('runGoogle').onclick=async()=>{
    for(const pg of (j.pages||[]))for(const ln of (pg.lines||[])){
     lineCount++;const tags=safeTagsFromLine(ln.text);
     tags.forEach(t=>allTags.add(t));
-    if(tags.length)allAudit.push({tile:i+1,text:ln.text,tags,confidence:ln.confidence});
+    if(tags.length)allAudit.push({zone:(tiles[i].zoneIndex??0)+1,tile:i+1,text:ln.text,tags,confidence:ln.confidence});
    }
    $('rawLineCount').textContent=lineCount;$('progress').style.width=`${((i+1)/tiles.length)*100}%`;update();
    await new Promise(r=>setTimeout(r,0));
@@ -208,7 +288,7 @@ function renderTags(){
  $('tags').innerHTML=allTags.size?[...allTags].sort().map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join(''):'<span class="small">None yet.</span>';
 }
 function renderAudit(){
- $('audit').innerHTML=allAudit.length?allAudit.map(a=>`<tr><td>${a.tile}</td><td>${escapeHtml(a.text)}</td><td>${a.tags.map(t=>`<code>${escapeHtml(t)}</code>`).join(' ')}</td><td>${(a.confidence*100).toFixed(1)}%</td></tr>`).join(''):'<tr><td colspan="4" class="small">No OCR results yet.</td></tr>';
+ $('audit').innerHTML=allAudit.length?allAudit.map(a=>`<tr><td>${a.zone}</td><td>${a.tile}</td><td>${escapeHtml(a.text)}</td><td>${a.tags.map(t=>`<code>${escapeHtml(t)}</code>`).join(' ')}</td><td>${(a.confidence*100).toFixed(1)}%</td></tr>`).join(''):'<tr><td colspan="5" class="small">No OCR results yet.</td></tr>';
 }
 update();
 </script>
