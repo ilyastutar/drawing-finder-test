@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.6 — Robust Row Number Engine</title>
+<title>Drawing Finder v0.6.7 — Row Integrity Engine</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.6 — Robust Row Number Engine</h1>
+<h1>Drawing Finder v0.6.7 — Row Integrity Engine</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -155,6 +155,10 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 <div id="rowEngineReport" class="row" style="margin-top:8px">
  <strong>Robust Row Number Engine</strong><br>
  <span>No row-number analysis yet.</span>
+</div>
+<div id="rowIntegrityReport" class="row" style="margin-top:8px">
+ <strong>Row Integrity Engine</strong><br>
+ <span>No row-integrity analysis yet.</span>
 </div>
 
 <h2 style="margin-top:18px">Searchable tag records</h2>
@@ -2129,6 +2133,501 @@ $('exportCsv').onclick=()=>{
 };
 
 df66RenderRowEngine();
+</script>
+
+
+<script>
+// ===== v0.6.7 Row Integrity Engine =====
+// Instrument-list rule:
+//   exactly 1 physical row -> 1 NO + 1 Instrument TAG + 1 Pipeline
+// Physical rows are created from the UNION of NO / TAG / PIPELINE anchors.
+// Therefore a completely missed tag no longer makes the whole row disappear.
+
+let df67IntegrityRows=[];
+let df67TagRescue={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+
+function df67MetaPipes(){
+  const base=dfMetadata();
+  const out=[];
+  for(const p of (base.pipes||[])){
+    const hit=dfFindBlockAndColumn(p.bbox,p.zone,'PIPELINE');
+    if(!hit)continue;
+    out.push({...p,blockId:hit.block.blockId});
+  }
+  return out;
+}
+function df67NoAnchors(model,block){
+  const col=(block.columns||[]).find(c=>c.role==='IGNORE'&&c.subtype==='NO');
+  if(!col)return [];
+  return dfRawRowNumbers(model.zone)
+    .filter(r=>r.page===zones[model.zone-1].page && center(r.bbox).x>=col.left && center(r.bbox).x<=col.right)
+    .map(r=>({kind:'NO',y:center(r.bbox).y,bbox:r.bbox,value:r.num,confidence:Number(r.confidence||0),raw:r}));
+}
+function df67TagAnchors(model,block){
+  const rows=verificationRows.filter(r=>{
+    if(r.status==='CONFLICT'||!r.tag||df66IsPipelinePrefixTag(r.tag)||r.zone!==model.zone)return false;
+    const hit=dfFindBlockAndColumn(r.bbox,r.zone,r.column);
+    return hit&&hit.block.blockId===block.blockId;
+  });
+  return rows.map(r=>({kind:'TAG',y:center(r.bbox).y,bbox:r.bbox,value:r.tag,confidence:Math.max(Number(r.google?.confidence||0),Number(r.paddle?.confidence||0)),raw:r}));
+}
+function df67PipeAnchors(model,block,pipes){
+  return pipes.filter(p=>p.zone===model.zone&&p.blockId===block.blockId)
+    .map(p=>({kind:'PIPE',y:center(p.bbox).y,bbox:p.bbox,value:p.value,confidence:Number(p.confidence||0),raw:p}));
+}
+function df67EstimateSpacing(anchors){
+  // Prefer pipeline/tag anchors because NO OCR can split or hallucinate digits.
+  let ys=anchors.filter(a=>a.kind==='PIPE').map(a=>a.y).sort((a,b)=>a-b);
+  if(ys.length<4)ys=anchors.filter(a=>a.kind==='TAG').map(a=>a.y).sort((a,b)=>a-b);
+  if(ys.length<4)ys=anchors.map(a=>a.y).sort((a,b)=>a-b);
+  const ds=[];
+  for(let i=1;i<ys.length;i++){
+    const d=ys[i]-ys[i-1];
+    if(d>.001&&d<.03)ds.push(d);
+  }
+  return df66Median(ds)||.005;
+}
+function df67ClusterAnchors(model,block,anchors){
+  if(!anchors.length)return [];
+  const spacing=df67EstimateSpacing(anchors);
+  // A single row may have slightly different OCR baselines across columns.
+  const tol=Math.max(.0014,Math.min(.0034,spacing*.38));
+  const sorted=[...anchors].sort((a,b)=>a.y-b.y);
+  const clusters=[];
+  for(const a of sorted){
+    // find nearest existing cluster within tolerance; do not just use previous
+    let best=null,dy=1e9;
+    for(const c of clusters){
+      const d=Math.abs(a.y-c.y);
+      if(d<dy&&d<=tol){dy=d;best=c}
+    }
+    if(!best){
+      best={zone:model.zone,blockId:block.blockId,block,profile:(dfProfileFor(model.zone,block.blockId)||dfProfileBlock(model,block)).name,
+            anchors:[],y:a.y,spacing,id:''};
+      clusters.push(best);
+    }
+    best.anchors.push(a);
+    // pipeline/tag anchors are more reliable row-center references than NO text
+    const weighted=best.anchors.filter(x=>x.kind==='PIPE'||x.kind==='TAG');
+    const ref=weighted.length?weighted:best.anchors;
+    best.y=ref.reduce((s,x)=>s+x.y,0)/ref.length;
+  }
+  clusters.sort((a,b)=>a.y-b.y);
+  clusters.forEach((c,i)=>{c.index=i;c.id=`${c.zone}|${c.blockId}|${i}`;});
+  return clusters;
+}
+function df67BuildIntegrityRows(){
+  const pipes=df67MetaPipes(), all=[];
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const profile=dfProfileFor(model.zone,block.blockId)||dfProfileBlock(model,block);
+      const anchors=[
+        ...df67NoAnchors(model,block),
+        ...df67TagAnchors(model,block),
+        ...df67PipeAnchors(model,block,pipes)
+      ];
+      const rows=df67ClusterAnchors(model,block,anchors);
+      // Keep instrument/JB rows only when there is meaningful row evidence.
+      for(const r of rows){
+        const kinds=new Set(r.anchors.map(a=>a.kind));
+        if(profile.name==='INSTRUMENT_LIST'){
+          if(!(kinds.has('PIPE')||kinds.has('TAG')))continue;
+        } else if(!(kinds.has('TAG')||kinds.has('NO'))) continue;
+        all.push(r);
+      }
+    }
+  }
+  df67IntegrityRows=all;
+
+  // Feed v0.6.6 row-number engine with these rows instead of tag-only rows.
+  df66Rows=all.map(r=>({
+    zone:r.zone,blockId:r.blockId,block:r.block,items:r.anchors.filter(a=>a.kind==='TAG').map(a=>a.raw),
+    y:r.y,heights:r.anchors.map(a=>boxH(a.bbox)),spacing:r.spacing,index:r.index,id:r.id,
+    google:null,paddle:null,retryGoogle:null,retryPaddle:null,rowNo:'',rowStatus:'PENDING',
+    sequenceExpected:'',sequenceSource:'',rowEvidence:''
+  }));
+  return all;
+}
+
+// Override v0.6.6 builder so row-number OCR runs against v0.6.7 physical rows.
+df66BuildPhysicalRows=function(){
+  df67BuildIntegrityRows();
+  return df66Rows;
+};
+
+function df67RowById(id){return df67IntegrityRows.find(r=>r.id===id)||null}
+function df67CandidateRows(){
+  const result=[];
+  for(const r of verificationRows){
+    if(r.status==='CONFLICT'||!r.tag||df66IsPipelinePrefixTag(r.tag))continue;
+    const hit=dfFindBlockAndColumn(r.bbox,r.zone,r.column);if(!hit)continue;
+    const row=df67IntegrityRows
+      .filter(x=>x.zone===r.zone&&x.blockId===hit.block.blockId)
+      .sort((a,b)=>Math.abs(a.y-center(r.bbox).y)-Math.abs(b.y-center(r.bbox).y))[0];
+    if(!row||Math.abs(row.y-center(r.bbox).y)>Math.max(.0025,row.spacing*.45))continue;
+    result.push({...r,physicalRowId:row.id});
+  }
+  return result;
+}
+function df67PipeRows(){
+  const out=[];
+  for(const p of df67MetaPipes()){
+    const row=df67IntegrityRows
+      .filter(x=>x.zone===p.zone&&x.blockId===p.blockId)
+      .sort((a,b)=>Math.abs(a.y-center(p.bbox).y)-Math.abs(b.y-center(p.bbox).y))[0];
+    if(!row||Math.abs(row.y-center(p.bbox).y)>Math.max(.0025,row.spacing*.45))continue;
+    out.push({...p,physicalRowId:row.id});
+  }
+  return out;
+}
+function df67StatusScore(r){
+  if(r.status==='VERIFIED')return 100;
+  if(r.status==='GOOGLE_ONLY')return 50;
+  if(r.status==='PADDLE_ONLY')return 48;
+  return 0;
+}
+function df67CandidateScore(r,pipe){
+  let s=df67StatusScore(r);
+  s+=Math.max(Number(r.google?.confidence||0),Number(r.paddle?.confidence||0))*20;
+  if(pipe&&dfPrefixMatch(r.tag,pipe.value))s+=25;
+  if(String(r.tag||'').length===12)s+=3; // tiny tie-break only, not a blanket 13-char ban
+  return s;
+}
+function df67IsExtensionOf(a,b){
+  const x=String(a||''),y=String(b||'');
+  return x.length===13&&y.length===12&&x.slice(0,12)===y;
+}
+function df67ResolveTagCandidates(cands,pipe){
+  if(!cands.length)return {winner:null,rejected:[],reason:'MISSING'};
+  if(cands.length===1)return {winner:cands[0],rejected:[],reason:'SINGLE'};
+
+  // Strongest rule: VERIFIED base beats a single-engine 13th-character extension.
+  for(const a of cands){
+    for(const b of cands){
+      if(a===b)continue;
+      if(df67IsExtensionOf(a.tag,b.tag) && b.status==='VERIFIED' && a.status!=='VERIFIED'){
+        const rejected=cands.filter(x=>x!==b);
+        return {winner:b,rejected,reason:'FALSE_13CHAR_EXTENSION'};
+      }
+    }
+  }
+
+  const ranked=[...cands].sort((a,b)=>df67CandidateScore(b,pipe)-df67CandidateScore(a,pipe));
+  const winner=ranked[0];
+  return {winner,rejected:ranked.slice(1),reason:'RANKED'};
+}
+
+function df67ExpectedTagCol(row){
+  return (row.block.columns||[]).find(c=>c.role==='TAG'&&c.subtype==='INSTRUMENT_TAG')
+      || (row.block.columns||[]).find(c=>c.role==='TAG');
+}
+function df67TagCellCrop(row,pass){
+  const col=df67ExpectedTagCol(row),z=zones[row.zone-1];if(!col)return null;
+  const xm=Math.max(.002,(col.right-col.left)*(pass===1?.10:.16));
+  const half=Math.max(.0025,Math.min(.012,row.spacing*(pass===1?.44:.56)));
+  const x0=Math.max(z.x,col.left-xm),x1=Math.min(z.x+z.w,col.right+xm);
+  const y0=Math.max(z.y,row.y-half),y1=Math.min(z.y+z.h,row.y+half);
+  return {x:x0,y:y0,w:x1-x0,h:y1-y0};
+}
+function df67ParseTagTexts(items){
+  const out=[];
+  for(const x of items||[]){
+    for(const tag of extractKksCandidates(String(x.text||''))){
+      if(df66IsPipelinePrefixTag(tag))continue;
+      out.push({tag,confidence:Number(x.confidence||x.score||0),raw:x.text});
+    }
+  }
+  // Also catch exact compact 12/13 forms if helper parsing is conservative.
+  for(const x of items||[]){
+    const t=String(x.text||'').toUpperCase().replace(/\s+/g,'').replace(/[^A-Z0-9]/g,'');
+    if(/^\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z]?$/.test(t)&&!df66IsPipelinePrefixTag(t)){
+      out.push({tag:t,confidence:Number(x.confidence||x.score||0),raw:x.text});
+    }
+  }
+  const m=new Map();
+  for(const x of out){
+    if(!m.has(x.tag)||m.get(x.tag).confidence<x.confidence)m.set(x.tag,x);
+  }
+  return [...m.values()];
+}
+async function df67GoogleTagCell(blob,expectedPrefix){
+  const fd=new FormData();fd.append('file',blob,'missing-tag-cell.png');
+  const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();
+  if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+  const raw=[];
+  for(const pg of (j.pages||[])){
+    for(const x of [...(pg.lines||[]),...(pg.tokens||[])])raw.push(x);
+  }
+  const tags=df67ParseTagTexts(raw).filter(x=>!expectedPrefix||dfPrefix5(x.tag)===expectedPrefix);
+  return tags.sort((a,b)=>b.confidence-a.confidence)[0]||null;
+}
+async function df67PaddleTagCell(c,expectedPrefix){
+  const ocr=await loadPaddle();
+  const [res]=await ocr.predict(c,{textDetLimitSideLen:1800,textDetLimitType:'max',textDetMaxSideLimit:3400,textDetThresh:.15,textDetBoxThresh:.25,textDetUnclipRatio:1.35,textRecScoreThresh:.20});
+  const raw=(res.items||[]).map(x=>({text:x.text,score:x.score,confidence:x.score}));
+  const tags=df67ParseTagTexts(raw).filter(x=>!expectedPrefix||dfPrefix5(x.tag)===expectedPrefix);
+  return tags.sort((a,b)=>b.confidence-a.confidence)[0]||null;
+}
+function df67ExistingResolved(){
+  const tags=df67CandidateRows(),pipes=df67PipeRows(),rows=[];
+  for(const row of df67IntegrityRows){
+    const pp=pipes.filter(p=>p.physicalRowId===row.id)
+      .sort((a,b)=>Number(b.confidence||0)-Number(a.confidence||0));
+    const pipe=pp[0]||null;
+    const cc=tags.filter(t=>t.physicalRowId===row.id);
+    const resolved=df67ResolveTagCandidates(cc,pipe);
+    rows.push({row,pipe,pipelineCandidates:pp,tagCandidates:cc,...resolved});
+  }
+  return rows;
+}
+async function df67RescueMissingTags(){
+  df67TagRescue={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+  let state=df67ExistingResolved();
+  let targets=state.filter(x=>x.row.profile==='INSTRUMENT_LIST'&&!x.winner&&x.pipe).slice(0,50);
+
+  for(let pass=1;pass<=2&&targets.length;pass++){
+    const unresolved=[];
+    for(let i=0;i<targets.length;i++){
+      const t=targets[i],crop=df67TagCellCrop(t.row,pass);
+      if(!crop){unresolved.push(t);continue}
+      df67TagRescue.attempted++; if(pass===1)df67TagRescue.pass1++; else df67TagRescue.pass2++;
+      $('status').textContent=`Missing-tag rescue ${pass}/2: Zone ${t.row.zone} Block ${t.row.blockId} ${i+1}/${targets.length}…`;
+      const c=await dfRenderNormCrop(zones[t.row.zone-1].page,crop,pass===1?700:900,pass===1?2400:3000);
+      const blob=await canvasBlob(c),pref=dfPrefix5(t.pipe.value);
+      const [g,p]=await Promise.all([df67GoogleTagCell(blob,pref),df67PaddleTagCell(c,pref)]);
+      c.width=1;c.height=1;
+
+      let chosen=null,status='';
+      if(g&&p&&g.tag===p.tag){chosen={tag:g.tag,g,p};status='VERIFIED';}
+      else if(g&&(!p||g.confidence>=.80)){chosen={tag:g.tag,g,p:null};status='GOOGLE_ONLY';}
+      else if(p&&(!g||p.confidence>=.80)){chosen={tag:p.tag,g:null,p};status='PADDLE_ONLY';}
+
+      if(chosen){
+        // Inject a synthetic verification record at the physical row center.
+        const col=df67ExpectedTagCol(t.row);
+        const bbox={x0:col.left,y0:t.row.y-t.row.spacing*.20,x1:col.right,y1:t.row.y+t.row.spacing*.20};
+        verificationRows.push({
+          status,tag:chosen.tag,column:col.subtype,zone:t.row.zone,page:zones[t.row.zone-1].page,bbox,
+          google:chosen.g?{tag:chosen.tag,confidence:chosen.g.confidence,bbox,zone:t.row.zone,page:zones[t.row.zone-1].page,column:col.subtype}:null,
+          paddle:chosen.p?{tag:chosen.tag,confidence:chosen.p.confidence,bbox,zone:t.row.zone,page:zones[t.row.zone-1].page,column:col.subtype}:null,
+          df67Rescued:true,df67RescuePass:pass
+        });
+        df67TagRescue.recovered++;
+      } else unresolved.push(t);
+      await new Promise(r=>setTimeout(r,0));
+    }
+    // Recompute state after injected rescue records.
+    state=df67ExistingResolved();
+    targets=state.filter(x=>x.row.profile==='INSTRUMENT_LIST'&&!x.winner&&x.pipe).slice(0,50);
+  }
+  df67TagRescue.remaining=targets.length;
+}
+function df67IntegrityState(){
+  const base=df67ExistingResolved();
+  for(const x of base){
+    const no=df66Rows.find(r=>r.id===x.row.id);
+    x.no=no||null;
+    x.rowNo=no?.rowNo??'';
+    x.rowStatus=no?.rowStatus||'UNREADABLE';
+    x.tagCount=x.tagCandidates.length;
+    x.pipelineCount=x.pipelineCandidates.length;
+
+    if(x.row.profile==='INSTRUMENT_LIST'){
+      if(x.winner&&x.pipe&&x.tagCount===1&&x.pipelineCount===1) x.integrity='COMPLETE';
+      else if(x.winner&&x.pipe&&x.tagCount>1) x.integrity='DUPLICATE_TAG_RESOLVED';
+      else if(!x.winner&&x.pipe) x.integrity='TAG_MISSING';
+      else if(x.winner&&!x.pipe) x.integrity='PIPELINE_MISSING';
+      else if(x.pipelineCount>1) x.integrity='MULTIPLE_PIPELINES';
+      else x.integrity='INCOMPLETE';
+    }else{
+      x.integrity=x.winner?'COMPLETE':'INCOMPLETE';
+    }
+  }
+  return base;
+}
+function df67RenderIntegrity(){
+  const el=$('rowIntegrityReport');if(!el)return;
+  const s=df67IntegrityState(),inst=s.filter(x=>x.row.profile==='INSTRUMENT_LIST');
+  const n=k=>inst.filter(x=>x.integrity===k).length;
+  const complete=n('COMPLETE'),dup=n('DUPLICATE_TAG_RESOLVED'),missing=n('TAG_MISSING'),pm=n('PIPELINE_MISSING'),mp=n('MULTIPLE_PIPELINES');
+  const review=inst.filter(x=>!['COMPLETE','DUPLICATE_TAG_RESOLVED'].includes(x.integrity));
+  const examples=review.slice(0,8).map(x=>`${x.rowNo||'NO?'}: ${x.integrity}`).join(' · ');
+  el.innerHTML=`<strong>Row Integrity Engine</strong><br>
+    <span>Instrument rows: <strong>${inst.length}</strong> · complete 1TAG+1PIPE: <strong class="ok">${complete}</strong> · duplicate tag resolved: <strong class="${dup?'warn':'ok'}">${dup}</strong> · tag missing: <strong class="${missing?'bad':'ok'}">${missing}</strong> · pipeline missing: <strong class="${pm?'bad':'ok'}">${pm}</strong> · multi-pipeline: <strong class="${mp?'bad':'ok'}">${mp}</strong></span><br>
+    <span>Missing-tag OCR rescue: recovered <strong class="ok">${df67TagRescue.recovered}</strong> · remaining <strong class="${df67TagRescue.remaining?'bad':'ok'}">${df67TagRescue.remaining}</strong></span>
+    ${examples?`<br><span class="bad">Review: ${escapeHtml(examples)}</span>`:''}`;
+}
+
+function df67BuildFinalRecords(){
+  const state=df67IntegrityState(),out=[];
+  for(const x of state){
+    if(!x.winner)continue;
+    const r=x.winner,no=x.no;
+    const related=[];
+    const peerState=state.filter(y=>y.row.id===x.row.id&&y!==x&&y.winner);
+    if(x.row.profile==='JB_MOV_LIST'){
+      for(const y of peerState){
+        if(dfPrefixMatch(r.tag,y.winner.tag))related.push(y.winner.tag);
+      }
+    }
+    out.push({
+      ...r,
+      blockId:x.row.blockId,physicalRowId:x.row.id,profile:x.row.profile,
+      rowNo:no?.rowNo??'',rowStatus:no?.rowStatus||'UNREADABLE',
+      rowGoogle:(no?.retryGoogle||no?.google)?.value??'',rowPaddle:(no?.retryPaddle||no?.paddle)?.value??'',
+      rowRetry:[no?.retryGoogle?.value,no?.retryPaddle?.value].filter(v=>v!==undefined&&v!==null).join('/'),
+      rowSequenceExpected:no?.sequenceExpected??'',rowSequenceSource:no?.sequenceSource||'',rowEvidence:no?.rowEvidence||'',
+      related:[...new Set(related)],
+      pipeline:x.pipe?.value||'',
+      description:'',
+      relationAudit:x.pipe?[`Pipeline: same physical row + prefix ${dfPrefix5(r.tag)} matched`]:[],
+      rowIntegrity:x.integrity,
+      tagCandidateCount:x.tagCount,
+      pipelineCandidateCount:x.pipelineCount,
+      rejectedTags:x.rejected.map(z=>z.tag),
+      candidateResolution:x.reason,
+      tagRescued:!!r.df67Rescued,
+      tagRescuePass:r.df67RescuePass||''
+    });
+  }
+
+  const descs=dfMetadata().descs||[];
+  for(const r of out){
+    const hit=dfFindBlockAndColumn(r.bbox,r.zone,r.column);if(!hit)continue;
+    const ds=descs.filter(d=>{
+      const h=dfFindBlockAndColumn(d.bbox,d.zone,'DESCRIPTION');
+      if(!h||h.block.blockId!==r.blockId||d.zone!==r.zone)return false;
+      const row=df67IntegrityRows.filter(x=>x.zone===d.zone&&x.blockId===r.blockId)
+        .sort((a,b)=>Math.abs(a.y-center(d.bbox).y)-Math.abs(b.y-center(d.bbox).y))[0];
+      return row&&row.id===r.physicalRowId;
+    });
+    if(ds.length)r.description=ds[0].value;
+  }
+  dfRecords=out;
+}
+
+renderResults=function(){
+  if(!dfRecords.length){$('results').innerHTML='<tr><td colspan="8" class="small">No records yet.</td></tr>';return}
+  $('results').innerHTML=[...dfRecords]
+    .sort((a,b)=>(Number(a.rowNo)||99999)-(Number(b.rowNo)||99999)||center(a.bbox).y-center(b.bbox).y)
+    .map(r=>`<tr>
+      <td>${dfBadge(r.status)}<br><span class="${r.rowIntegrity==='COMPLETE'?'ok':'warn'}">${escapeHtml(r.rowIntegrity)}</span>${r.tagRescued?'<br><span class="ok">↻ tag rescued</span>':''}</td>
+      <td><code>${escapeHtml(r.tag)}</code>${r.rowNo!==''?`<br><strong>row ${r.rowNo}</strong>`:'<br><span class="bad">row unresolved</span>'}${r.rejectedTags?.length?`<br><span class="warn">rejected: ${r.rejectedTags.map(escapeHtml).join(', ')}</span>`:''}</td>
+      <td>${escapeHtml(r.column)}<br><span>tag candidates: ${r.tagCandidateCount}</span></td>
+      <td>${r.related.length?r.related.map(t=>`<code>${escapeHtml(t)}</code>`).join(' '):'—'}</td>
+      <td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}<br><span>pipeline candidates: ${r.pipelineCandidateCount}</span></td>
+      <td>${escapeHtml(r.description||'—')}<br><span>NO: ${escapeHtml(r.rowStatus)} · G=${r.rowGoogle||'—'} · P=${r.rowPaddle||'—'}</span></td>
+      <td>${r.google?pct(r.google.confidence):'—'}</td>
+      <td>${r.paddle?pct(r.paddle.confidence):'—'}</td>
+    </tr>`).join('');
+};
+
+// Final v0.6.7 orchestration.
+$('runDual').onclick=async()=>{
+  if(!tiles.length||!endpoint())return;
+
+  resetResults();
+  dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];dfProfiles=[];
+  df66Rows=[];df66PaddleNums=[];df67IntegrityRows=[];
+  dfRowRescue={initialMissing:[],attempted:[],recovered:[],remaining:[],inferredRows:[],passes:0};
+  dfPaddleGoogleRescue={attempted:[],recovered:[],remaining:[],passes:0};
+  df66RowRetry={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+  df67TagRescue={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+  dfRenderProfiles();dfRenderRescueSummary();df66RenderRowEngine();df67RenderIntegrity();
+
+  $('runDual').disabled=true;$('plan').disabled=true;
+  try{
+    // 1) Main Google OCR
+    for(let i=0;i<tiles.length;i++){
+      const t=tiles[i];$('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
+      const c=await renderTile(t),b=await canvasBlob(c),fd=new FormData();fd.append('file',b,`tile-${i+1}.png`);
+      const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();
+      if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+      for(const pg of (j.pages||[]))dfCollectGooglePage(pg,t,i+1);
+      c.width=1;c.height=1;$('progress').style.width=`${((i+1)/tiles.length)*34}%`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+
+    // 2) Header / continuation / profile
+    dfBuildColumns();dfBuildProfiles();
+    if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG')))throw new Error('No searchable table schema recognized.');
+
+    // 3) Existing tag recovery
+    googleCandidates=df66FilterSearchableTags(await dfRunRowRescue());
+    paddleCandidates=df66FilterSearchableTags(await dfPaddleColumnCandidates());
+    let filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+    let pre=dfVerify(googleCandidates,paddleCandidates);
+    await dfRunPaddleGoogleRescue(pre);
+
+    googleCandidates=df66FilterSearchableTags(dfGoogleTagCandidates());
+    filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+    verificationRows=dfVerify(googleCandidates,paddleCandidates);
+    $('progress').style.width='67%';
+
+    // 4) NEW physical rows from NO + TAG + PIPELINE, then robust NO engine
+    await df66RunRowEngine();
+    $('progress').style.width='82%';
+
+    // 5) NEW: any pipeline-anchored row with no instrument tag gets its TAG cell re-read
+    await df67RescueMissingTags();
+    $('progress').style.width='93%';
+
+    // 6) Rebuild rows once more with newly recovered tags; retain row-number evidence
+    // by matching the same physical row positions.
+    const oldNo=[...df66Rows];
+    df67BuildIntegrityRows();
+    for(const nr of df66Rows){
+      const old=oldNo.filter(o=>o.zone===nr.zone&&o.blockId===nr.blockId)
+        .sort((a,b)=>Math.abs(a.y-nr.y)-Math.abs(b.y-nr.y))[0];
+      if(old&&Math.abs(old.y-nr.y)<Math.max(.003,nr.spacing*.45)){
+        Object.assign(nr,{
+          google:old.google,paddle:old.paddle,retryGoogle:old.retryGoogle,retryPaddle:old.retryPaddle,
+          rowNo:old.rowNo,rowStatus:old.rowStatus,sequenceExpected:old.sequenceExpected,
+          sequenceSource:old.sequenceSource,rowEvidence:old.rowEvidence
+        });
+      }
+    }
+
+    df67BuildFinalRecords();
+    renderResults();renderAudit();updateMetrics();dfRenderColumns();dfRenderProfiles();dfRenderRescueSummary();df66RenderRowEngine();df67RenderIntegrity();
+    $('progress').style.width='100%';
+
+    const s=df67IntegrityState().filter(x=>x.row.profile==='INSTRUMENT_LIST');
+    const complete=s.filter(x=>['COMPLETE','DUPLICATE_TAG_RESOLVED'].includes(x.integrity)).length;
+    $('status').innerHTML=`<span class="ok">v0.6.7 complete. Instrument rows: ${s.length} · complete/resolved: ${complete} · needs review: ${s.length-complete} · final searchable records: ${dfRecords.length}.</span>`;
+  }catch(e){
+    console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }finally{
+    $('runDual').disabled=false;$('plan').disabled=false;update();
+  }
+};
+
+$('exportCsv').onclick=()=>{
+  if(!dfRecords.length)return;
+  const rows=[[
+    'status','row_no','row_status','row_integrity','tag','tag_candidate_count','rejected_tags','candidate_resolution','tag_rescued','tag_rescue_pass',
+    'profile','column_type','related_tag','related_pipeline','pipeline_candidate_count','description',
+    'row_google','row_paddle','row_retry','row_sequence_expected','row_sequence_source','row_evidence',
+    'google_confidence','paddle_confidence','relation_audit','page','zone','block_id','physical_row_id','prefix5','global_x_percent','global_y_percent'
+  ]];
+  for(const r of dfRecords){
+    const c=center(r.bbox);
+    rows.push([
+      r.status,r.rowNo??'',r.rowStatus,r.rowIntegrity,r.tag,r.tagCandidateCount,r.rejectedTags.join(';'),r.candidateResolution,r.tagRescued,r.tagRescuePass,
+      r.profile,r.column,r.related.join(';'),r.pipeline,r.pipelineCandidateCount,r.description,
+      r.rowGoogle,r.rowPaddle,r.rowRetry,r.rowSequenceExpected,r.rowSequenceSource,r.rowEvidence,
+      r.google?.confidence??'',r.paddle?.confidence??'',r.relationAudit.join(' | '),
+      r.page,r.zone,r.blockId,r.physicalRowId,dfPrefix5(r.tag),c.x*100,c.y*100
+    ]);
+  }
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download='drawing-finder-v0.6.7-row-integrity.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+df67RenderIntegrity();
 </script>
 
 </body>
