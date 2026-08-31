@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.4 — Row-Rescue Dual OCR</title>
+<title>Drawing Finder v0.6.5 — Profile-Based Dual OCR</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.4 — Row-Rescue Dual OCR</h1>
+<h1>Drawing Finder v0.6.5 — Profile-Based Dual OCR</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -147,6 +147,10 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 <div id="rowRescueReport" class="row" style="margin-top:8px">
  <strong>Row completeness / rescue</strong><br>
  <span>No row-rescue analysis yet.</span>
+</div>
+<div id="profileReport" class="row" style="margin-top:8px">
+ <strong>Table profiles / relation rules</strong><br>
+ <span>No profile analysis yet.</span>
 </div>
 
 <h2 style="margin-top:18px">Searchable tag records</h2>
@@ -1261,6 +1265,399 @@ $('exportCsv').onclick=()=>{
 };
 
 dfRenderRowRescue();
+</script>
+
+
+<script>
+// ===== v0.6.5 profile-based schemas + prefix validation + Paddle-assisted Google rescue =====
+
+let dfPaddleGoogleRescue = { attempted:[], recovered:[], remaining:[], passes:0 };
+let dfProfiles = [];
+
+function dfPrefix5(s){ return String(s||'').toUpperCase().slice(0,5); }
+function dfPrefixMatch(a,b){
+  const x=dfPrefix5(a),y=dfPrefix5(b);
+  return x.length===5 && y.length===5 && x===y;
+}
+function dfBlockColumnsSorted(block){ return [...(block?.columns||[])].sort((a,b)=>a.left-b.left); }
+function dfProfileBlock(model,block){
+  const cols=dfBlockColumnsSorted(block);
+  const sub=cols.map(c=>c.subtype);
+  const has=x=>sub.includes(x);
+
+  // Instrument-list profile:
+  // NO | INSTRUMENT KKS | PIPELINE NAME | ELEVATION | FLOOR ELEVATION
+  if(has('INSTRUMENT_TAG') && has('PIPELINE')){
+    const ti=sub.indexOf('INSTRUMENT_TAG'),pi=sub.indexOf('PIPELINE');
+    if(pi>ti) return {name:'INSTRUMENT_LIST', primary:['INSTRUMENT_TAG'], related:[], pipeline:'PIPELINE'};
+  }
+
+  // JB/MOV profile:
+  // NO | VALVE TAG | BOX TAG | PIPELINE NAME | DESCRIPTION
+  if(has('VALVE_TAG') && has('BOX_TAG') && has('PIPELINE')){
+    const vi=sub.indexOf('VALVE_TAG'),bi=sub.indexOf('BOX_TAG'),pi=sub.indexOf('PIPELINE');
+    if(vi>=0 && bi>vi && pi>bi) return {name:'JB_MOV_LIST', primary:['VALVE_TAG','BOX_TAG'], related:['VALVE_TAG','BOX_TAG'], pipeline:'PIPELINE'};
+  }
+
+  // Separate JB list such as NO | JB NAME | JB DESCRIPTION | ...
+  if(has('BOX_TAG')) return {name:'JB_LIST', primary:['BOX_TAG'], related:[], pipeline:null};
+
+  return {name:'GENERIC', primary:cols.filter(c=>c.role==='TAG').map(c=>c.subtype), related:[], pipeline:has('PIPELINE')?'PIPELINE':null};
+}
+function dfBuildProfiles(){
+  dfProfiles=[];
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const p=dfProfileBlock(model,block);
+      dfProfiles.push({zone:model.zone,blockId:block.blockId,type:block.type||'',...p});
+    }
+  }
+  dfRenderProfiles();
+  return dfProfiles;
+}
+function dfProfileFor(zone,blockId){
+  return dfProfiles.find(p=>p.zone===zone&&p.blockId===blockId) || null;
+}
+function dfFindBlockAndColumn(bbox,zone,columnSubtype=null){
+  const model=dfModel(zone); if(!model) return null;
+  const x=center(bbox).x;
+  let matches=[];
+  for(const block of (model.blocks||[])){
+    for(const col of (block.columns||[])){
+      if(x>=col.left && x<=col.right && (!columnSubtype || col.subtype===columnSubtype)){
+        matches.push({block,col});
+      }
+    }
+  }
+  matches.sort((a,b)=>(a.col.right-a.col.left)-(b.col.right-b.col.left));
+  return matches[0]||null;
+}
+function dfNearestRowNoFor(zone,block,bbox){
+  const model=dfModel(zone); if(!model||!block) return '';
+  const noCol=(block.columns||[]).find(c=>c.role==='IGNORE'&&c.subtype==='NO');
+  if(!noCol) return '';
+  const rows=dfRowCandidatesForBlock(model,block);
+  let best=null,dy=1e9;
+  for(const r of rows){
+    const d=Math.abs(center(r.bbox).y-center(bbox).y);
+    if(d<dy){dy=d;best=r}
+  }
+  const tol=Math.max(.004,dfRowSpacing(rows)*.75);
+  return best&&dy<=tol?best.num:'';
+}
+function dfRelationRowKey(zone,block,rowNo,bbox){
+  if(rowNo!=='') return `${zone}|${block.blockId}|N:${rowNo}`;
+  // Fallback only if NO is missing: geometry stays block-local.
+  return `${zone}|${block.blockId}|Y:${Math.round(center(bbox).y*5000)}`;
+}
+function dfRenderProfiles(){
+  const el=$('profileReport'); if(!el) return;
+  if(!dfProfiles.length){
+    el.innerHTML='<strong>Table profiles / relation rules</strong><br><span>No profile analysis yet.</span>';
+    return;
+  }
+  const lines=dfProfiles.map(p=>{
+    const relation=p.name==='INSTRUMENT_LIST'
+      ? 'Tag → pipeline immediately to the right · first-5 prefix required'
+      : p.name==='JB_MOV_LIST'
+        ? 'Valve TAG ↔ BOX TAG → pipeline · same row + first-5 prefix required'
+        : p.name==='JB_LIST'
+          ? 'JB/BOX searchable tag'
+          : 'Generic searchable-tag schema';
+    return `<span><strong>Zone ${p.zone} / Block ${p.blockId}: ${p.name}</strong> — ${relation}</span>`;
+  });
+  el.innerHTML='<strong>Table profiles / relation rules</strong><br>'+lines.join('<br>');
+}
+
+// Filter the known false pattern where an OCR engine appends one spurious
+// trailing letter to a valid 12-character tag at the same location.
+// Genuine 13-character tags are retained when the other engine agrees on all 13.
+function dfSuppressFalse13Extensions(grows,prows){
+  const g=[...grows],p=[...prows];
+  function keep(r,own,other){
+    if(String(r.tag||'').length!==13) return true;
+    const base=r.tag.slice(0,12);
+
+    // If the other engine confirms the full 13-char tag, it is genuine.
+    if(other.some(x=>x.tag===r.tag && sameOccurrence(r,x,false))) return true;
+
+    // If either engine has the 12-char base at the same location, suppress extension.
+    const baseHit=[...own,...other].some(x=>x!==r && x.tag===base && sameOccurrence(r,x,false));
+    return !baseHit;
+  }
+  return {
+    g:g.filter(r=>keep(r,g,p)),
+    p:p.filter(r=>keep(r,p,g))
+  };
+}
+
+// ----- Paddle-assisted Google rescue -----
+function dfPaddleRescueCrop(p,pass){
+  const hit=dfFindBlockAndColumn(p.bbox,p.zone,p.column);
+  const z=zones[p.zone-1];
+  const col=hit?.col;
+  const h=Math.max(boxH(p.bbox),.0025), cy=center(p.bbox).y;
+
+  const x0=col?Math.max(z.x,col.left-Math.max(.002,(col.right-col.left)*.10)):Math.max(z.x,p.bbox.x0-.008);
+  const x1=col?Math.min(z.x+z.w,col.right+Math.max(.002,(col.right-col.left)*.10)):Math.min(z.x+z.w,p.bbox.x1+.008);
+  const ypad=Math.max(.003,h*(pass===1?1.7:2.2));
+  return {x:x0,y:Math.max(z.y,cy-ypad),w:Math.max(.001,x1-x0),h:Math.max(.001,Math.min(z.y+z.h,cy+ypad)-Math.max(z.y,cy-ypad))};
+}
+async function dfRetryGoogleAtPaddle(p,pass,index,total){
+  const crop=dfPaddleRescueCrop(p,pass);
+  const dpi=pass===1?700:900, maxSide=pass===1?2600:3200;
+  $('status').textContent=`Paddle-assisted Google rescue ${pass}/2: ${p.tag} (${index}/${total})…`;
+
+  const c=await dfRenderNormCrop(p.page,crop,dpi,maxSide);
+  const b=await canvasBlob(c),fd=new FormData();
+  fd.append('file',b,`paddle-rescue-${index}-${pass}.png`);
+  const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd});
+  const j=await rr.json();
+  if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+
+  const pseudo={nx:crop.x,ny:crop.y,nw:crop.w,nh:crop.h,page:p.page,zoneIndex:p.zone-1};
+  for(const pg of (j.pages||[]))dfCollectGooglePage(pg,pseudo,12000+pass*1000+index);
+  c.width=1;c.height=1;
+  await new Promise(r=>setTimeout(r,0));
+}
+function dfGoogleConfirmsPaddle(p,grows){
+  return grows.some(g=>g.tag===p.tag && g.column===p.column && sameOccurrence(g,p,false));
+}
+async function dfRunPaddleGoogleRescue(preVerification){
+  dfPaddleGoogleRescue={attempted:[],recovered:[],remaining:[],passes:0};
+
+  let targets=preVerification.filter(r=>r.status==='PADDLE_ONLY').map(r=>r.paddle).filter(Boolean);
+  // De-duplicate targets by tag + location and cap to protect API/billing after a bad schema.
+  targets=dedupeEngine(targets).slice(0,40);
+  if(!targets.length) return;
+
+  for(let pass=1;pass<=2 && targets.length;pass++){
+    dfPaddleGoogleRescue.passes=pass;
+    for(let i=0;i<targets.length;i++){
+      const p=targets[i];
+      dfPaddleGoogleRescue.attempted.push({...p,pass});
+      await dfRetryGoogleAtPaddle(p,pass,i+1,targets.length);
+    }
+
+    dfGoogleLines=dfSortSpatial(dfDedupeText(dfGoogleLines));
+    dfGoogleTokens=dfSortSpatial(dfDedupeText(dfGoogleTokens));
+
+    let gnow=dfGoogleTagCandidates();
+    const unresolved=[];
+    for(const p of targets){
+      if(dfGoogleConfirmsPaddle(p,gnow)){
+        if(!dfPaddleGoogleRescue.recovered.some(x=>x.tag===p.tag&&sameOccurrence(x,p,false))){
+          dfPaddleGoogleRescue.recovered.push({...p,pass});
+        }
+      } else unresolved.push(p);
+    }
+    targets=unresolved;
+  }
+  dfPaddleGoogleRescue.remaining=targets;
+}
+function dfRenderRescueSummary(){
+  const el=$('rowRescueReport'); if(!el) return;
+  const rowI=dfRowRescue.initialMissing.length,rowR=dfRowRescue.recovered.length,rowM=dfRowRescue.remaining.length;
+  const pA=dfPaddleGoogleRescue.attempted.length,pR=dfPaddleGoogleRescue.recovered.length,pM=dfPaddleGoogleRescue.remaining.length;
+  el.innerHTML=`<strong>OCR rescue summary</strong><br>
+    <span>NO/row rescue: detected <strong>${rowI}</strong> · recovered <strong class="ok">${rowR}</strong> · remaining <strong class="${rowM?'bad':'ok'}">${rowM}</strong></span><br>
+    <span>Paddle → Google rescue: retries <strong>${pA}</strong> · recovered <strong class="ok">${pR}</strong> · remaining Paddle-only <strong class="${pM?'warn':'ok'}">${pM}</strong></span>`;
+}
+
+// ----- Profile-based record construction -----
+function dfMetadataProfiled(){
+  const base=dfMetadata(),pipes=[],descs=[];
+
+  for(const p of base.pipes){
+    const hit=dfFindBlockAndColumn(p.bbox,p.zone,'PIPELINE');
+    if(!hit)continue;
+    const rowNo=dfNearestRowNoFor(p.zone,hit.block,p.bbox);
+    pipes.push({...p,blockId:hit.block.blockId,rowNo,rowKey:dfRelationRowKey(p.zone,hit.block,rowNo,p.bbox)});
+  }
+  for(const d of base.descs){
+    const hit=dfFindBlockAndColumn(d.bbox,d.zone,'DESCRIPTION');
+    if(!hit)continue;
+    const rowNo=dfNearestRowNoFor(d.zone,hit.block,d.bbox);
+    descs.push({...d,blockId:hit.block.blockId,rowNo,rowKey:dfRelationRowKey(d.zone,hit.block,rowNo,d.bbox)});
+  }
+  return {pipes,descs};
+}
+function dfBestPrefixPipeline(tagRow,pipes){
+  const candidates=pipes.filter(p=>p.rowKey===tagRow.rowKey && dfPrefixMatch(tagRow.tag,p.value));
+  if(!candidates.length)return null;
+  return candidates.sort((a,b)=>Math.abs(center(a.bbox).y-center(tagRow.bbox).y)-Math.abs(center(b.bbox).y-center(tagRow.bbox).y))[0];
+}
+function dfBuildProfileRecords(){
+  const {pipes,descs}=dfMetadataProfiled(),rows=verificationRows.filter(r=>r.status!=='CONFLICT'),tagRows=[];
+
+  for(const r of rows){
+    const hit=dfFindBlockAndColumn(r.bbox,r.zone,r.column);
+    if(!hit)continue;
+    const profile=dfProfileFor(r.zone,hit.block.blockId)||dfProfileBlock(dfModel(r.zone),hit.block);
+    const rowNo=dfNearestRowNoFor(r.zone,hit.block,r.bbox);
+    tagRows.push({
+      ...r,
+      blockId:hit.block.blockId,
+      profile:profile.name,
+      rowNo,
+      rowKey:dfRelationRowKey(r.zone,hit.block,rowNo,r.bbox),
+      related:[],
+      pipeline:'',
+      description:'',
+      relationAudit:[]
+    });
+  }
+
+  // Relations are block + row based first, prefix validated second.
+  for(const r of tagRows){
+    const peers=tagRows.filter(x=>x!==r && x.rowKey===r.rowKey);
+
+    if(r.profile==='JB_MOV_LIST'){
+      for(const x of peers){
+        const pairOK=
+          ((r.column==='VALVE_TAG'&&x.column==='BOX_TAG')||(r.column==='BOX_TAG'&&x.column==='VALVE_TAG')) &&
+          dfPrefixMatch(r.tag,x.tag);
+        if(pairOK){
+          r.related.push(x.tag);
+          r.relationAudit.push(`Related tag: same row ${r.rowNo!==''?r.rowNo:'(Y fallback)'} + prefix ${dfPrefix5(r.tag)} matched`);
+        }
+      }
+    }
+
+    const pipe=dfBestPrefixPipeline(r,pipes);
+    if(pipe){
+      r.pipeline=pipe.value;
+      r.relationAudit.push(`Pipeline: same row ${r.rowNo!==''?r.rowNo:'(Y fallback)'} + prefix ${dfPrefix5(r.tag)} matched`);
+    }
+
+    const ds=descs.filter(d=>d.rowKey===r.rowKey);
+    if(ds.length)r.description=ds.sort((a,b)=>Math.abs(center(a.bbox).y-center(r.bbox).y)-Math.abs(center(b.bbox).y-center(r.bbox).y))[0].value;
+
+    r.related=[...new Set(r.related)];
+  }
+
+  dfRecords=tagRows;
+}
+
+// Render profile/row/prefix audit.
+renderResults=function(){
+  if(!dfRecords.length){$('results').innerHTML='<tr><td colspan="8" class="small">No records yet.</td></tr>';return}
+  $('results').innerHTML=[...dfRecords]
+    .sort((a,b)=>(Number(a.rowNo)||99999)-(Number(b.rowNo)||99999)||(a.tag||'').localeCompare(b.tag||''))
+    .map(r=>`<tr>
+      <td>${dfBadge(r.status)}${r.rowRescue?'<br><span class="warn">↻ row rescued</span>':''}</td>
+      <td><code>${escapeHtml(r.tag)}</code>${r.rowNo!==''?`<br><span>row ${r.rowNo}</span>`:''}<br><span>${escapeHtml(r.profile)}</span></td>
+      <td>${escapeHtml(r.column)}</td>
+      <td>${r.related.length?r.related.map(t=>`<code>${escapeHtml(t)}</code>`).join(' '):'—'}</td>
+      <td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}${r.relationAudit.length?`<br><span>${escapeHtml(r.relationAudit.join(' · '))}</span>`:''}</td>
+      <td>${escapeHtml(r.description||'—')}</td>
+      <td>${r.google?pct(r.google.confidence):'—'}</td>
+      <td>${r.paddle?pct(r.paddle.confidence):'—'}</td>
+    </tr>`).join('');
+};
+
+// Final v0.6.5 orchestration.
+$('runDual').onclick=async()=>{
+  if(!tiles.length||!endpoint())return;
+
+  resetResults();
+  dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];dfProfiles=[];
+  dfRowRescue={initialMissing:[],attempted:[],recovered:[],remaining:[],inferredRows:[],passes:0};
+  dfPaddleGoogleRescue={attempted:[],recovered:[],remaining:[],passes:0};
+  dfRenderProfiles();dfRenderRescueSummary();
+
+  $('runDual').disabled=true;$('plan').disabled=true;
+
+  try{
+    // 1) Google high-res normal pass.
+    for(let i=0;i<tiles.length;i++){
+      const t=tiles[i];
+      $('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
+      const c=await renderTile(t),b=await canvasBlob(c),fd=new FormData();
+      fd.append('file',b,`tile-${i+1}.png`);
+      const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();
+      if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+      for(const pg of (j.pages||[]))dfCollectGooglePage(pg,t,i+1);
+      c.width=1;c.height=1;
+      $('progress').style.width=`${((i+1)/tiles.length)*43}%`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+
+    // 2) Header / continuation schema + table profile.
+    dfBuildColumns();
+    dfBuildProfiles();
+    if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG'))){
+      throw new Error('No searchable tag schema recognized. Include at least one header-bearing block such as Instrument KKS, Valve TAG, BOX TAG or JB NAME.');
+    }
+
+    // 3) NO-column missing-row Google rescue.
+    googleCandidates=await dfRunRowRescue();
+    $('progress').style.width='62%';
+
+    // 4) Paddle verifies narrow TAG columns at lower resolution.
+    paddleCandidates=await dfPaddleColumnCandidates();
+    $('progress').style.width='78%';
+
+    // 5) Remove only demonstrably false 13-char extensions.
+    let filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+
+    // 6) Preliminary compare, then use every Paddle-only location as a Google retry target.
+    let pre=dfVerify(googleCandidates,paddleCandidates);
+    await dfRunPaddleGoogleRescue(pre);
+    $('progress').style.width='92%';
+
+    // 7) Rebuild Google candidates after Paddle-assisted retries, filter extensions again, final verify.
+    googleCandidates=dfGoogleTagCandidates();
+    filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+    verificationRows=dfVerify(googleCandidates,paddleCandidates);
+
+    // 8) Build row/profile/prefix-validated relations.
+    dfBuildProfileRecords();
+
+    // Preserve row-rescue marker from v0.6.4 where applicable.
+    for(const r of dfRecords){
+      const rescued=dfRowRescue.recovered.find(t=>
+        t.zone===r.zone && t.column===r.column &&
+        Math.abs(t.y-center(r.bbox).y)<Math.max(.004,(t.spacing||.006)*.8)
+      );
+      r.rowRescue=rescued?`GOOGLE_RETRY_${rescued.pass}`:'';
+    }
+
+    renderResults();renderAudit();updateMetrics();dfRenderColumns();dfRenderProfiles();dfRenderRescueSummary();
+    $('progress').style.width='100%';
+    $('status').innerHTML=`<span class="ok">v0.6.5 complete. Verified: ${verificationRows.filter(x=>x.status==='VERIFIED').length} · conflicts: ${verificationRows.filter(x=>x.status==='CONFLICT').length} · Google-only: ${verificationRows.filter(x=>x.status==='GOOGLE_ONLY').length} · Paddle-only: ${verificationRows.filter(x=>x.status==='PADDLE_ONLY').length}.</span>`;
+  }catch(e){
+    console.error(e);
+    $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }finally{
+    $('runDual').disabled=false;$('plan').disabled=false;update();
+  }
+};
+
+$('exportCsv').onclick=()=>{
+  if(!dfRecords.length)return;
+  const rows=[[
+    'status','row_no','profile','tag','column_type','related_tag','related_pipeline','description',
+    'google_confidence','paddle_confidence','row_rescue','relation_audit',
+    'page','zone','block_id','prefix5','global_x_percent','global_y_percent'
+  ]];
+  for(const r of dfRecords){
+    const c=center(r.bbox);
+    rows.push([
+      r.status,r.rowNo??'',r.profile,r.tag,r.column,r.related.join(';'),r.pipeline,r.description,
+      r.google?.confidence??'',r.paddle?.confidence??'',r.rowRescue||'',r.relationAudit.join(' | '),
+      r.page,r.zone,r.blockId,dfPrefix5(r.tag),c.x*100,c.y*100
+    ]);
+  }
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download='drawing-finder-v0.6.5-profile-based.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+dfRenderProfiles();
+dfRenderRescueSummary();
 </script>
 
 </body>
