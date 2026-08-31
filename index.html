@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.5 — Profile-Based Dual OCR</title>
+<title>Drawing Finder v0.6.6 — Robust Row Number Engine</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.5 — Profile-Based Dual OCR</h1>
+<h1>Drawing Finder v0.6.6 — Robust Row Number Engine</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -151,6 +151,10 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 <div id="profileReport" class="row" style="margin-top:8px">
  <strong>Table profiles / relation rules</strong><br>
  <span>No profile analysis yet.</span>
+</div>
+<div id="rowEngineReport" class="row" style="margin-top:8px">
+ <strong>Robust Row Number Engine</strong><br>
+ <span>No row-number analysis yet.</span>
 </div>
 
 <h2 style="margin-top:18px">Searchable tag records</h2>
@@ -1658,6 +1662,473 @@ $('exportCsv').onclick=()=>{
 
 dfRenderProfiles();
 dfRenderRescueSummary();
+</script>
+
+
+<script>
+// ===== v0.6.6 Robust Row Number Engine =====
+// Goal: row_no is no longer assigned by "nearest number" alone.
+// Each physical table row is identified from the searchable TAG geometry,
+// its NO cell is read independently by Google + Paddle, sequence is used as
+// validation, and only uncertain cells are retried at high resolution.
+
+let df66Rows=[];
+let df66PaddleNums=[];
+let df66RowRetry={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+
+function df66IsPipelinePrefixTag(tag){
+  const s=String(tag||'').toUpperCase();
+  return s.length>=12 && s.slice(7,9)==='BR';
+}
+function df66FilterSearchableTags(rows){
+  // In this project BR is the pipeline identifier family, not a searchable
+  // instrument/equipment tag. This also removes OCR artefacts such as ...BR001T.
+  return rows.filter(r=>!df66IsPipelinePrefixTag(r.tag));
+}
+function df66Median(a){return dfMedian((a||[]).filter(Number.isFinite))||0}
+function df66NumText(s){
+  const t=String(s||'').replace(/\s+/g,'').trim();
+  return /^\d{1,4}$/.test(t)?Number(t):null;
+}
+function df66BlockForTag(r){
+  const hit=dfFindBlockAndColumn(r.bbox,r.zone,r.column);
+  return hit?.block||null;
+}
+function df66ClusterTagRows(items,zone,block){
+  const pts=items.map(r=>({r,y:center(r.bbox).y,h:boxH(r.bbox)})).sort((a,b)=>a.y-b.y);
+  if(!pts.length)return [];
+  const medH=df66Median(pts.map(x=>x.h))||.0014;
+  const tol=Math.max(.0012,Math.min(.0030,medH*1.35));
+  const clusters=[];
+  for(const p of pts){
+    let c=clusters.length?clusters[clusters.length-1]:null;
+    if(!c||Math.abs(p.y-c.y)>tol){
+      c={zone,blockId:block.blockId,block,items:[],y:p.y,heights:[]};
+      clusters.push(c);
+    }
+    c.items.push(p.r);c.heights.push(p.h);
+    c.y=c.items.reduce((s,x)=>s+center(x.bbox).y,0)/c.items.length;
+  }
+  return clusters;
+}
+function df66BuildPhysicalRows(){
+  const usable=verificationRows.filter(r=>r.status!=='CONFLICT' && r.tag && !df66IsPipelinePrefixTag(r.tag));
+  const rows=[];
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const here=usable.filter(r=>{
+        const b=df66BlockForTag(r);
+        return r.zone===model.zone && b && b.blockId===block.blockId;
+      });
+      const clusters=df66ClusterTagRows(here,model.zone,block);
+      for(const c of clusters) rows.push(c);
+    }
+  }
+  // Per-block row index and spacing. The index is validation support only;
+  // it is never treated as the row number without OCR evidence.
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const br=rows.filter(r=>r.zone===model.zone&&r.blockId===block.blockId).sort((a,b)=>a.y-b.y);
+      const diffs=[];for(let i=1;i<br.length;i++){const d=br[i].y-br[i-1].y;if(d>.001&&d<.03)diffs.push(d)}
+      const spacing=df66Median(diffs)||.005;
+      br.forEach((r,i)=>{
+        r.index=i;r.spacing=spacing;r.id=`${r.zone}|${r.blockId}|${i}`;
+        r.google=null;r.paddle=null;r.retryGoogle=null;r.retryPaddle=null;
+        r.rowNo='';r.rowStatus='PENDING';r.sequenceExpected='';r.sequenceSource='';r.rowEvidence='';
+      });
+    }
+  }
+  df66Rows=rows;
+  return rows;
+}
+function df66NoCol(row){return (row.block.columns||[]).find(c=>c.role==='IGNORE'&&c.subtype==='NO')||null}
+function df66InNoCol(b,row){
+  const c=df66NoCol(row);if(!c)return false;const x=center(b).x;
+  return x>=c.left && x<=c.right;
+}
+function df66GoogleNoCandidates(row){
+  const col=df66NoCol(row);if(!col)return [];
+  const src=[...dfGoogleLines,...dfGoogleTokens]
+    .filter(x=>x.zone===row.zone&&x.page===zones[row.zone-1].page&&df66InNoCol(x.bbox,row));
+  const out=[];
+  for(const x of src){
+    const n=df66NumText(x.text);if(n!==null)out.push({value:n,confidence:Number(x.confidence||0),bbox:x.bbox,raw:x.text,source:'GOOGLE'});
+  }
+  // Google sometimes splits 197 into "19" + "7". Combine adjacent digit tokens
+  // that are on the same visual row inside the NO column.
+  const toks=dfSortSpatial(dfGoogleTokens.filter(x=>x.zone===row.zone&&df66InNoCol(x.bbox,row)&&df66NumText(x.text)!==null));
+  for(let i=0;i<toks.length;i++){
+    for(let len=2;len<=3&&i+len<=toks.length;len++){
+      const seq=toks.slice(i,i+len);
+      if(seq.some(x=>x.page!==seq[0].page))break;
+      let same=true;
+      for(let k=1;k<seq.length;k++) if(!dfSameVisualRow(seq[k-1],seq[k])) same=false;
+      if(!same)continue;
+      const ordered=[...seq].sort((a,b)=>center(a.bbox).x-center(b.bbox).x);
+      const text=ordered.map(x=>String(x.text).replace(/\s+/g,'')).join('');
+      const n=df66NumText(text);if(n===null)continue;
+      const b=unionBboxes(ordered.map(x=>x.bbox));
+      out.push({value:n,confidence:Math.min(...ordered.map(x=>Number(x.confidence||0))),bbox:b,raw:text,source:'GOOGLE_COMBINED'});
+    }
+  }
+  return out;
+}
+function df66BestForRow(cands,row){
+  if(!cands?.length)return null;
+  const tol=Math.max(.0018,Math.min(.0042,row.spacing*.46));
+  const viable=cands.filter(x=>Math.abs(center(x.bbox).y-row.y)<=tol);
+  if(!viable.length)return null;
+  return viable.sort((a,b)=>{
+    const da=Math.abs(center(a.bbox).y-row.y),db=Math.abs(center(b.bbox).y-row.y);
+    const sa=da/Math.max(row.spacing,.001)-Number(a.confidence||0)*.12-String(a.value).length*.015;
+    const sb=db/Math.max(row.spacing,.001)-Number(b.confidence||0)*.12-String(b.value).length*.015;
+    return sa-sb;
+  })[0];
+}
+async function df66ScanPaddleNoColumns(){
+  df66PaddleNums=[];
+  const ocr=await loadPaddle();
+  const score=Math.min(.45,Number($('paddleScore').value||.45));
+  const groups=[];
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const rows=df66Rows.filter(r=>r.zone===model.zone&&r.blockId===block.blockId).sort((a,b)=>a.y-b.y);
+      if(!rows.length)continue;
+      const noCol=(block.columns||[]).find(c=>c.role==='IGNORE'&&c.subtype==='NO');if(!noCol)continue;
+      groups.push({model,block,rows,noCol});
+    }
+  }
+  for(let gi=0;gi<groups.length;gi++){
+    const {model,block,rows,noCol}=groups[gi],z=zones[model.zone-1];
+    const spacing=df66Median(rows.map(r=>r.spacing))||.005;
+    const margin=Math.max(.0015,(noCol.right-noCol.left)*.15);
+    const y0=Math.max(z.y,rows[0].y-spacing*.75),y1=Math.min(z.y+z.h,rows[rows.length-1].y+spacing*.75);
+    const crop={x:Math.max(z.x,noCol.left-margin),y:y0,w:Math.min(z.x+z.w,noCol.right+margin)-Math.max(z.x,noCol.left-margin),h:y1-y0};
+    if(crop.w<=0||crop.h<=0)continue;
+    $('status').textContent=`Row numbers: Paddle NO-column scan ${gi+1}/${groups.length}…`;
+    const c=await dfRenderNormCrop(z.page,crop,450,5200);
+    const [res]=await ocr.predict(c,{textDetLimitSideLen:2048,textDetLimitType:'max',textDetMaxSideLimit:5200,textDetThresh:.18,textDetBoxThresh:.30,textDetUnclipRatio:1.35,textRecScoreThresh:score});
+    const raw=[];
+    for(const item of (res.items||[])){
+      const n=df66NumText(item.text);if(n===null)continue;
+      const b=dfPolyGlobal(item.poly||[],c,crop);if(!b)continue;
+      raw.push({value:n,confidence:Number(item.score||0),bbox:b,raw:item.text,source:'PADDLE',zone:model.zone,blockId:block.blockId});
+    }
+    // Combine split numeric items on the same row.
+    const sorted=[...raw].sort((a,b)=>center(a.bbox).y-center(b.bbox).y||center(a.bbox).x-center(b.bbox).x);
+    for(let i=0;i<sorted.length;i++){
+      for(let len=2;len<=3&&i+len<=sorted.length;len++){
+        const seq=sorted.slice(i,i+len);let same=true;
+        for(let k=1;k<seq.length;k++){
+          const h=Math.max(boxH(seq[k-1].bbox),boxH(seq[k].bbox),.001);
+          if(Math.abs(center(seq[k-1].bbox).y-center(seq[k].bbox).y)>Math.max(.0018,h*1.3))same=false;
+        }
+        if(!same)continue;
+        const ord=[...seq].sort((a,b)=>center(a.bbox).x-center(b.bbox).x);
+        const text=ord.map(x=>String(x.value)).join(''),n=df66NumText(text);if(n===null)continue;
+        raw.push({value:n,confidence:Math.min(...ord.map(x=>x.confidence)),bbox:unionBboxes(ord.map(x=>x.bbox)),raw:text,source:'PADDLE_COMBINED',zone:model.zone,blockId:block.blockId});
+      }
+    }
+    df66PaddleNums.push(...raw);c.width=1;c.height=1;await new Promise(r=>setTimeout(r,0));
+  }
+}
+function df66AttachInitialNumbers(){
+  for(const row of df66Rows){
+    const g=df66BestForRow(df66GoogleNoCandidates(row),row);
+    const p=df66BestForRow(df66PaddleNums.filter(x=>x.zone===row.zone&&x.blockId===row.blockId),row);
+    row.google=g;row.paddle=p;
+  }
+}
+function df66StrongDualRows(blockRows){
+  return blockRows.filter(r=>r.google&&r.paddle&&r.google.value===r.paddle.value).map(r=>({i:r.index,v:r.google.value,row:r}));
+}
+function df66ComputeSequence(blockRows){
+  const strong=df66StrongDualRows(blockRows);
+  const offsets=new Map();
+  for(const x of strong){const off=x.v-x.i;offsets.set(off,(offsets.get(off)||0)+1)}
+  let global=null;
+  for(const [off,count] of offsets){if(!global||count>global.count)global={off,count}}
+  const globalStrong=global && global.count>=Math.max(4,Math.ceil(strong.length*.65)) && global.count>=Math.ceil(blockRows.length*.35);
+
+  for(const r of blockRows){
+    let expected='',source='';
+    const prev=[...strong].filter(x=>x.i<r.index).sort((a,b)=>b.i-a.i)[0];
+    const next=[...strong].filter(x=>x.i>r.index).sort((a,b)=>a.i-b.i)[0];
+    if(prev&&next && (next.v-prev.v)===(next.i-prev.i)){
+      expected=prev.v+(r.index-prev.i);source='BRACKETED_DUAL';
+    }else if(globalStrong){
+      expected=r.index+global.off;source='BLOCK_CONSENSUS';
+    }
+    r.sequenceExpected=expected;r.sequenceSource=source;
+  }
+}
+function df66ResolveRows(finalPass=false){
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const br=df66Rows.filter(r=>r.zone===model.zone&&r.blockId===block.blockId).sort((a,b)=>a.index-b.index);
+      if(!br.length)continue;df66ComputeSequence(br);
+      for(const r of br){
+        const g=(r.retryGoogle||r.google)?.value??null,p=(r.retryPaddle||r.paddle)?.value??null;
+        const exp=r.sequenceExpected===''?null:Number(r.sequenceExpected);
+        const retried=!!(r.retryGoogle||r.retryPaddle);
+        r.rowNo='';r.rowStatus='PENDING';
+        if(g!==null&&p!==null&&g===p){
+          if(exp!==null&&g!==exp){
+            r.rowStatus='CONFLICT_SEQUENCE';r.rowEvidence=`Google=${g}, Paddle=${p}, sequence=${exp}`;
+          }else{
+            r.rowNo=g;r.rowStatus=retried?'RESCUED_DUAL':'CONFIRMED_DUAL';r.rowEvidence=`Google=${g}, Paddle=${p}${exp!==null?`, sequence=${exp}`:''}`;
+          }
+        }else if(exp!==null && ((g===exp&&p===null)||(p===exp&&g===null))){
+          // One OCR engine + a sequence expectation that is itself supported by
+          // dual-confirmed neighbouring rows. Keep a distinct status for audit.
+          r.rowNo=exp;r.rowStatus='CONFIRMED_SEQUENCE';r.rowEvidence=`${g===exp?'Google':'Paddle'}=${exp} + ${r.sequenceSource}`;
+        }else if(exp!==null && g===exp && p!==null && p!==exp){
+          r.rowStatus='CONFLICT';r.rowEvidence=`Google=${g}, Paddle=${p}, sequence=${exp}`;
+        }else if(exp!==null && p===exp && g!==null && g!==exp){
+          r.rowStatus='CONFLICT';r.rowEvidence=`Google=${g}, Paddle=${p}, sequence=${exp}`;
+        }else if(exp!==null && g===null&&p===null){
+          r.rowStatus='INFERRED_REVIEW';r.rowEvidence=`No OCR confirmation; sequence suggests ${exp}`;
+        }else if(g!==null||p!==null){
+          r.rowStatus='SINGLE_OR_CONFLICT';r.rowEvidence=`Google=${g??'—'}, Paddle=${p??'—'}${exp!==null?`, sequence=${exp}`:''}`;
+        }else{
+          r.rowStatus='UNREADABLE';r.rowEvidence=exp!==null?`sequence suggests ${exp}`:'No numeric OCR evidence';
+        }
+      }
+    }
+  }
+}
+function df66CellCrop(row,pass){
+  const col=df66NoCol(row),z=zones[row.zone-1];if(!col)return null;
+  const xm=Math.max(.0015,(col.right-col.left)*(pass===1?.18:.24));
+  const half=Math.max(.0022,Math.min(.012,row.spacing*(pass===1?.43:.52)));
+  const x0=Math.max(z.x,col.left-xm),x1=Math.min(z.x+z.w,col.right+xm),y0=Math.max(z.y,row.y-half),y1=Math.min(z.y+z.h,row.y+half);
+  return {x:x0,y:y0,w:x1-x0,h:y1-y0};
+}
+function df66BestNumericList(list,expected=null){
+  const vals=list.filter(x=>x&&x.value!==null&&x.value!==undefined);
+  if(!vals.length)return null;
+  if(expected!==null){const m=vals.filter(x=>x.value===expected).sort((a,b)=>Number(b.confidence||0)-Number(a.confidence||0))[0];if(m)return m}
+  return vals.sort((a,b)=>(Number(b.confidence||0)+String(b.value).length*.02)-(Number(a.confidence||0)+String(a.value).length*.02))[0];
+}
+async function df66GoogleCellOcr(blob,expected){
+  const fd=new FormData();fd.append('file',blob,'row-no-cell.png');
+  const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();
+  if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+  const vals=[];
+  for(const pg of (j.pages||[])){
+    for(const x of [...(pg.lines||[]),...(pg.tokens||[])]){
+      const n=df66NumText(x.text);if(n!==null)vals.push({value:n,confidence:Number(x.confidence||0),raw:x.text,source:'GOOGLE_RETRY'});
+    }
+  }
+  return df66BestNumericList(vals,expected);
+}
+async function df66PaddleCellOcr(c,expected){
+  const ocr=await loadPaddle();
+  const [res]=await ocr.predict(c,{textDetLimitSideLen:1536,textDetLimitType:'max',textDetMaxSideLimit:3200,textDetThresh:.15,textDetBoxThresh:.25,textDetUnclipRatio:1.25,textRecScoreThresh:.20});
+  const vals=[];
+  for(const item of (res.items||[])){
+    const n=df66NumText(item.text);if(n!==null)vals.push({value:n,confidence:Number(item.score||0),raw:item.text,source:'PADDLE_RETRY'});
+  }
+  return df66BestNumericList(vals,expected);
+}
+function df66NeedsRetry(r){return !['CONFIRMED_DUAL','RESCUED_DUAL'].includes(r.rowStatus)}
+async function df66RetryRows(){
+  df66RowRetry={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+  let targets=df66Rows.filter(df66NeedsRetry).slice(0,90);
+  for(let pass=1;pass<=2&&targets.length;pass++){
+    const next=[];
+    for(let i=0;i<targets.length;i++){
+      const r=targets[i],crop=df66CellCrop(r,pass);if(!crop){next.push(r);continue}
+      df66RowRetry.attempted++;if(pass===1)df66RowRetry.pass1++;else df66RowRetry.pass2++;
+      $('status').textContent=`Row-number retry ${pass}/2: Zone ${r.zone} Block ${r.blockId} row-cell ${i+1}/${targets.length}…`;
+      const c=await dfRenderNormCrop(zones[r.zone-1].page,crop,pass===1?700:900,pass===1?1800:2300);
+      const blob=await canvasBlob(c),exp=r.sequenceExpected===''?null:Number(r.sequenceExpected);
+      const g=await df66GoogleCellOcr(blob,exp);
+      const p=await df66PaddleCellOcr(c,exp);
+      if(g)r.retryGoogle=g;if(p)r.retryPaddle=p;
+      c.width=1;c.height=1;
+      await new Promise(q=>setTimeout(q,0));
+    }
+    // Newly dual-confirmed retries become sequence anchors before the next pass.
+    df66ResolveRows(true);
+    targets=df66Rows.filter(df66NeedsRetry).slice(0,90);
+    if(pass===1) next.push(...targets);
+  }
+  df66ResolveRows(true);
+  df66RowRetry.recovered=df66Rows.filter(r=>r.rowStatus==='RESCUED_DUAL'||r.rowStatus==='CONFIRMED_SEQUENCE').length;
+  df66RowRetry.remaining=df66Rows.filter(r=>!['CONFIRMED_DUAL','RESCUED_DUAL','CONFIRMED_SEQUENCE'].includes(r.rowStatus)).length;
+}
+async function df66RunRowEngine(){
+  df66BuildPhysicalRows();
+  await df66ScanPaddleNoColumns();
+  df66AttachInitialNumbers();
+  df66ResolveRows(false);
+  await df66RetryRows();
+  df66RenderRowEngine();
+}
+function df66RowForBBox(zone,blockId,bbox){
+  const rows=df66Rows.filter(r=>r.zone===zone&&r.blockId===blockId);if(!rows.length)return null;
+  const best=[...rows].sort((a,b)=>Math.abs(a.y-center(bbox).y)-Math.abs(b.y-center(bbox).y))[0];
+  const tol=Math.max(.0022,Math.min(.005,best.spacing*.48));
+  return Math.abs(best.y-center(bbox).y)<=tol?best:null;
+}
+function df66RenderRowEngine(){
+  const el=$('rowEngineReport');if(!el)return;
+  if(!df66Rows.length){el.innerHTML='<strong>Robust Row Number Engine</strong><br><span>No physical table rows detected.</span>';return}
+  const count=s=>df66Rows.filter(r=>r.rowStatus===s).length;
+  const confirmed=count('CONFIRMED_DUAL')+count('RESCUED_DUAL')+count('CONFIRMED_SEQUENCE');
+  const review=df66Rows.length-confirmed;
+  const samples=df66Rows.filter(r=>!['CONFIRMED_DUAL','RESCUED_DUAL','CONFIRMED_SEQUENCE'].includes(r.rowStatus)).slice(0,10)
+    .map(r=>`Z${r.zone}/B${r.blockId} @ ${r.y.toFixed(4)}: ${escapeHtml(r.rowStatus)}${r.sequenceExpected!==''?` (expected ${r.sequenceExpected})`:''}`).join(' · ');
+  el.innerHTML=`<strong>Robust Row Number Engine</strong><br>
+    <span>Physical rows: <strong>${df66Rows.length}</strong> · confirmed: <strong class="ok">${confirmed}</strong> · needs review: <strong class="${review?'bad':'ok'}">${review}</strong></span><br>
+    <span>Dual direct: ${count('CONFIRMED_DUAL')} · dual rescued: ${count('RESCUED_DUAL')} · OCR+sequence: ${count('CONFIRMED_SEQUENCE')} · retry calls: ${df66RowRetry.attempted}</span>
+    ${samples?`<br><span class="bad">Review: ${samples}</span>`:''}`;
+}
+
+// Build records using PHYSICAL ROW identity for relations and robust row-number
+// evidence for row_no. This prevents a wrongly OCR'd NO value from attaching a
+// pipeline from a neighbouring row.
+function df66BuildRecords(){
+  const base=dfMetadata(),pipes=[],descs=[];
+  for(const p of base.pipes){
+    const hit=dfFindBlockAndColumn(p.bbox,p.zone,'PIPELINE');if(!hit)continue;
+    const row=df66RowForBBox(p.zone,hit.block.blockId,p.bbox);if(!row)continue;
+    pipes.push({...p,blockId:hit.block.blockId,physicalRowId:row.id});
+  }
+  for(const d of base.descs){
+    const hit=dfFindBlockAndColumn(d.bbox,d.zone,'DESCRIPTION');if(!hit)continue;
+    const row=df66RowForBBox(d.zone,hit.block.blockId,d.bbox);if(!row)continue;
+    descs.push({...d,blockId:hit.block.blockId,physicalRowId:row.id});
+  }
+
+  const out=[];
+  for(const r of verificationRows.filter(x=>x.status!=='CONFLICT'&&x.tag&&!df66IsPipelinePrefixTag(x.tag))){
+    const hit=dfFindBlockAndColumn(r.bbox,r.zone,r.column);if(!hit)continue;
+    const profile=dfProfileFor(r.zone,hit.block.blockId)||dfProfileBlock(dfModel(r.zone),hit.block);
+    const row=df66RowForBBox(r.zone,hit.block.blockId,r.bbox);if(!row)continue;
+    out.push({...r,blockId:hit.block.blockId,profile:profile.name,physicalRowId:row.id,
+      rowNo:row.rowNo,rowStatus:row.rowStatus,rowGoogle:(row.retryGoogle||row.google)?.value??'',rowPaddle:(row.retryPaddle||row.paddle)?.value??'',
+      rowRetry:[row.retryGoogle?.value,row.retryPaddle?.value].filter(x=>x!==undefined&&x!==null).join('/'),
+      rowSequenceExpected:row.sequenceExpected,rowSequenceSource:row.sequenceSource,rowEvidence:row.rowEvidence,
+      related:[],pipeline:'',description:'',relationAudit:[]});
+  }
+
+  for(const r of out){
+    const peers=out.filter(x=>x!==r&&x.physicalRowId===r.physicalRowId);
+    if(r.profile==='JB_MOV_LIST'){
+      for(const x of peers){
+        const pair=((r.column==='VALVE_TAG'&&x.column==='BOX_TAG')||(r.column==='BOX_TAG'&&x.column==='VALVE_TAG'))&&dfPrefixMatch(r.tag,x.tag);
+        if(pair){r.related.push(x.tag);r.relationAudit.push(`Physical row + prefix ${dfPrefix5(r.tag)} matched`)}
+      }
+    }
+    const pp=pipes.filter(p=>p.physicalRowId===r.physicalRowId&&dfPrefixMatch(r.tag,p.value))
+      .sort((a,b)=>Math.abs(center(a.bbox).y-center(r.bbox).y)-Math.abs(center(b.bbox).y-center(r.bbox).y))[0];
+    if(pp){r.pipeline=pp.value;r.relationAudit.push(`Pipeline: same physical row + prefix ${dfPrefix5(r.tag)} matched`)}
+    const dd=descs.filter(d=>d.physicalRowId===r.physicalRowId)
+      .sort((a,b)=>Math.abs(center(a.bbox).y-center(r.bbox).y)-Math.abs(center(b.bbox).y-center(r.bbox).y))[0];
+    if(dd)r.description=dd.value;
+    r.related=[...new Set(r.related)];
+  }
+  dfRecords=out;
+}
+
+renderResults=function(){
+  if(!dfRecords.length){$('results').innerHTML='<tr><td colspan="8" class="small">No records yet.</td></tr>';return}
+  const good=s=>['CONFIRMED_DUAL','RESCUED_DUAL','CONFIRMED_SEQUENCE'].includes(s);
+  $('results').innerHTML=[...dfRecords]
+    .sort((a,b)=>(Number(a.rowNo)||99999)-(Number(b.rowNo)||99999)||center(a.bbox).y-center(b.bbox).y)
+    .map(r=>`<tr>
+      <td>${dfBadge(r.status)}<br><span class="${good(r.rowStatus)?'ok':'bad'}">NO: ${escapeHtml(r.rowStatus)}</span></td>
+      <td><code>${escapeHtml(r.tag)}</code>${r.rowNo!==''?`<br><strong>row ${r.rowNo}</strong>`:`<br><span class="bad">row unresolved</span>`}<br><span>${escapeHtml(r.profile)}</span></td>
+      <td>${escapeHtml(r.column)}</td>
+      <td>${r.related.length?r.related.map(t=>`<code>${escapeHtml(t)}</code>`).join(' '):'—'}</td>
+      <td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}${r.relationAudit.length?`<br><span>${escapeHtml(r.relationAudit.join(' · '))}</span>`:''}</td>
+      <td>${escapeHtml(r.description||'—')}<br><span>NO evidence: G=${r.rowGoogle||'—'} · P=${r.rowPaddle||'—'}${r.rowSequenceExpected!==''?` · seq=${r.rowSequenceExpected}`:''}</span></td>
+      <td>${r.google?pct(r.google.confidence):'—'}</td>
+      <td>${r.paddle?pct(r.paddle.confidence):'—'}</td>
+    </tr>`).join('');
+};
+
+// Final v0.6.6 orchestration.
+$('runDual').onclick=async()=>{
+  if(!tiles.length||!endpoint())return;
+  resetResults();dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];dfProfiles=[];df66Rows=[];df66PaddleNums=[];
+  dfRowRescue={initialMissing:[],attempted:[],recovered:[],remaining:[],inferredRows:[],passes:0};
+  dfPaddleGoogleRescue={attempted:[],recovered:[],remaining:[],passes:0};
+  df66RowRetry={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+  dfRenderProfiles();dfRenderRescueSummary();df66RenderRowEngine();
+  $('runDual').disabled=true;$('plan').disabled=true;
+
+  try{
+    // 1) Google high-resolution main OCR.
+    for(let i=0;i<tiles.length;i++){
+      const t=tiles[i];$('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
+      const c=await renderTile(t),b=await canvasBlob(c),fd=new FormData();fd.append('file',b,`tile-${i+1}.png`);
+      const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+      for(const pg of (j.pages||[]))dfCollectGooglePage(pg,t,i+1);c.width=1;c.height=1;
+      $('progress').style.width=`${((i+1)/tiles.length)*38}%`;await new Promise(r=>setTimeout(r,0));
+    }
+
+    // 2) Learn headers / continuation blocks / table profiles.
+    dfBuildColumns();dfBuildProfiles();
+    if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG')))throw new Error('No searchable table schema recognized. Include a header-bearing block in the selected zone.');
+
+    // 3) Keep the proven tag-row rescue from v0.6.4.
+    googleCandidates=await dfRunRowRescue();
+    googleCandidates=df66FilterSearchableTags(googleCandidates);
+    $('progress').style.width='54%';
+
+    // 4) Paddle tag verification.
+    paddleCandidates=df66FilterSearchableTags(await dfPaddleColumnCandidates());
+    $('progress').style.width='68%';
+
+    // 5) Suppress demonstrably false 13-char extensions.
+    let filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);googleCandidates=filtered.g;paddleCandidates=filtered.p;
+
+    // 6) Paddle-only exact locations become targeted Google retries.
+    let pre=dfVerify(googleCandidates,paddleCandidates);await dfRunPaddleGoogleRescue(pre);
+    $('progress').style.width='78%';
+
+    // 7) Final tag verification after retries + BR exclusion.
+    googleCandidates=df66FilterSearchableTags(dfGoogleTagCandidates());
+    filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);googleCandidates=filtered.g;paddleCandidates=filtered.p;
+    verificationRows=dfVerify(googleCandidates,paddleCandidates);
+
+    // 8) NEW: independent robust row-number engine.
+    await df66RunRowEngine();
+    $('progress').style.width='95%';
+
+    // 9) Relations use physical row + table profile + first-5 prefix.
+    df66BuildRecords();
+    renderResults();renderAudit();updateMetrics();dfRenderColumns();dfRenderProfiles();dfRenderRescueSummary();df66RenderRowEngine();
+    $('progress').style.width='100%';
+    const rowGood=df66Rows.filter(r=>['CONFIRMED_DUAL','RESCUED_DUAL','CONFIRMED_SEQUENCE'].includes(r.rowStatus)).length;
+    $('status').innerHTML=`<span class="ok">v0.6.6 complete. Tags: ${dfRecords.length} · robust row numbers confirmed: ${rowGood}/${df66Rows.length} · row review: ${df66Rows.length-rowGood}.</span>`;
+  }catch(e){console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>'}
+  finally{$('runDual').disabled=false;$('plan').disabled=false;update()}
+};
+
+$('exportCsv').onclick=()=>{
+  if(!dfRecords.length)return;
+  const rows=[[
+    'status','row_no','row_status','row_google','row_paddle','row_retry','row_sequence_expected','row_sequence_source','row_evidence',
+    'profile','tag','column_type','related_tag','related_pipeline','description','google_confidence','paddle_confidence',
+    'relation_audit','page','zone','block_id','physical_row_id','prefix5','global_x_percent','global_y_percent'
+  ]];
+  for(const r of dfRecords){
+    const c=center(r.bbox);rows.push([
+      r.status,r.rowNo??'',r.rowStatus,r.rowGoogle,r.rowPaddle,r.rowRetry,r.rowSequenceExpected,r.rowSequenceSource,r.rowEvidence,
+      r.profile,r.tag,r.column,r.related.join(';'),r.pipeline,r.description,r.google?.confidence??'',r.paddle?.confidence??'',
+      r.relationAudit.join(' | '),r.page,r.zone,r.blockId,r.physicalRowId,dfPrefix5(r.tag),c.x*100,c.y*100
+    ]);
+  }
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download='drawing-finder-v0.6.6-robust-row-engine.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+df66RenderRowEngine();
 </script>
 
 </body>
