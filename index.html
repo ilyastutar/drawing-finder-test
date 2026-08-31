@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.7 — Row Integrity Engine</title>
+<title>Drawing Finder v0.6.7.1 — Row Integrity Hotfix</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.7 — Row Integrity Engine</h1>
+<h1>Drawing Finder v0.6.7.1 — Row Integrity Engine</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -106,7 +106,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <div class="buttons">
  <button id="plan" disabled>Plan tiles</button>
- <button id="runDual" disabled>Run Continuation-Aware Dual OCR</button>
+ <button id="runDual" disabled>Run Row-Integrity Dual OCR</button>
  <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
 </div>
 
@@ -2332,7 +2332,7 @@ function df67TagCellCrop(row,pass){
 function df67ParseTagTexts(items){
   const out=[];
   for(const x of items||[]){
-    for(const tag of extractKksCandidates(String(x.text||''))){
+    for(const tag of tagsInside(String(x.text||''))){
       if(df66IsPipelinePrefixTag(tag))continue;
       out.push({tag,confidence:Number(x.confidence||x.score||0),raw:x.text});
     }
@@ -2596,7 +2596,7 @@ $('runDual').onclick=async()=>{
 
     const s=df67IntegrityState().filter(x=>x.row.profile==='INSTRUMENT_LIST');
     const complete=s.filter(x=>['COMPLETE','DUPLICATE_TAG_RESOLVED'].includes(x.integrity)).length;
-    $('status').innerHTML=`<span class="ok">v0.6.7 complete. Instrument rows: ${s.length} · complete/resolved: ${complete} · needs review: ${s.length-complete} · final searchable records: ${dfRecords.length}.</span>`;
+    $('status').innerHTML=`<span class="ok">v0.6.7.1 complete. Instrument rows: ${s.length} · complete/resolved: ${complete} · needs review: ${s.length-complete} · final searchable records: ${dfRecords.length}.</span>`;
   }catch(e){
     console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
   }finally{
@@ -2624,7 +2624,7 @@ $('exportCsv').onclick=()=>{
   }
   const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=u;a.download='drawing-finder-v0.6.7-row-integrity.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+  a.href=u;a.download='drawing-finder-v0.6.7.1-row-integrity.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
 };
 
 df67RenderIntegrity();
