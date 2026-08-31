@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.3 — Continuation-Aware Dual OCR</title>
+<title>Drawing Finder v0.6.4 — Row-Rescue Dual OCR</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,8 +54,8 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.3 — Continuation-Aware Dual OCR</h1>
-<p>Google Document OCR + lightweight PaddleOCR verification + table-header inheritance for continuation blocks.</p>
+<h1>Drawing Finder v0.6.4 — Row-Rescue Dual OCR</h1>
+<p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
  <strong>Continuation-aware rule:</strong> KKS-looking pipeline prefixes are not tags unless they sit under a recognized or safely inherited tag column. Google confidence and Paddle confidence remain the OCR engines' own scores.
@@ -144,10 +144,14 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <h2 style="margin-top:18px">Detected table structure</h2>
 <div id="columnReport"><div class="row">No table structure detected yet.</div></div>
+<div id="rowRescueReport" class="row" style="margin-top:8px">
+ <strong>Row completeness / rescue</strong><br>
+ <span>No row-rescue analysis yet.</span>
+</div>
 
 <h2 style="margin-top:18px">Searchable tag records</h2>
 <div class="note">
- Only values under recognized or safely inherited tag columns are searchable tags. Recognized examples: <strong>Instrument KKS</strong>, <strong>Valve TAG</strong>, <strong>BOX TAG</strong>, <strong>JB TAG</strong>, <strong>Equipment TAG</strong>, <strong>Tag Number</strong>. Pipeline Name / Line Number are stored separately as related pipeline metadata.
+ Only values under recognized or safely inherited tag columns are searchable tags. Recognized examples: <strong>Instrument KKS</strong>, <strong>Valve TAG</strong>, <strong>BOX TAG</strong>, <strong>JB TAG</strong>, <strong>JB NAME</strong>, <strong>Equipment TAG</strong>, <strong>Tag Number</strong>. Pipeline Name / Line Number are stored separately as related pipeline metadata.
 </div>
 <div class="result-scroll">
 <table>
@@ -946,6 +950,317 @@ $('runDual').onclick=async()=>{
  }catch(e){console.error(e);$('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>'}finally{$('runDual').disabled=false;$('plan').disabled=false;update()}
 };
 $('exportCsv').onclick=()=>{if(!dfRecords.length)return;const rows=[['status','tag','column_type','related_tag','related_pipeline','description','google_confidence','paddle_confidence','page','zone','global_x_percent','global_y_percent']];for(const r of dfRecords){const c=center(r.bbox);rows.push([r.status,r.tag,r.column,r.related.join(';'),r.pipeline,r.description,r.google?.confidence??'',r.paddle?.confidence??'',r.page,r.zone,c.x*100,c.y*100])}const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n'),blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='drawing-finder-v0.6.3-continuation-aware.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)};
+</script>
+
+
+<script>
+// ===== v0.6.4 row completeness + targeted OCR rescue overrides =====
+
+// JB NAME is a searchable junction-box identifier header.
+// Keep separate-table schemas in separate OCR zones when possible.
+{
+  const boxGroup = DF_HEADERS.find(x => x.role==='TAG' && x.subtype==='BOX_TAG');
+  if (boxGroup) {
+    for (const alias of ['JB NAME','JUNCTION BOX NAME']) {
+      if (!boxGroup.aliases.includes(alias)) boxGroup.aliases.push(alias);
+    }
+  }
+}
+
+let dfRowRescue = {
+  initialMissing: [],
+  attempted: [],
+  recovered: [],
+  remaining: [],
+  inferredRows: [],
+  passes: 0
+};
+
+function dfUniqueByKey(rows, keyFn){
+  const seen=new Set(),out=[];
+  for(const r of rows){const k=keyFn(r);if(seen.has(k))continue;seen.add(k);out.push(r)}
+  return out;
+}
+function dfColMid(c){return (c.left+c.right)/2}
+function dfWithinCol(b,c){
+  const x=center(b).x;
+  return x>=c.left && x<=c.right;
+}
+function dfRowCandidatesForBlock(model,block){
+  const noCol=block.columns.find(c=>c.role==='IGNORE'&&c.subtype==='NO');
+  if(!noCol)return [];
+  const rows=dfRawRowNumbers(model.zone)
+    .filter(r=>r.page===zones[model.zone-1].page && dfWithinCol(r.bbox,noCol) && center(r.bbox).y>=noCol.headerBottom-.003)
+    .sort((a,b)=>center(a.bbox).y-center(b.bbox).y);
+
+  return dfUniqueByKey(rows,r=>`${r.num}|${Math.round(center(r.bbox).x*10000)}|${Math.round(center(r.bbox).y*10000)}`);
+}
+function dfRowSpacing(rows){
+  const ys=rows.map(r=>center(r.bbox).y).sort((a,b)=>a-b),ds=[];
+  for(let i=1;i<ys.length;i++){const d=ys[i]-ys[i-1];if(d>.0005&&d<.05)ds.push(d)}
+  return dfMedian(ds)||.006;
+}
+function dfHasTagOnRow(cands,row,tagCol,yOverride=null){
+  const y=yOverride==null?center(row.bbox).y:yOverride;
+  const h=Math.max(boxH(row.bbox||{x0:0,y0:y-.001,y1:y+.001,x1:0}),.0015);
+  return cands.some(t=>
+    t.zone===row.zone && t.page===row.page && t.column===tagCol.subtype &&
+    dfWithinCol(t.bbox,tagCol) &&
+    Math.abs(center(t.bbox).y-y)<=Math.max(.0028,h*1.6)
+  );
+}
+function dfTargetKey(t){
+  return `${t.zone}|${t.page}|${t.blockId}|${t.rowNo}|${t.column}`;
+}
+function dfBuildMissingCellTargets(cands){
+  const targets=[],inferred=[];
+  for(const model of dfColumnModels){
+    const z=zones[model.zone-1];
+    for(const block of (model.blocks||[])){
+      const tagCols=block.columns.filter(c=>c.role==='TAG');
+      const noCol=block.columns.find(c=>c.role==='IGNORE'&&c.subtype==='NO');
+      if(!tagCols.length||!noCol)continue;
+
+      const rows=dfRowCandidatesForBlock(model,block);
+      if(!rows.length)continue;
+      const spacing=dfRowSpacing(rows);
+
+      // A) Row number exists, but one of the expected TAG cells is empty.
+      for(const row of rows){
+        for(const tc of tagCols){
+          if(!dfHasTagOnRow(cands,row,tc)){
+            targets.push({
+              kind:'ROW_PRESENT_TAG_MISSING',
+              zone:model.zone,page:row.page,blockId:block.blockId,rowNo:row.num,
+              y:center(row.bbox).y,rowHeight:Math.max(boxH(row.bbox),spacing*.45),
+              column:tc.subtype,col:tc,spacing
+            });
+          }
+        }
+      }
+
+      // B) Row-number continuity gap: if n and n+k are visible and their vertical
+      // spacing is plausible, infer the missing row y-position(s).
+      const byNum=[...rows].sort((a,b)=>a.num-b.num);
+      for(let i=0;i<byNum.length-1;i++){
+        const a=byNum[i],b=byNum[i+1],dn=b.num-a.num;
+        if(dn<2||dn>4)continue;
+        const ya=center(a.bbox).y,yb=center(b.bbox).y;
+        const step=(yb-ya)/dn;
+        if(step<=0||Math.abs(step-spacing)>Math.max(.003,spacing*.65))continue;
+
+        for(let k=1;k<dn;k++){
+          const rn=a.num+k,y=ya+step*k;
+          inferred.push({zone:model.zone,page:a.page,blockId:block.blockId,rowNo:rn,y});
+          for(const tc of tagCols){
+            const pseudo={zone:model.zone,page:a.page,bbox:{x0:noCol.left,y0:y-step*.25,x1:noCol.right,y1:y+step*.25}};
+            if(!dfHasTagOnRow(cands,pseudo,tc,y)){
+              targets.push({
+                kind:'ROW_NUMBER_GAP',
+                zone:model.zone,page:a.page,blockId:block.blockId,rowNo:rn,
+                y,rowHeight:Math.max(step*.5,.0025),column:tc.subtype,col:tc,spacing:step
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+  dfRowRescue.inferredRows=dfUniqueByKey(inferred,x=>`${x.zone}|${x.blockId}|${x.rowNo}`);
+  return dfUniqueByKey(targets,dfTargetKey);
+}
+function dfTargetCrop(t,pass){
+  const z=zones[t.zone-1],c=t.col;
+  const xMargin=Math.max(.002,(c.right-c.left)*(pass===1?.10:.16));
+  const halfY=Math.max(.0028,Math.min(.014,(t.spacing||t.rowHeight||.006)*(pass===1?.48:.65)));
+  const x0=Math.max(z.x,c.left-xMargin),x1=Math.min(z.x+z.w,c.right+xMargin);
+  const y0=Math.max(z.y,t.y-halfY),y1=Math.min(z.y+z.h,t.y+halfY);
+  return{x:x0,y:y0,w:Math.max(.0005,x1-x0),h:Math.max(.0005,y1-y0)};
+}
+async function dfGoogleRetryTarget(t,pass,index,total){
+  const crop=dfTargetCrop(t,pass);
+  const dpi=pass===1?700:900;
+  const maxSide=pass===1?2600:3200;
+  $('status').textContent=`Row rescue ${pass}/2: row ${t.rowNo} · ${t.column} (${index}/${total})…`;
+
+  const c=await dfRenderNormCrop(t.page,crop,dpi,maxSide);
+  const b=await canvasBlob(c),fd=new FormData();
+  fd.append('file',b,`row-${t.rowNo}-${t.column}-retry-${pass}.png`);
+  const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd});
+  const j=await rr.json();
+  if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+
+  const pseudoTile={
+    nx:crop.x,ny:crop.y,nw:crop.w,nh:crop.h,
+    page:t.page,zoneIndex:t.zone-1
+  };
+  for(const pg of (j.pages||[]))dfCollectGooglePage(pg,pseudoTile,9000+pass*1000+index);
+  c.width=1;c.height=1;
+  await new Promise(r=>setTimeout(r,0));
+}
+function dfTargetRecovered(t,cands){
+  const pseudo={zone:t.zone,page:t.page,bbox:{x0:t.col.left,y0:t.y-.001,x1:t.col.right,y1:t.y+.001}};
+  return dfHasTagOnRow(cands,pseudo,t.col,t.y);
+}
+async function dfRunRowRescue(){
+  dfRowRescue={initialMissing:[],attempted:[],recovered:[],remaining:[],inferredRows:[],passes:0};
+
+  let current=dfGoogleTagCandidates();
+  let targets=dfBuildMissingCellTargets(current);
+  dfRowRescue.initialMissing=[...targets];
+
+  // Limit retries to avoid runaway API calls if a wrong zone/schema is selected.
+  const HARD_LIMIT=40;
+  targets=targets.slice(0,HARD_LIMIT);
+
+  for(let pass=1;pass<=2 && targets.length;pass++){
+    dfRowRescue.passes=pass;
+    for(let i=0;i<targets.length;i++){
+      const t=targets[i];
+      dfRowRescue.attempted.push({...t,pass});
+      await dfGoogleRetryTarget(t,pass,i+1,targets.length);
+    }
+
+    // Re-sort/dedupe because targeted OCR added new Google lines/tokens.
+    dfGoogleLines=dfSortSpatial(dfDedupeText(dfGoogleLines));
+    dfGoogleTokens=dfSortSpatial(dfDedupeText(dfGoogleTokens));
+    current=dfGoogleTagCandidates();
+
+    const unresolved=targets.filter(t=>!dfTargetRecovered(t,current));
+    for(const t of targets.filter(t=>dfTargetRecovered(t,current))){
+      if(!dfRowRescue.recovered.some(x=>dfTargetKey(x)===dfTargetKey(t)))dfRowRescue.recovered.push({...t,pass});
+    }
+    targets=unresolved;
+  }
+
+  dfRowRescue.remaining=targets;
+  dfRenderRowRescue();
+  return dfGoogleTagCandidates();
+}
+function dfRenderRowRescue(){
+  const el=$('rowRescueReport');if(!el)return;
+  const i=dfRowRescue.initialMissing.length,a=dfRowRescue.attempted.length,r=dfRowRescue.recovered.length,m=dfRowRescue.remaining.length;
+  const inferred=dfRowRescue.inferredRows.length;
+
+  if(!i){
+    el.innerHTML='<strong>Row completeness / rescue ✅</strong><br><span>No missing searchable-tag cells detected from the NO-column structure.</span>';
+    return;
+  }
+  const rem=dfRowRescue.remaining.slice(0,12).map(x=>`row ${x.rowNo} / ${escapeHtml(x.column)}`).join(' · ');
+  el.innerHTML=`<strong>Row completeness / rescue</strong><br>
+    <span>Detected missing cells: <strong>${i}</strong> · retry requests: <strong>${a}</strong> · recovered: <strong class="ok">${r}</strong> · remaining: <strong class="${m?'bad':'ok'}">${m}</strong>${inferred?` · inferred missing row numbers: <strong>${inferred}</strong>`:''}</span>
+    ${m?`<br><span class="bad">Still needs review: ${rem}${dfRowRescue.remaining.length>12?' …':''}</span>`:''}`;
+}
+function dfAnnotateRows(){
+  for(const r of dfRecords){
+    r.rowNo='';
+    r.rowRescue='';
+    const model=dfModel(r.zone);if(!model)continue;
+
+    let best=null,bestDy=1e9;
+    for(const block of (model.blocks||[])){
+      const col=block.columns.find(c=>c.subtype===r.column);
+      const noCol=block.columns.find(c=>c.role==='IGNORE'&&c.subtype==='NO');
+      if(!col||!noCol||!dfWithinCol(r.bbox,col))continue;
+      for(const n of dfRowCandidatesForBlock(model,block)){
+        const dy=Math.abs(center(n.bbox).y-center(r.bbox).y);
+        if(dy<bestDy){best=n;bestDy=dy}
+      }
+    }
+    if(best&&bestDy<.01)r.rowNo=best.num;
+
+    const rescued=dfRowRescue.recovered.find(t=>
+      t.zone===r.zone && t.column===r.column &&
+      Math.abs(t.y-center(r.bbox).y)<Math.max(.004,(t.spacing||.006)*.8)
+    );
+    if(rescued){
+      r.rowRescue=`GOOGLE_RETRY_${rescued.pass}`;
+      if(!r.rowNo)r.rowNo=rescued.rowNo;
+    }
+  }
+}
+
+// Override result renderer to expose row number and retry marker without changing the main data model.
+renderResults=function(){
+  if(!dfRecords.length){$('results').innerHTML='<tr><td colspan="8" class="small">No records yet.</td></tr>';return}
+  $('results').innerHTML=[...dfRecords].sort((a,b)=>(Number(a.rowNo)||99999)-(Number(b.rowNo)||99999)||(a.tag||'').localeCompare(b.tag||'')).map(r=>`<tr>
+    <td>${dfBadge(r.status)}${r.rowRescue?'<br><span class="warn">↻ rescued</span>':''}</td>
+    <td><code>${escapeHtml(r.tag)}</code>${r.rowNo!==''?`<br><span>row ${r.rowNo}</span>`:''}</td>
+    <td>${escapeHtml(r.column)}</td>
+    <td>${r.related.length?r.related.map(t=>`<code>${escapeHtml(t)}</code>`).join(' '):'—'}</td>
+    <td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}</td>
+    <td>${escapeHtml(r.description||'—')}</td>
+    <td>${r.google?pct(r.google.confidence):'—'}</td>
+    <td>${r.paddle?pct(r.paddle.confidence):'—'}</td>
+  </tr>`).join('');
+};
+
+// Final v0.6.4 orchestration.
+$('runDual').onclick=async()=>{
+ if(!tiles.length||!endpoint())return;
+ resetResults();dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];
+ dfRowRescue={initialMissing:[],attempted:[],recovered:[],remaining:[],inferredRows:[],passes:0};
+ dfRenderRowRescue();
+ $('runDual').disabled=true;$('plan').disabled=true;
+
+ try{
+  // 1) Google high-resolution normal pass.
+  for(let i=0;i<tiles.length;i++){
+    const t=tiles[i];
+    $('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
+    const c=await renderTile(t),b=await canvasBlob(c),fd=new FormData();
+    fd.append('file',b,`tile-${i+1}.png`);
+    const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();
+    if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+    for(const pg of (j.pages||[]))dfCollectGooglePage(pg,t,i+1);
+    c.width=1;c.height=1;
+    $('progress').style.width=`${((i+1)/tiles.length)*48}%`;
+    await new Promise(r=>setTimeout(r,0));
+  }
+
+  // 2) Learn headers + continuation blocks.
+  dfBuildColumns();
+  if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG'))){
+    throw new Error('No searchable tag schema recognized. Include at least one header-bearing block (for example Instrument KKS, Valve TAG, BOX TAG or JB NAME) in the selected zone.');
+  }
+
+  // 3) Row-completeness audit and targeted Google re-OCR of missing tag cells.
+  googleCandidates=await dfRunRowRescue();
+  $('progress').style.width='70%';
+
+  // 4) Paddle verification remains narrow-column / low-resolution for stability.
+  paddleCandidates=await dfPaddleColumnCandidates();
+  $('progress').style.width='92%';
+
+  // 5) Verify, relate metadata, annotate row/rescue info.
+  verificationRows=dfVerify(googleCandidates,paddleCandidates);
+  dfBuildRecords();
+  dfAnnotateRows();
+  renderResults();renderAudit();updateMetrics();dfRenderColumns();dfRenderRowRescue();
+
+  $('progress').style.width='100%';
+  $('status').innerHTML=`<span class="ok">v0.6.4 complete. Row rescue recovered ${dfRowRescue.recovered.length}/${dfRowRescue.initialMissing.length} detected missing tag cell(s).</span>`;
+ }catch(e){
+  console.error(e);
+  $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+ }finally{
+  $('runDual').disabled=false;$('plan').disabled=false;update();
+ }
+};
+
+$('exportCsv').onclick=()=>{
+ if(!dfRecords.length)return;
+ const rows=[['status','row_no','tag','column_type','related_tag','related_pipeline','description','google_confidence','paddle_confidence','row_rescue','page','zone','global_x_percent','global_y_percent']];
+ for(const r of dfRecords){
+  const c=center(r.bbox);
+  rows.push([r.status,r.rowNo??'',r.tag,r.column,r.related.join(';'),r.pipeline,r.description,r.google?.confidence??'',r.paddle?.confidence??'',r.rowRescue||'',r.page,r.zone,c.x*100,c.y*100]);
+ }
+ const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+ const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=u;a.download='drawing-finder-v0.6.4-row-rescue.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+dfRenderRowRescue();
 </script>
 
 </body>
