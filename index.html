@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.8 — Pipeline & Elevation Integrity</title>
+<title>Drawing Finder v0.6.9 — Verified Pipeline & Row Resolver</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.8 — Pipeline & Elevation Integrity</h1>
+<h1>Drawing Finder v0.6.9 — Verified Pipeline & Row Resolver</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -106,7 +106,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <div class="buttons">
  <button id="plan" disabled>Plan tiles</button>
- <button id="runDual" disabled>Run Pipeline & Elevation Integrity OCR</button>
+ <button id="runDual" disabled>Run Verified Pipeline & Row OCR</button>
  <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
 </div>
 
@@ -163,6 +163,10 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 <div id="pipelineElevationReport" class="row" style="margin-top:8px">
  <strong>Pipeline / Elevation Integrity</strong><br>
  <span>No pipeline/elevation analysis yet.</span>
+</div>
+<div id="v69Report" class="row" style="margin-top:8px">
+ <strong>v0.6.9 Verification</strong><br>
+ <span>No verification analysis yet.</span>
 </div>
 
 <h2 style="margin-top:18px">Searchable tag records</h2>
@@ -3230,6 +3234,660 @@ $('exportCsv').onclick=()=>{
 };
 
 df68RenderPipelineElevation();
+</script>
+
+
+<script>
+// ===== v0.6.9 Verified Pipeline + Robust Row Conflict Resolver =====
+
+let df69PaddlePipes=[];
+let df69PipelineScanDone=false;
+
+// More header aliases. If OCR still misses the header, a numeric-column geometry
+// fallback below infers FLOOR_ELEVATION from the data itself.
+{
+  const floor=DF_HEADERS.find(x=>x.subtype==='FLOOR_ELEVATION');
+  if(floor){
+    for(const a of [
+      'FLOOR ELEV','FLOOR ELEV.','FLOOR EL','FLOOR EL.',
+      'FLOOR LEVEL ELEVATION','FLOOR ELEVATION / M','FLOOR ELEVATION M'
+    ]) if(!floor.aliases.includes(a))floor.aliases.push(a);
+  }
+}
+
+// ---------- Floor Elevation column inference ----------
+function df69ClusterXs(vals,tol=.012){
+  const sorted=[...vals].sort((a,b)=>a.x-b.x), groups=[];
+  for(const v of sorted){
+    let g=groups.length?groups[groups.length-1]:null;
+    if(!g||Math.abs(v.x-g.center)>tol){
+      g={items:[],center:v.x};groups.push(g);
+    }
+    g.items.push(v);
+    g.center=g.items.reduce((s,x)=>s+x.x,0)/g.items.length;
+  }
+  return groups.filter(g=>g.items.length>=3);
+}
+function df69InferFloorElevationColumns(){
+  for(const model of dfColumnModels){
+    const z=zones[model.zone-1];
+    const base=model.blocks?.find(b=>b.type==='HEADER');
+    if(!base)continue;
+
+    let elev=base.columns.find(c=>c.subtype==='ELEVATION');
+    let floor=base.columns.find(c=>c.subtype==='FLOOR_ELEVATION');
+    const pipe=base.columns.find(c=>c.subtype==='PIPELINE');
+    if(!elev||floor||!pipe)continue;
+
+    const ec=dfColumnCenter(elev), pc=dfColumnCenter(pipe);
+    const expectedGap=Math.max(.025,Math.min(.13,Math.abs(ec-pc)*.75));
+    const xmin=ec-Math.max(.012,expectedGap*.25);
+    const xmax=Math.min(z.x+z.w,ec+Math.max(.08,expectedGap*1.6));
+
+    const nums=[];
+    for(const ln of dfGoogleLines){
+      if(ln.zone!==model.zone)continue;
+      const y=center(ln.bbox).y,x=center(ln.bbox).x;
+      if(y<elev.headerBottom-.002||x<xmin||x>xmax)continue;
+      const v=df68ElevationValue(ln.text);
+      if(v===null)continue;
+      nums.push({x,y,value:v,bbox:ln.bbox});
+    }
+    const clusters=df69ClusterXs(nums,.0105).sort((a,b)=>a.center-b.center);
+    if(clusters.length<2)continue;
+
+    // Cluster closest to recognized ELEVATION is the elevation column;
+    // first stable cluster to its right becomes FLOOR_ELEVATION.
+    const elevCluster=[...clusters].sort((a,b)=>Math.abs(a.center-ec)-Math.abs(b.center-ec))[0];
+    const rightClusters=clusters.filter(g=>g.center>elevCluster.center+.008);
+    if(!rightClusters.length)continue;
+    const floorCluster=rightClusters[0];
+
+    const mid=(elevCluster.center+floorCluster.center)/2;
+    elev.left=Math.min(elev.left,elevCluster.center-(mid-elevCluster.center));
+    elev.right=mid;
+
+    floor={
+      role:'ELEVATION',subtype:'FLOOR_ELEVATION',
+      aliases:['FLOOR ELEVATION'],
+      text:'[inferred from numeric column geometry]',
+      bbox:{x0:floorCluster.center-.002,y0:elev.headerBottom-.004,x1:floorCluster.center+.002,y1:elev.headerBottom},
+      confidence:1,score:1,_rank:1,
+      left:mid,
+      right:Math.min(z.x+z.w,floorCluster.center+(floorCluster.center-elevCluster.center)/2),
+      headerBottom:elev.headerBottom,
+      inherited:false,blockId:base.blockId,
+      inferredFloor:true
+    };
+    base.columns.push(floor);
+    model.columns.push(floor);
+
+    // Copy inferred column to continuation blocks using the inherited ELEVATION offset.
+    for(const b of model.blocks.filter(x=>x.type==='CONTINUATION')){
+      if(b.columns.some(c=>c.subtype==='FLOOR_ELEVATION'))continue;
+      const ce=b.columns.find(c=>c.subtype==='ELEVATION');
+      if(!ce)continue;
+      const offset=dfColumnCenter(ce)-dfColumnCenter(elev);
+      const cf={...floor,
+        left:floor.left+offset,right:floor.right+offset,
+        bbox:{...floor.bbox,x0:floor.bbox.x0+offset,x1:floor.bbox.x1+offset},
+        inherited:true,blockId:b.blockId,inheritedFrom:base.blockId
+      };
+      b.columns.push(cf);model.columns.push(cf);
+    }
+  }
+  dfRenderColumns();
+}
+
+// ---------- Strict pipeline parsing ----------
+function df69StrictPipelineValue(s){
+  const v=String(s||'').toUpperCase().replace(/\s+/g,'').trim();
+  // MUST start with a genuine pipeline KKS base: 99AAA99BR999
+  if(!/^\d{2}[A-Z]{3}\d{2}BR\d{3}/.test(v))return null;
+  // Full pipeline metadata must continue beyond the 12-char base.
+  if(v.length<16)return null;
+  return v;
+}
+function df69PipelineCompleteness(v){
+  const s=String(v||'');
+  let score=Math.min(12,s.length/4);
+  if(/^\d{2}[A-Z]{3}\d{2}BR\d{3}/.test(s))score+=20;
+  if(/-[A-Z0-9]{2,6}/.test(s))score+=3;
+  if(/-DN\d+/.test(s))score+=5;
+  if(/00UMA\d+/i.test(s))score+=4;
+  if(/_\d{2}$/.test(s))score+=5;
+  return score;
+}
+
+// ---------- Paddle pipeline verification ----------
+async function df69ScanPaddlePipelines(){
+  df69PaddlePipes=[];df69PipelineScanDone=false;
+  const ocr=await loadPaddle();
+  const dpi=320,maxSide=5200,score=Math.min(.42,Number($('paddleScore').value||.42));
+
+  const cols=[];
+  for(const model of dfColumnModels){
+    const z=zones[model.zone-1];
+    for(const col of model.columns.filter(c=>c.subtype==='PIPELINE')){
+      cols.push({model,z,col});
+    }
+  }
+
+  for(let ci=0;ci<cols.length;ci++){
+    const {model,z,col}=cols[ci];
+    const margin=Math.max(.002,(col.right-col.left)*.035);
+    const x0=Math.max(z.x,col.left-margin),x1=Math.min(z.x+z.w,col.right+margin);
+    const y0=Math.max(z.y,col.headerBottom-.003);
+    const crop={x:x0,y:y0,w:x1-x0,h:z.y+z.h-y0};
+    if(crop.w<=0||crop.h<=0)continue;
+
+    $('status').textContent=`Paddle pipeline verification: Zone ${model.zone} / block ${col.blockId} (${ci+1}/${cols.length})…`;
+    const c=await dfRenderNormCrop(z.page,crop,dpi,maxSide);
+    const [res]=await ocr.predict(c,{
+      textDetLimitSideLen:2048,textDetLimitType:'max',textDetMaxSideLimit:maxSide,
+      textDetThresh:.18,textDetBoxThresh:.30,textDetUnclipRatio:1.35,textRecScoreThresh:score
+    });
+
+    const raw=[];
+    for(const item of (res.items||[])){
+      const b=dfPolyGlobal(item.poly||[],c,crop);if(!b)continue;
+      raw.push({
+        text:String(item.text||''),confidence:Number(item.score||0),bbox:b,
+        page:z.page,zone:model.zone,blockId:col.blockId,engine:'Paddle'
+      });
+    }
+
+    // Direct full strings.
+    for(const r of raw){
+      const v=df69StrictPipelineValue(r.text);
+      if(v)df69PaddlePipes.push({...r,value:v});
+    }
+
+    // Reconstruct split items on the same visual row.
+    const sorted=[...raw].sort((a,b)=>center(a.bbox).y-center(b.bbox).y||center(a.bbox).x-center(b.bbox).x);
+    const rowGroups=[];
+    for(const r of sorted){
+      let g=rowGroups.find(x=>{
+        const h=Math.max(boxH(r.bbox),x.h,.001);
+        return Math.abs(center(r.bbox).y-x.y)<=Math.max(.002,h*1.35);
+      });
+      if(!g){g={items:[],y:center(r.bbox).y,h:boxH(r.bbox)};rowGroups.push(g)}
+      g.items.push(r);g.y=g.items.reduce((s,x)=>s+center(x.bbox).y,0)/g.items.length;
+      g.h=Math.max(...g.items.map(x=>boxH(x.bbox)));
+    }
+    for(const g of rowGroups){
+      const its=[...g.items].sort((a,b)=>center(a.bbox).x-center(b.bbox).x);
+      for(let start=0;start<its.length;start++){
+        let text='',boxes=[],conf=1;
+        for(let end=start;end<Math.min(its.length,start+5);end++){
+          text+=String(its[end].text||'').replace(/\s+/g,'');
+          boxes.push(its[end].bbox);conf=Math.min(conf,Number(its[end].confidence||0));
+          const v=df69StrictPipelineValue(text);
+          if(v){
+            df69PaddlePipes.push({
+              value:v,text:v,confidence:conf,bbox:unionBboxes(boxes),
+              page:z.page,zone:model.zone,blockId:col.blockId,engine:'Paddle'
+            });
+          }
+        }
+      }
+    }
+    c.width=1;c.height=1;await new Promise(r=>setTimeout(r,0));
+  }
+
+  // Dedupe exact same pipeline near same location.
+  const out=[];
+  for(const r of [...df69PaddlePipes].sort((a,b)=>b.confidence-a.confidence)){
+    if(out.some(x=>x.value===r.value&&x.zone===r.zone&&Math.abs(center(x.bbox).y-center(r.bbox).y)<.0025))continue;
+    out.push(r);
+  }
+  df69PaddlePipes=out;
+  df69PipelineScanDone=true;
+}
+
+// Override metadata: reject fragments such as "-DN450-00UMA..." and include Paddle.
+df68Metadata=function(){
+  if(df68MetaCache)return df68MetaCache;
+  const pipes=[],descs=[],elevations=[],floorElevations=[];
+
+  for(const ln of dfGoogleLines){
+    const col=dfClassify(ln.bbox,ln.zone);
+    if(!col||dfHeaderMatch(ln.text))continue;
+
+    if(col.role==='PIPELINE'){
+      const v=df69StrictPipelineValue(ln.text);
+      if(v)pipes.push({...ln,value:v,engine:'Google',blockId:col.blockId});
+    }else if(col.role==='DESCRIPTION'){
+      const v=String(ln.text||'').trim();
+      if(v.length>1)descs.push({...ln,value:v});
+    }else if(col.role==='ELEVATION'){
+      const v=df68ElevationValue(ln.text);
+      if(v!==null){
+        const rec={...ln,value:v,columnSubtype:col.subtype};
+        if(col.subtype==='FLOOR_ELEVATION')floorElevations.push(rec);
+        else elevations.push(rec);
+      }
+    }
+  }
+
+  for(const p of df69PaddlePipes)pipes.push({...p});
+
+  const dedupeMeta=(arr)=> {
+    const out=[];
+    for(const r of arr){
+      if(out.some(x=>x.value===r.value&&x.zone===r.zone&&
+        Math.abs(center(x.bbox).y-center(r.bbox).y)<.0015&&
+        Math.abs(center(x.bbox).x-center(r.bbox).x)<.01&&x.engine===r.engine))continue;
+      out.push(r);
+    }
+    return out;
+  };
+
+  df68MetaCache={
+    pipes:dedupeMeta(pipes),
+    descs:dfDedupeText(descs.map(x=>({...x,text:x.value}))).map(x=>({...x,value:x.text})),
+    elevations:dfDedupeText(elevations.map(x=>({...x,text:x.value}))).map(x=>({...x,value:x.text})),
+    floorElevations:dfDedupeText(floorElevations.map(x=>({...x,text:x.value}))).map(x=>({...x,value:x.text}))
+  };
+  return df68MetaCache;
+};
+
+function df69GroupPipelineCandidates(cands){
+  const m=new Map();
+  for(const p of cands){
+    const v=df69StrictPipelineValue(p.value||p.text);if(!v)continue;
+    if(!m.has(v))m.set(v,{value:v,items:[],engines:new Set(),confidence:0,bbox:p.bbox,zone:p.zone,page:p.page});
+    const g=m.get(v);g.items.push(p);g.engines.add(p.engine||'Google');
+    if(Number(p.confidence||0)>g.confidence){g.confidence=Number(p.confidence||0);g.bbox=p.bbox}
+  }
+  return [...m.values()];
+}
+function df69PipelineCandidateScore(p,tagPrefix=''){
+  let s=df69PipelineCompleteness(p.value)+Number(p.confidence||0)*20;
+  if(tagPrefix&&dfPrefix5(p.value)===tagPrefix)s+=35;
+  if(p.engines?.has('Google')&&p.engines?.has('Paddle'))s+=70;
+  else if(p.engines?.has('Paddle'))s+=7;
+  return s;
+}
+df68ResolvePipelineCandidates=function(cands,tagCands){
+  const grouped=df69GroupPipelineCandidates(cands);
+  if(!grouped.length)return {winner:null,rejected:[],reason:'MISSING',uniqueCount:0};
+  const verifiedTag=tagCands.find(t=>t.status==='VERIFIED')||tagCands[0]||null;
+  const pref=verifiedTag?dfPrefix5(verifiedTag.tag):'';
+
+  const ranked=[...grouped].sort((a,b)=>df69PipelineCandidateScore(b,pref)-df69PipelineCandidateScore(a,pref));
+  const best=ranked[0];
+  const dual=best.engines.has('Google')&&best.engines.has('Paddle');
+
+  return {
+    winner:{...best,engine:dual?'Google+Paddle':[...best.engines].join('+')},
+    rejected:ranked.slice(1).map(x=>({...x,engine:[...x.engines].join('+')})),
+    reason:grouped.length===1?(dual?'SINGLE_VERIFIED':'SINGLE'):(dual?'DUAL_ENGINE_PIPELINE_RESOLUTION':'ROW_PIPELINE_CANDIDATE_RESOLUTION'),
+    uniqueCount:grouped.length
+  };
+};
+
+// Conservative cross-row canonical support.
+// Same pipeline base may repeat on many rows and that is VALID.
+// We use those repetitions only to repair a weaker OCR variant.
+function df69ApplyCrossRowCanonical(rows){
+  const groups=new Map();
+  for(const x of rows){
+    for(const p of df69GroupPipelineCandidates(x.pipelineCandidates||[])){
+      const base=df68PipelineBase(p.value);if(!base)continue;
+      if(!groups.has(base))groups.set(base,new Map());
+      const gm=groups.get(base);
+      if(!gm.has(p.value))gm.set(p.value,{value:p.value,rows:new Set(),dualRows:new Set(),score:0});
+      const st=gm.get(p.value);
+      st.rows.add(x.row.id);
+      if(p.engines.has('Google')&&p.engines.has('Paddle'))st.dualRows.add(x.row.id);
+      st.score+=df69PipelineCompleteness(p.value)+p.confidence*10;
+    }
+  }
+
+  for(const x of rows){
+    if(!x.pipe)continue;
+    const base=df68PipelineBase(x.pipe.value), gm=groups.get(base);
+    if(!gm||gm.size<2)continue;
+
+    const ranked=[...gm.values()].sort((a,b)=>
+      (b.dualRows.size*120+b.rows.size*25+b.score)-
+      (a.dualRows.size*120+a.rows.size*25+a.score)
+    );
+    const canon=ranked[0];
+    if(!(canon.dualRows.size>=1||canon.rows.size>=2))continue;
+    if(canon.value===x.pipe.value)continue;
+
+    const currentGrouped=df69GroupPipelineCandidates(x.pipelineCandidates||[]);
+    const cur=currentGrouped.find(p=>p.value===x.pipe.value);
+    const currentDual=cur&&cur.engines.has('Google')&&cur.engines.has('Paddle');
+    if(currentDual)continue; // never override same-row dual verification
+
+    // Only repair very similar strings with the same pipeline base.
+    const sim=1-dfLev(canon.value,x.pipe.value)/Math.max(canon.value.length,x.pipe.value.length);
+    if(sim<.82)continue;
+
+    const localBbox=x.pipe.bbox;
+    x.rejectedPipelines=[...(x.rejectedPipelines||[]),x.pipe];
+    x.pipe={...x.pipe,value:canon.value,bbox:localBbox,engine:'Cross-row canonical'};
+    x.pipelineReason='CROSS_ROW_CANONICAL';
+  }
+  return rows;
+};
+
+// Override existing resolver to add cross-row evidence.
+const df69BaseExistingResolved=df68ExistingResolved;
+df68ExistingResolved=function(){
+  const rows=df69BaseExistingResolved();
+  return df69ApplyCrossRowCanonical(rows);
+};
+df67ExistingResolved=function(){return df68ExistingResolved()};
+
+// ---------- Stronger row-number resolver ----------
+function df69TrailingDigitVariant(a,b){
+  if(a===null||b===null)return null;
+  const x=String(a),y=String(b);
+  if(x.length+1===y.length&&y.startsWith(x))return Number(x);
+  if(y.length+1===x.length&&x.startsWith(y))return Number(y);
+  return null;
+}
+df66ResolveRows=function(finalPass=false){
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const br=df66Rows.filter(r=>r.zone===model.zone&&r.blockId===block.blockId).sort((a,b)=>a.index-b.index);
+      if(!br.length)continue;
+      df66ComputeSequence(br);
+
+      for(const r of br){
+        const g=(r.retryGoogle||r.google)?.value??null;
+        const p=(r.retryPaddle||r.paddle)?.value??null;
+        const exp=r.sequenceExpected===''?null:Number(r.sequenceExpected);
+        const retried=!!(r.retryGoogle||r.retryPaddle);
+        r.rowNo='';r.rowStatus='PENDING';
+
+        if(g!==null&&p!==null&&g===p){
+          if(exp!==null&&g!==exp){
+            r.rowStatus='CONFLICT_SEQUENCE';
+            r.rowEvidence=`Google=${g}, Paddle=${p}, sequence=${exp}`;
+          }else{
+            r.rowNo=g;
+            r.rowStatus=retried?'RESCUED_DUAL':'CONFIRMED_DUAL';
+            r.rowEvidence=`Google=${g}, Paddle=${p}${exp!==null?`, sequence=${exp}`:''}`;
+          }
+          continue;
+        }
+
+        // Strong sequence plus at least one OCR engine agreement wins over
+        // a conflicting second OCR engine.
+        if(exp!==null&&(g===exp||p===exp)){
+          r.rowNo=exp;
+          r.rowStatus=retried?'RESCUED_SEQUENCE_OVERRIDE':'CONFIRMED_SEQUENCE_OVERRIDE';
+          r.rowEvidence=`Google=${g??'—'}, Paddle=${p??'—'}, sequence=${exp} (${r.sequenceSource})`;
+          continue;
+        }
+
+        // BRACKETED_DUAL means dual-confirmed neighbours establish the missing
+        // +1 row. After targeted retry, allow sequence to resolve even if both
+        // OCR readings remain malformed.
+        if(exp!==null&&r.sequenceSource==='BRACKETED_DUAL'&&finalPass){
+          r.rowNo=exp;
+          r.rowStatus='SEQUENCE_CONFIRMED';
+          r.rowEvidence=`Google=${g??'—'}, Paddle=${p??'—'}, bracketed sequence=${exp}`;
+          continue;
+        }
+
+        // Example: Google=272, Paddle=2720 or Google=2711, Paddle=271.
+        // Treat one extra trailing OCR digit as a resolvable numeric extension,
+        // but only after a retry or when no sequence exists.
+        const short=df69TrailingDigitVariant(g,p);
+        if(short!==null&&(finalPass||exp===null)){
+          r.rowNo=short;
+          r.rowStatus='OCR_EXTENSION_RESOLVED';
+          r.rowEvidence=`Google=${g}, Paddle=${p}; shorter numeric form ${short} selected`;
+          continue;
+        }
+
+        if(exp!==null&&g===null&&p===null){
+          r.rowStatus='INFERRED_REVIEW';
+          r.rowEvidence=`No OCR confirmation; sequence suggests ${exp}`;
+        }else if(g!==null||p!==null){
+          r.rowStatus='SINGLE_OR_CONFLICT';
+          r.rowEvidence=`Google=${g??'—'}, Paddle=${p??'—'}${exp!==null?`, sequence=${exp}`:''}`;
+        }else{
+          r.rowStatus='UNREADABLE';
+          r.rowEvidence=exp!==null?`sequence suggests ${exp}`:'No numeric OCR evidence';
+        }
+      }
+    }
+  }
+};
+
+// Retry uncertain row numbers at least once, then accept strong resolution statuses.
+df66NeedsRetry=function(r){
+  const direct=['CONFIRMED_DUAL','RESCUED_DUAL'];
+  if(direct.includes(r.rowStatus))return false;
+  const resolved=[
+    'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE',
+    'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
+  ];
+  if(resolved.includes(r.rowStatus)){
+    // If targeted OCR already ran, stop. Otherwise give the cell one retry first.
+    return !(r.retryGoogle||r.retryPaddle);
+  }
+  return true;
+};
+
+// Row-number UI counts the new audited statuses as resolved.
+df66RenderRowEngine=function(){
+  const el=$('rowEngineReport');if(!el)return;
+  if(!df66Rows.length){
+    el.innerHTML='<strong>Robust Row Number Engine</strong><br><span>No physical table rows detected.</span>';return;
+  }
+  const goodStatuses=[
+    'CONFIRMED_DUAL','RESCUED_DUAL','CONFIRMED_SEQUENCE',
+    'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE',
+    'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
+  ];
+  const good=df66Rows.filter(r=>goodStatuses.includes(r.rowStatus));
+  const review=df66Rows.filter(r=>!goodStatuses.includes(r.rowStatus));
+  const samples=review.slice(0,10).map(r=>`Z${r.zone}/B${r.blockId}: ${r.rowStatus}${r.sequenceExpected!==''?` (expected ${r.sequenceExpected})`:''}`).join(' · ');
+  el.innerHTML=`<strong>Robust Row Number Engine</strong><br>
+    <span>Physical rows: <strong>${df66Rows.length}</strong> · resolved: <strong class="ok">${good.length}</strong> · needs review: <strong class="${review.length?'bad':'ok'}">${review.length}</strong></span><br>
+    <span>Dual direct/rescued: ${df66Rows.filter(r=>['CONFIRMED_DUAL','RESCUED_DUAL'].includes(r.rowStatus)).length} ·
+    sequence override: ${df66Rows.filter(r=>['CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE','SEQUENCE_CONFIRMED'].includes(r.rowStatus)).length} ·
+    OCR extension resolved: ${df66Rows.filter(r=>r.rowStatus==='OCR_EXTENSION_RESOLVED').length}</span>
+    ${samples?`<br><span class="bad">Review: ${escapeHtml(samples)}</span>`:''}`;
+};
+
+function df69RenderReport(){
+  const el=$('v69Report');if(!el)return;
+  const state=df68IntegrityState().filter(x=>x.row.profile==='INSTRUMENT_LIST');
+  if(!state.length){
+    el.innerHTML='<strong>v0.6.9 Verification</strong><br><span>No Instrument List state yet.</span>';return;
+  }
+
+  const floorExpected=state.filter(x=>x.floorElevationExpected).length;
+  const floorFound=state.filter(x=>x.floorElevation).length;
+  const dualPipe=state.filter(x=>x.pipe&&String(x.pipe.engine||'').includes('Google+Paddle')).length;
+  const cross=state.filter(x=>x.pipelineReason==='CROSS_ROW_CANONICAL').length;
+  const badFragments=state.flatMap(x=>x.pipelineCandidates||[]).filter(p=>!df69StrictPipelineValue(p.value||p.text)).length;
+  const rowReview=df66Rows.filter(r=>![
+    'CONFIRMED_DUAL','RESCUED_DUAL','CONFIRMED_SEQUENCE',
+    'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE','SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
+  ].includes(r.rowStatus)).length;
+
+  el.innerHTML=`<strong>v0.6.9 Verification</strong><br>
+    <span>Paddle pipeline scan: <strong class="${df69PipelineScanDone?'ok':'warn'}">${df69PipelineScanDone?'done':'not run'}</strong> ·
+    same-row dual-verified pipeline winners: <strong>${dualPipe}</strong> ·
+    cross-row canonical repairs: <strong>${cross}</strong></span><br>
+    <span>Invalid pipeline fragments retained: <strong class="${badFragments?'bad':'ok'}">${badFragments}</strong> ·
+    Floor Elevation: <strong class="${floorExpected&&floorFound<floorExpected?'warn':'ok'}">${floorFound}/${floorExpected}</strong> ·
+    unresolved row numbers: <strong class="${rowReview?'bad':'ok'}">${rowReview}</strong></span>`;
+}
+
+// Final builder: preserve engine-audit info for pipeline candidates.
+const df69BaseBuildFinalRecords=df68BuildFinalRecords;
+df68BuildFinalRecords=function(){
+  df69BaseBuildFinalRecords();
+  const state=df68IntegrityState();
+  for(const r of dfRecords){
+    const x=state.find(s=>s.row.id===r.physicalRowId);
+    if(!x)continue;
+    r.pipelineEngine=x.pipe?.engine||'';
+    r.pipelineResolution=x.pipelineReason||r.pipelineResolution;
+    r.rejectedPipelines=(x.rejectedPipelines||[]).map(p=>p.value);
+  }
+  return dfRecords;
+};
+df67BuildFinalRecords=function(){return df68BuildFinalRecords()};
+
+// Final v0.6.9 orchestration.
+$('runDual').onclick=async()=>{
+  if(!tiles.length||!endpoint())return;
+
+  resetResults();
+  dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];dfProfiles=[];
+  df66Rows=[];df66PaddleNums=[];df67IntegrityRows=[];df68MetaCache=null;
+  df69PaddlePipes=[];df69PipelineScanDone=false;
+  dfRowRescue={initialMissing:[],attempted:[],recovered:[],remaining:[],inferredRows:[],passes:0};
+  dfPaddleGoogleRescue={attempted:[],recovered:[],remaining:[],passes:0};
+  df66RowRetry={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+  df67TagRescue={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+
+  dfRenderProfiles();dfRenderRescueSummary();df66RenderRowEngine();
+  df67RenderIntegrity();df68RenderPipelineElevation();df69RenderReport();
+  $('runDual').disabled=true;$('plan').disabled=true;
+
+  try{
+    // 1) Google main OCR
+    for(let i=0;i<tiles.length;i++){
+      const t=tiles[i];
+      $('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
+      const c=await renderTile(t),b=await canvasBlob(c),fd=new FormData();
+      fd.append('file',b,`tile-${i+1}.png`);
+      const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();
+      if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+      for(const pg of (j.pages||[]))dfCollectGooglePage(pg,t,i+1);
+      c.width=1;c.height=1;
+      $('progress').style.width=`${((i+1)/tiles.length)*30}%`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+
+    // 2) Header/continuation schema + data-driven Floor Elevation inference
+    dfBuildColumns();
+    df69InferFloorElevationColumns();
+    dfBuildProfiles();
+    if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG')))
+      throw new Error('No searchable table schema recognized.');
+
+    // 3) Tag workflow
+    googleCandidates=df66FilterSearchableTags(await dfRunRowRescue());
+    paddleCandidates=df66FilterSearchableTags(await dfPaddleColumnCandidates());
+
+    let filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+
+    let pre=dfVerify(googleCandidates,paddleCandidates);
+    await dfRunPaddleGoogleRescue(pre);
+
+    googleCandidates=df66FilterSearchableTags(dfGoogleTagCandidates());
+    filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+    verificationRows=dfVerify(googleCandidates,paddleCandidates);
+    $('progress').style.width='57%';
+
+    // 4) NEW: independent Paddle pipeline-column verification.
+    await df69ScanPaddlePipelines();
+    df68MetaCache=null;
+    $('progress').style.width='68%';
+
+    // 5) Physical rows + robust NO engine
+    await df66RunRowEngine();
+    $('progress').style.width='83%';
+
+    // 6) Missing tag rescue
+    await df67RescueMissingTags();
+    $('progress').style.width='92%';
+
+    // 7) Rebuild row geometry with all anchors, preserve NO evidence
+    const oldNo=[...df66Rows];
+    df68BuildIntegrityRows();
+    for(const nr of df66Rows){
+      const old=oldNo.filter(o=>o.zone===nr.zone&&o.blockId===nr.blockId)
+        .sort((a,b)=>Math.abs(a.y-nr.y)-Math.abs(b.y-nr.y))[0];
+      if(old&&Math.abs(old.y-nr.y)<Math.max(.003,nr.spacing*.45)){
+        Object.assign(nr,{
+          google:old.google,paddle:old.paddle,retryGoogle:old.retryGoogle,retryPaddle:old.retryPaddle,
+          rowNo:old.rowNo,rowStatus:old.rowStatus,sequenceExpected:old.sequenceExpected,
+          sequenceSource:old.sequenceSource,rowEvidence:old.rowEvidence
+        });
+      }
+    }
+
+    // Re-resolve after geometry rebuild, especially for rows 267-272 type conflicts.
+    df66ResolveRows(true);
+
+    df68BuildFinalRecords();
+
+    renderResults();renderAudit();updateMetrics();dfRenderColumns();dfRenderProfiles();
+    dfRenderRescueSummary();df66RenderRowEngine();df67RenderIntegrity();
+    df68RenderPipelineElevation();df69RenderReport();
+
+    $('progress').style.width='100%';
+
+    const goodRows=df66Rows.filter(r=>[
+      'CONFIRMED_DUAL','RESCUED_DUAL','CONFIRMED_SEQUENCE',
+      'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE',
+      'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
+    ].includes(r.rowStatus)).length;
+
+    $('status').innerHTML=`<span class="ok">v0.6.9 complete. Records: ${dfRecords.length} · resolved row numbers: ${goodRows}/${df66Rows.length} · Paddle pipeline verification complete.</span>`;
+  }catch(e){
+    console.error(e);
+    $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }finally{
+    $('runDual').disabled=false;$('plan').disabled=false;update();
+  }
+};
+
+// Export richer pipeline / row audit.
+$('exportCsv').onclick=()=>{
+  if(!dfRecords.length)return;
+
+  const rows=[[
+    'status','row_no','row_status','row_integrity',
+    'tag','tag_candidate_count','rejected_tags','tag_resolution','tag_rescued','tag_rescue_pass',
+    'related_pipeline','pipeline_engine','pipeline_candidate_count','rejected_pipelines','pipeline_resolution',
+    'elevation','elevation_candidate_count','rejected_elevations','elevation_resolution',
+    'floor_elevation','floor_elevation_candidate_count','rejected_floor_elevations',
+    'profile','column_type','related_tag','description',
+    'row_google','row_paddle','row_retry','row_sequence_expected','row_sequence_source','row_evidence',
+    'google_confidence','paddle_confidence','relation_audit',
+    'page','zone','block_id','physical_row_id','prefix5','global_x_percent','global_y_percent'
+  ]];
+
+  for(const r of dfRecords){
+    const c=center(r.bbox);
+    rows.push([
+      r.status,r.rowNo??'',r.rowStatus,r.rowIntegrity,
+      r.tag,r.tagCandidateCount,r.rejectedTags.join(';'),r.candidateResolution,r.tagRescued,r.tagRescuePass,
+      r.pipeline,r.pipelineEngine,r.pipelineCandidateCount,r.rejectedPipelines.join(';'),r.pipelineResolution,
+      r.elevation,r.elevationCandidateCount,r.rejectedElevations.join(';'),r.elevationResolution,
+      r.floorElevation,r.floorElevationCandidateCount,r.rejectedFloorElevations.join(';'),
+      r.profile,r.column,r.related.join(';'),r.description,
+      r.rowGoogle,r.rowPaddle,r.rowRetry,r.rowSequenceExpected,r.rowSequenceSource,r.rowEvidence,
+      r.google?.confidence??'',r.paddle?.confidence??'',r.relationAudit.join(' | '),
+      r.page,r.zone,r.blockId,r.physicalRowId,dfPrefix5(r.tag),c.x*100,c.y*100
+    ]);
+  }
+
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download='drawing-finder-v0.6.9-verified-pipeline-row.csv';
+  a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+df69RenderReport();
 </script>
 
 </body>
