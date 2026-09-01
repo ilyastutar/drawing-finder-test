@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.7.1 — Row Integrity Hotfix</title>
+<title>Drawing Finder v0.6.8 — Pipeline & Elevation Integrity</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.7.1 — Row Integrity Engine</h1>
+<h1>Drawing Finder v0.6.8 — Pipeline & Elevation Integrity</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -106,7 +106,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <div class="buttons">
  <button id="plan" disabled>Plan tiles</button>
- <button id="runDual" disabled>Run Row-Integrity Dual OCR</button>
+ <button id="runDual" disabled>Run Pipeline & Elevation Integrity OCR</button>
  <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
 </div>
 
@@ -159,6 +159,10 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 <div id="rowIntegrityReport" class="row" style="margin-top:8px">
  <strong>Row Integrity Engine</strong><br>
  <span>No row-integrity analysis yet.</span>
+</div>
+<div id="pipelineElevationReport" class="row" style="margin-top:8px">
+ <strong>Pipeline / Elevation Integrity</strong><br>
+ <span>No pipeline/elevation analysis yet.</span>
 </div>
 
 <h2 style="margin-top:18px">Searchable tag records</h2>
@@ -2628,6 +2632,604 @@ $('exportCsv').onclick=()=>{
 };
 
 df67RenderIntegrity();
+</script>
+
+
+<script>
+// ===== v0.6.8 Pipeline & Elevation Integrity =====
+//
+// IMPORTANT PROJECT RULES:
+// - One physical Instrument List row normally has:
+//     1 NO + 1 Instrument TAG + 1 selected Pipeline + 1 Elevation
+// - The SAME pipeline may legitimately appear on many different rows.
+// - Elevation may also repeat on different rows.
+// Therefore neither Pipeline nor Elevation is globally unique.
+// Candidate resolution happens ONLY inside the same physical row.
+
+// Add metadata headers dynamically before any scan starts.
+if(!DF_HEADERS.some(x=>x.subtype==='ELEVATION')){
+  DF_HEADERS.push({
+    role:'ELEVATION',subtype:'ELEVATION',
+    aliases:['ELEVATION','ELEVATION (M)','ELEVATION M','ELEVATION / M']
+  });
+}
+if(!DF_HEADERS.some(x=>x.subtype==='FLOOR_ELEVATION')){
+  DF_HEADERS.push({
+    role:'ELEVATION',subtype:'FLOOR_ELEVATION',
+    aliases:['FLOOR ELEVATION','FLOOR ELEVATION (M)','FLOOR ELEVATION M','FLOOR LEVEL']
+  });
+}
+
+let df68MetaCache=null;
+
+function df68NormalizePipeline(s){
+  return String(s||'').toUpperCase().replace(/\s+/g,'').trim();
+}
+function df68PipelineBase(v){
+  // The canonical KKS pipeline prefix is the first 12 chars, e.g. 20NDA20BR001.
+  const s=df68NormalizePipeline(v);
+  const m=s.match(/^(\d{2}[A-Z]{3}\d{2}BR\d{3})/);
+  return m?m[1]:'';
+}
+function df68PipelineQuality(p, tagPrefix=''){
+  const v=df68NormalizePipeline(p.value);
+  let score=Number(p.confidence||0)*25;
+  if(tagPrefix && dfPrefix5(v)===tagPrefix) score+=40;
+  if(df68PipelineBase(v)) score+=20;
+  if(v.includes('-')) score+=4;
+  if(v.includes('DN')) score+=4;
+  if(v.includes('_')) score+=3;
+  // Prefer the more complete OCR reading, but cap the influence.
+  score+=Math.min(8,v.length/8);
+  return score;
+}
+function df68ElevationValue(s){
+  const t=String(s||'').trim().replace(',','.');
+  // Allow common drawing values such as 8.700, 12.008, -1.250, 0.000.
+  if(!/^[+-]?\d{1,5}(?:\.\d{1,4})?$/.test(t)) return null;
+  return t;
+}
+function df68Metadata(){
+  if(df68MetaCache)return df68MetaCache;
+  const pipes=[],descs=[],elevations=[],floorElevations=[];
+
+  for(const ln of dfGoogleLines){
+    const col=dfClassify(ln.bbox,ln.zone);
+    if(!col||dfHeaderMatch(ln.text))continue;
+
+    if(col.role==='PIPELINE'){
+      const v=df68NormalizePipeline(ln.text);
+      if(v.length>=12 && (df68PipelineBase(v)||v.includes('-')||v.includes('_'))){
+        pipes.push({...ln,value:v,columnSubtype:col.subtype});
+      }
+    }else if(col.role==='DESCRIPTION'){
+      const v=String(ln.text||'').trim();
+      if(v.length>1)descs.push({...ln,value:v,columnSubtype:col.subtype});
+    }else if(col.role==='ELEVATION'){
+      const v=df68ElevationValue(ln.text);
+      if(v!==null){
+        const rec={...ln,value:v,columnSubtype:col.subtype};
+        if(col.subtype==='FLOOR_ELEVATION')floorElevations.push(rec);
+        else elevations.push(rec);
+      }
+    }
+  }
+
+  // Dedupe exact same text/position only. Different OCR variants remain available
+  // for same-row resolution and audit.
+  const dedupe=(arr)=>dfDedupeText(arr.map(x=>({...x,text:x.value}))).map(x=>({...x,value:x.text}));
+  df68MetaCache={
+    pipes:dedupe(pipes),
+    descs:dedupe(descs),
+    elevations:dedupe(elevations),
+    floorElevations:dedupe(floorElevations)
+  };
+  return df68MetaCache;
+}
+
+function df68MetaAnchors(model,block,kind){
+  const meta=df68Metadata();
+  let src=[];
+  if(kind==='PIPE')src=meta.pipes;
+  else if(kind==='ELEV')src=meta.elevations;
+  else if(kind==='FLOOR')src=meta.floorElevations;
+  else return [];
+
+  const expectedSubtype=kind==='PIPE'?'PIPELINE':kind==='ELEV'?'ELEVATION':'FLOOR_ELEVATION';
+  return src.filter(x=>{
+    if(x.zone!==model.zone)return false;
+    const hit=dfFindBlockAndColumn(x.bbox,x.zone,expectedSubtype);
+    return hit&&hit.block.blockId===block.blockId;
+  }).map(x=>({
+    kind,
+    y:center(x.bbox).y,
+    bbox:x.bbox,
+    value:x.value,
+    confidence:Number(x.confidence||0),
+    raw:x
+  }));
+}
+
+// Override v0.6.7 physical-row construction.
+// A row can now be supported by NO / TAG / PIPELINE / ELEVATION / FLOOR ELEVATION.
+function df68BuildIntegrityRows(){
+  df68MetaCache=null;
+  const all=[];
+
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const profile=dfProfileFor(model.zone,block.blockId)||dfProfileBlock(model,block);
+      const anchors=[
+        ...df67NoAnchors(model,block),
+        ...df67TagAnchors(model,block),
+        ...df68MetaAnchors(model,block,'PIPE'),
+        ...df68MetaAnchors(model,block,'ELEV'),
+        ...df68MetaAnchors(model,block,'FLOOR')
+      ];
+
+      const rows=df67ClusterAnchors(model,block,anchors);
+
+      for(const r of rows){
+        const kinds=new Set(r.anchors.map(a=>a.kind));
+        if(profile.name==='INSTRUMENT_LIST'){
+          // Strong row evidence:
+          // - TAG or PIPE is enough, OR
+          // - NO + an elevation column together can preserve a row even if OCR
+          //   missed both tag/pipeline in the first pass.
+          const strong=kinds.has('TAG')||kinds.has('PIPE')||
+            (kinds.has('NO')&&(kinds.has('ELEV')||kinds.has('FLOOR')));
+          if(!strong)continue;
+        }else if(!(kinds.has('TAG')||kinds.has('NO')))continue;
+
+        all.push(r);
+      }
+    }
+  }
+
+  df67IntegrityRows=all;
+  df66Rows=all.map(r=>({
+    zone:r.zone,blockId:r.blockId,block:r.block,
+    items:r.anchors.filter(a=>a.kind==='TAG').map(a=>a.raw),
+    y:r.y,heights:r.anchors.map(a=>boxH(a.bbox)),spacing:r.spacing,index:r.index,id:r.id,
+    google:null,paddle:null,retryGoogle:null,retryPaddle:null,
+    rowNo:'',rowStatus:'PENDING',sequenceExpected:'',sequenceSource:'',rowEvidence:''
+  }));
+  return all;
+}
+
+// Make v0.6.6 robust row-number engine use v0.6.8 physical rows.
+df66BuildPhysicalRows=function(){
+  return df68BuildIntegrityRows();
+};
+
+// Ensure v0.6.7 callers also rebuild with v0.6.8 anchors.
+df67BuildIntegrityRows=function(){
+  return df68BuildIntegrityRows();
+};
+
+function df68AttachMetaToRows(list,subtype){
+  const out=[];
+  for(const x of list){
+    const hit=dfFindBlockAndColumn(x.bbox,x.zone,subtype);
+    if(!hit)continue;
+    const row=df67IntegrityRows
+      .filter(r=>r.zone===x.zone&&r.blockId===hit.block.blockId)
+      .sort((a,b)=>Math.abs(a.y-center(x.bbox).y)-Math.abs(b.y-center(x.bbox).y))[0];
+    if(!row||Math.abs(row.y-center(x.bbox).y)>Math.max(.0025,row.spacing*.45))continue;
+    out.push({...x,blockId:hit.block.blockId,physicalRowId:row.id});
+  }
+  return out;
+}
+function df68UniqueValueCandidates(cands){
+  const m=new Map();
+  for(const x of cands){
+    const key=String(x.value||'');
+    if(!m.has(key)||Number(m.get(key).confidence||0)<Number(x.confidence||0))m.set(key,x);
+  }
+  return [...m.values()];
+}
+function df68ResolvePipelineCandidates(cands,tagCands){
+  const uniq=df68UniqueValueCandidates(cands);
+  if(!uniq.length)return {winner:null,rejected:[],reason:'MISSING',uniqueCount:0};
+  if(uniq.length===1)return {winner:uniq[0],rejected:[],reason:'SINGLE',uniqueCount:1};
+
+  // Use the strongest available instrument prefix only as a SAME-ROW validator.
+  const verifiedTag=tagCands.find(t=>t.status==='VERIFIED')||tagCands[0]||null;
+  const pref=verifiedTag?dfPrefix5(verifiedTag.tag):'';
+
+  const ranked=[...uniq].sort((a,b)=>df68PipelineQuality(b,pref)-df68PipelineQuality(a,pref));
+  return {
+    winner:ranked[0],
+    rejected:ranked.slice(1),
+    reason:'ROW_PIPELINE_CANDIDATE_RESOLUTION',
+    uniqueCount:uniq.length
+  };
+}
+function df68ResolveScalarCandidates(cands){
+  const uniq=df68UniqueValueCandidates(cands);
+  if(!uniq.length)return {winner:null,rejected:[],reason:'MISSING',uniqueCount:0};
+  if(uniq.length===1)return {winner:uniq[0],rejected:[],reason:'SINGLE',uniqueCount:1};
+
+  // Same value repeated by OCR is deduped above. If distinct values remain,
+  // choose the strongest OCR candidate for this exact physical row.
+  const ranked=[...uniq].sort((a,b)=>Number(b.confidence||0)-Number(a.confidence||0));
+  return {winner:ranked[0],rejected:ranked.slice(1),reason:'ROW_VALUE_CANDIDATE_RESOLUTION',uniqueCount:uniq.length};
+}
+
+// Override row state resolver.
+function df68ExistingResolved(){
+  const tags=df67CandidateRows();
+  const meta=df68Metadata();
+  const pipes=df68AttachMetaToRows(meta.pipes,'PIPELINE');
+  const elevs=df68AttachMetaToRows(meta.elevations,'ELEVATION');
+  const floors=df68AttachMetaToRows(meta.floorElevations,'FLOOR_ELEVATION');
+  const rows=[];
+
+  for(const row of df67IntegrityRows){
+    const tagCandidates=tags.filter(t=>t.physicalRowId===row.id);
+    const pipelineCandidates=pipes.filter(p=>p.physicalRowId===row.id);
+    const elevationCandidates=elevs.filter(e=>e.physicalRowId===row.id);
+    const floorCandidates=floors.filter(e=>e.physicalRowId===row.id);
+
+    const pipeResolved=df68ResolvePipelineCandidates(pipelineCandidates,tagCandidates);
+    const tagResolved=df67ResolveTagCandidates(tagCandidates,pipeResolved.winner);
+    const elevResolved=df68ResolveScalarCandidates(elevationCandidates);
+    const floorResolved=df68ResolveScalarCandidates(floorCandidates);
+
+    rows.push({
+      row,
+      pipe:pipeResolved.winner,
+      pipelineCandidates,
+      rejectedPipelines:pipeResolved.rejected,
+      pipelineReason:pipeResolved.reason,
+      pipelineUniqueCount:pipeResolved.uniqueCount,
+
+      tagCandidates,
+      winner:tagResolved.winner,
+      rejected:tagResolved.rejected,
+      reason:tagResolved.reason,
+
+      elevation:elevResolved.winner,
+      elevationCandidates,
+      rejectedElevations:elevResolved.rejected,
+      elevationReason:elevResolved.reason,
+      elevationUniqueCount:elevResolved.uniqueCount,
+
+      floorElevation:floorResolved.winner,
+      floorElevationCandidates:floorCandidates,
+      rejectedFloorElevations:floorResolved.rejected,
+      floorElevationReason:floorResolved.reason,
+      floorElevationUniqueCount:floorResolved.uniqueCount
+    });
+  }
+  return rows;
+}
+
+// Existing v0.6.7 rescue/state code calls this name.
+df67ExistingResolved=function(){
+  return df68ExistingResolved();
+};
+
+function df68HasColumn(row,subtype){
+  return (row.block.columns||[]).some(c=>c.subtype===subtype);
+}
+
+function df68IntegrityState(){
+  const base=df68ExistingResolved();
+
+  for(const x of base){
+    const no=df66Rows.find(r=>r.id===x.row.id);
+    x.no=no||null;
+    x.rowNo=no?.rowNo??'';
+    x.rowStatus=no?.rowStatus||'UNREADABLE';
+    x.tagCount=x.tagCandidates.length;
+    x.pipelineCount=x.pipelineUniqueCount;
+    x.elevationCount=x.elevationUniqueCount;
+    x.floorElevationCount=x.floorElevationUniqueCount;
+    x.elevationExpected=df68HasColumn(x.row,'ELEVATION');
+    x.floorElevationExpected=df68HasColumn(x.row,'FLOOR_ELEVATION');
+
+    if(x.row.profile==='INSTRUMENT_LIST'){
+      const coreComplete=!!x.winner&&!!x.pipe;
+      const tagDup=x.tagCount>1;
+      const pipeDup=x.pipelineCount>1;
+      const elevMissing=x.elevationExpected&&!x.elevation;
+      const elevDup=x.elevationCount>1;
+
+      if(!x.winner&&x.pipe)x.integrity='TAG_MISSING';
+      else if(x.winner&&!x.pipe)x.integrity='PIPELINE_MISSING';
+      else if(!x.winner&&!x.pipe)x.integrity='INCOMPLETE';
+      else if(elevMissing)x.integrity='ELEVATION_MISSING';
+      else if(tagDup&&pipeDup)x.integrity='TAG_PIPELINE_DUPLICATES_RESOLVED';
+      else if(tagDup)x.integrity='DUPLICATE_TAG_RESOLVED';
+      else if(pipeDup)x.integrity='DUPLICATE_PIPELINE_RESOLVED';
+      else if(elevDup)x.integrity='DUPLICATE_ELEVATION_RESOLVED';
+      else if(coreComplete)x.integrity='COMPLETE';
+      else x.integrity='INCOMPLETE';
+    }else{
+      x.integrity=x.winner?'COMPLETE':'INCOMPLETE';
+    }
+  }
+  return base;
+}
+
+// Keep the name expected by old v0.6.7 UI/rescue functions.
+df67IntegrityState=function(){
+  return df68IntegrityState();
+};
+
+function df68RenderPipelineElevation(){
+  const el=$('pipelineElevationReport');if(!el)return;
+  const s=df68IntegrityState().filter(x=>x.row.profile==='INSTRUMENT_LIST');
+  if(!s.length){
+    el.innerHTML='<strong>Pipeline / Elevation Integrity</strong><br><span>No Instrument List rows detected.</span>';
+    return;
+  }
+
+  const n=k=>s.filter(x=>x.integrity===k).length;
+  const pipeDup=s.filter(x=>x.pipelineCount>1).length;
+  const elevPresent=s.filter(x=>x.elevation).length;
+  const elevExpected=s.filter(x=>x.elevationExpected).length;
+  const samePipelineGroups=new Map();
+
+  // This is informational ONLY. Repeated pipelines across different rows are VALID.
+  for(const x of s){
+    if(!x.pipe)continue;
+    const v=x.pipe.value;
+    if(!samePipelineGroups.has(v))samePipelineGroups.set(v,[]);
+    samePipelineGroups.get(v).push(x.rowNo||x.row.id);
+  }
+  const repeated=[...samePipelineGroups.entries()].filter(([,rows])=>rows.length>1);
+
+  el.innerHTML=`<strong>Pipeline / Elevation Integrity</strong><br>
+    <span>Rows with resolved pipeline: <strong>${s.filter(x=>x.pipe).length}/${s.length}</strong> ·
+    same-row multiple pipeline candidates resolved: <strong class="${pipeDup?'warn':'ok'}">${pipeDup}</strong> ·
+    elevation read: <strong class="${elevExpected&&elevPresent<elevExpected?'warn':'ok'}">${elevPresent}/${elevExpected||s.length}</strong></span><br>
+    <span>Repeated pipeline across DIFFERENT rows: <strong class="ok">${repeated.length} pipeline(s)</strong> — valid by design, not an error.</span>`;
+}
+
+// Override the original Row Integrity report to treat resolved pipeline duplicates as valid.
+df67RenderIntegrity=function(){
+  const el=$('rowIntegrityReport');if(!el)return;
+  const s=df68IntegrityState(),inst=s.filter(x=>x.row.profile==='INSTRUMENT_LIST');
+  const goodStates=[
+    'COMPLETE','DUPLICATE_TAG_RESOLVED','DUPLICATE_PIPELINE_RESOLVED',
+    'TAG_PIPELINE_DUPLICATES_RESOLVED','DUPLICATE_ELEVATION_RESOLVED'
+  ];
+  const good=inst.filter(x=>goodStates.includes(x.integrity)).length;
+  const review=inst.filter(x=>!goodStates.includes(x.integrity));
+  const examples=review.slice(0,8).map(x=>`${x.rowNo||'NO?'}: ${x.integrity}`).join(' · ');
+
+  el.innerHTML=`<strong>Row Integrity Engine</strong><br>
+    <span>Instrument rows: <strong>${inst.length}</strong> · good/resolved: <strong class="ok">${good}</strong> ·
+    needs review: <strong class="${review.length?'bad':'ok'}">${review.length}</strong></span><br>
+    <span>Missing-tag OCR rescue recovered: <strong class="ok">${df67TagRescue.recovered}</strong> · remaining: <strong class="${df67TagRescue.remaining?'bad':'ok'}">${df67TagRescue.remaining}</strong></span>
+    ${examples?`<br><span class="bad">Review: ${escapeHtml(examples)}</span>`:''}`;
+};
+
+// Final record builder with pipeline/elevation audit.
+function df68BuildFinalRecords(){
+  const state=df68IntegrityState(),out=[];
+  const descs=df68Metadata().descs||[];
+
+  for(const x of state){
+    if(!x.winner)continue;
+    const r=x.winner,no=x.no;
+
+    out.push({
+      ...r,
+      blockId:x.row.blockId,
+      physicalRowId:x.row.id,
+      profile:x.row.profile,
+
+      rowNo:no?.rowNo??'',
+      rowStatus:no?.rowStatus||'UNREADABLE',
+      rowGoogle:(no?.retryGoogle||no?.google)?.value??'',
+      rowPaddle:(no?.retryPaddle||no?.paddle)?.value??'',
+      rowRetry:[no?.retryGoogle?.value,no?.retryPaddle?.value].filter(v=>v!==undefined&&v!==null).join('/'),
+      rowSequenceExpected:no?.sequenceExpected??'',
+      rowSequenceSource:no?.sequenceSource||'',
+      rowEvidence:no?.rowEvidence||'',
+
+      related:[],
+      pipeline:x.pipe?.value||'',
+      pipelineCandidateCount:x.pipelineCount,
+      rejectedPipelines:x.rejectedPipelines.map(p=>p.value),
+      pipelineResolution:x.pipelineReason,
+
+      elevation:x.elevation?.value||'',
+      elevationCandidateCount:x.elevationCount,
+      rejectedElevations:x.rejectedElevations.map(e=>e.value),
+      elevationResolution:x.elevationReason,
+
+      floorElevation:x.floorElevation?.value||'',
+      floorElevationCandidateCount:x.floorElevationCount,
+      rejectedFloorElevations:x.rejectedFloorElevations.map(e=>e.value),
+
+      description:'',
+      relationAudit:x.pipe?[`Pipeline: same physical row + prefix ${dfPrefix5(r.tag)} matched`]:[],
+      rowIntegrity:x.integrity,
+
+      tagCandidateCount:x.tagCount,
+      rejectedTags:x.rejected.map(z=>z.tag),
+      candidateResolution:x.reason,
+      tagRescued:!!r.df67Rescued,
+      tagRescuePass:r.df67RescuePass||''
+    });
+  }
+
+  // Description uses physical-row identity, same as the other metadata.
+  const descRows=df68AttachMetaToRows(descs,'DESCRIPTION');
+  for(const r of out){
+    const dd=descRows.filter(d=>d.physicalRowId===r.physicalRowId)
+      .sort((a,b)=>Number(b.confidence||0)-Number(a.confidence||0))[0];
+    if(dd)r.description=dd.value;
+  }
+  dfRecords=out;
+}
+
+// Existing name used by orchestration.
+df67BuildFinalRecords=function(){
+  return df68BuildFinalRecords();
+};
+
+renderResults=function(){
+  if(!dfRecords.length){
+    $('results').innerHTML='<tr><td colspan="8" class="small">No records yet.</td></tr>';return;
+  }
+
+  $('results').innerHTML=[...dfRecords]
+    .sort((a,b)=>(Number(a.rowNo)||99999)-(Number(b.rowNo)||99999)||center(a.bbox).y-center(b.bbox).y)
+    .map(r=>`<tr>
+      <td>${dfBadge(r.status)}<br><span class="${['COMPLETE','DUPLICATE_TAG_RESOLVED','DUPLICATE_PIPELINE_RESOLVED','TAG_PIPELINE_DUPLICATES_RESOLVED','DUPLICATE_ELEVATION_RESOLVED'].includes(r.rowIntegrity)?'ok':'warn'}">${escapeHtml(r.rowIntegrity)}</span>${r.tagRescued?'<br><span class="ok">↻ tag rescued</span>':''}</td>
+      <td><code>${escapeHtml(r.tag)}</code>${r.rowNo!==''?`<br><strong>row ${r.rowNo}</strong>`:'<br><span class="bad">row unresolved</span>'}${r.rejectedTags?.length?`<br><span class="warn">rejected tag: ${r.rejectedTags.map(escapeHtml).join(', ')}</span>`:''}</td>
+      <td>${escapeHtml(r.column)}<br><span>tag candidates: ${r.tagCandidateCount}</span></td>
+      <td>${r.related.length?r.related.map(t=>`<code>${escapeHtml(t)}</code>`).join(' '):'—'}</td>
+      <td>
+        ${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}
+        <br><span>pipeline candidates: ${r.pipelineCandidateCount}</span>
+        ${r.rejectedPipelines?.length?`<br><span class="warn">rejected pipeline: ${r.rejectedPipelines.map(escapeHtml).join(' | ')}</span>`:''}
+        <br><strong>Elevation:</strong> ${escapeHtml(r.elevation||'—')}
+        ${r.floorElevation?`<br><strong>Floor:</strong> ${escapeHtml(r.floorElevation)}`:''}
+      </td>
+      <td>${escapeHtml(r.description||'—')}<br><span>NO: ${escapeHtml(r.rowStatus)} · G=${r.rowGoogle||'—'} · P=${r.rowPaddle||'—'}</span></td>
+      <td>${r.google?pct(r.google.confidence):'—'}</td>
+      <td>${r.paddle?pct(r.paddle.confidence):'—'}</td>
+    </tr>`).join('');
+};
+
+// Override final run only to reset v0.6.8 metadata and render its audit.
+// Reuse the proven v0.6.7.1 pipeline, tag rescue and row-number workflow.
+$('runDual').onclick=async()=>{
+  if(!tiles.length||!endpoint())return;
+
+  resetResults();
+  dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];dfProfiles=[];
+  df66Rows=[];df66PaddleNums=[];df67IntegrityRows=[];df68MetaCache=null;
+  dfRowRescue={initialMissing:[],attempted:[],recovered:[],remaining:[],inferredRows:[],passes:0};
+  dfPaddleGoogleRescue={attempted:[],recovered:[],remaining:[],passes:0};
+  df66RowRetry={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+  df67TagRescue={attempted:0,recovered:0,remaining:0,pass1:0,pass2:0};
+
+  dfRenderProfiles();dfRenderRescueSummary();df66RenderRowEngine();df67RenderIntegrity();df68RenderPipelineElevation();
+  $('runDual').disabled=true;$('plan').disabled=true;
+
+  try{
+    // 1) Main Google OCR
+    for(let i=0;i<tiles.length;i++){
+      const t=tiles[i];
+      $('status').textContent=`Google OCR: tile ${i+1}/${tiles.length}…`;
+      const c=await renderTile(t),b=await canvasBlob(c),fd=new FormData();
+      fd.append('file',b,`tile-${i+1}.png`);
+      const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd}),j=await rr.json();
+      if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+      for(const pg of (j.pages||[]))dfCollectGooglePage(pg,t,i+1);
+      c.width=1;c.height=1;
+      $('progress').style.width=`${((i+1)/tiles.length)*34}%`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+
+    // 2) Headers / continuation / profiles, now including elevation columns.
+    dfBuildColumns();dfBuildProfiles();
+    if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG')))throw new Error('No searchable table schema recognized.');
+
+    // 3) Proven tag OCR / rescue workflow.
+    googleCandidates=df66FilterSearchableTags(await dfRunRowRescue());
+    paddleCandidates=df66FilterSearchableTags(await dfPaddleColumnCandidates());
+
+    let filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+
+    let pre=dfVerify(googleCandidates,paddleCandidates);
+    await dfRunPaddleGoogleRescue(pre);
+
+    googleCandidates=df66FilterSearchableTags(dfGoogleTagCandidates());
+    filtered=dfSuppressFalse13Extensions(googleCandidates,paddleCandidates);
+    googleCandidates=filtered.g;paddleCandidates=filtered.p;
+    verificationRows=dfVerify(googleCandidates,paddleCandidates);
+    $('progress').style.width='66%';
+
+    // 4) Physical rows now use NO + TAG + PIPE + ELEVATION.
+    await df66RunRowEngine();
+    $('progress').style.width='81%';
+
+    // 5) Pipeline-anchored rows with no tag get targeted tag rescue.
+    await df67RescueMissingTags();
+    $('progress').style.width='92%';
+
+    // 6) Rebuild row geometry with recovered tags while preserving robust NO evidence.
+    const oldNo=[...df66Rows];
+    df68BuildIntegrityRows();
+
+    for(const nr of df66Rows){
+      const old=oldNo.filter(o=>o.zone===nr.zone&&o.blockId===nr.blockId)
+        .sort((a,b)=>Math.abs(a.y-nr.y)-Math.abs(b.y-nr.y))[0];
+      if(old&&Math.abs(old.y-nr.y)<Math.max(.003,nr.spacing*.45)){
+        Object.assign(nr,{
+          google:old.google,paddle:old.paddle,retryGoogle:old.retryGoogle,retryPaddle:old.retryPaddle,
+          rowNo:old.rowNo,rowStatus:old.rowStatus,sequenceExpected:old.sequenceExpected,
+          sequenceSource:old.sequenceSource,rowEvidence:old.rowEvidence
+        });
+      }
+    }
+
+    // 7) Resolve candidates only WITHIN each physical row.
+    df68BuildFinalRecords();
+
+    renderResults();renderAudit();updateMetrics();dfRenderColumns();dfRenderProfiles();
+    dfRenderRescueSummary();df66RenderRowEngine();df67RenderIntegrity();df68RenderPipelineElevation();
+
+    $('progress').style.width='100%';
+    const s=df68IntegrityState().filter(x=>x.row.profile==='INSTRUMENT_LIST');
+    const goodStates=['COMPLETE','DUPLICATE_TAG_RESOLVED','DUPLICATE_PIPELINE_RESOLVED','TAG_PIPELINE_DUPLICATES_RESOLVED','DUPLICATE_ELEVATION_RESOLVED'];
+    const good=s.filter(x=>goodStates.includes(x.integrity)).length;
+
+    $('status').innerHTML=`<span class="ok">v0.6.8 complete. Instrument rows: ${s.length} · good/resolved: ${good} · needs review: ${s.length-good} · final searchable records: ${dfRecords.length}.</span>`;
+  }catch(e){
+    console.error(e);
+    $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }finally{
+    $('runDual').disabled=false;$('plan').disabled=false;update();
+  }
+};
+
+$('exportCsv').onclick=()=>{
+  if(!dfRecords.length)return;
+
+  const rows=[[
+    'status','row_no','row_status','row_integrity',
+    'tag','tag_candidate_count','rejected_tags','tag_resolution','tag_rescued','tag_rescue_pass',
+    'related_pipeline','pipeline_candidate_count','rejected_pipelines','pipeline_resolution',
+    'elevation','elevation_candidate_count','rejected_elevations','elevation_resolution',
+    'floor_elevation','floor_elevation_candidate_count','rejected_floor_elevations',
+    'profile','column_type','related_tag','description',
+    'row_google','row_paddle','row_retry','row_sequence_expected','row_sequence_source','row_evidence',
+    'google_confidence','paddle_confidence','relation_audit',
+    'page','zone','block_id','physical_row_id','prefix5','global_x_percent','global_y_percent'
+  ]];
+
+  for(const r of dfRecords){
+    const c=center(r.bbox);
+    rows.push([
+      r.status,r.rowNo??'',r.rowStatus,r.rowIntegrity,
+      r.tag,r.tagCandidateCount,r.rejectedTags.join(';'),r.candidateResolution,r.tagRescued,r.tagRescuePass,
+      r.pipeline,r.pipelineCandidateCount,r.rejectedPipelines.join(';'),r.pipelineResolution,
+      r.elevation,r.elevationCandidateCount,r.rejectedElevations.join(';'),r.elevationResolution,
+      r.floorElevation,r.floorElevationCandidateCount,r.rejectedFloorElevations.join(';'),
+      r.profile,r.column,r.related.join(';'),r.description,
+      r.rowGoogle,r.rowPaddle,r.rowRetry,r.rowSequenceExpected,r.rowSequenceSource,r.rowEvidence,
+      r.google?.confidence??'',r.paddle?.confidence??'',r.relationAudit.join(' | '),
+      r.page,r.zone,r.blockId,r.physicalRowId,dfPrefix5(r.tag),c.x*100,c.y*100
+    ]);
+  }
+
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download='drawing-finder-v0.6.8-pipeline-elevation-integrity.csv';
+  a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+df68RenderPipelineElevation();
 </script>
 
 </body>
