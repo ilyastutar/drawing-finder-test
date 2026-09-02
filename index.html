@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.12 — Pipeline O-to-0 Canonicalization</title>
+<title>Drawing Finder v0.6.12.1 — Row Backward-Sequence Hotfix</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.12 — Pipeline O→0 Canonicalization</h1>
+<h1>Drawing Finder v0.6.12.1 — Row Backward-Sequence Hotfix</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -106,7 +106,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <div class="buttons">
  <button id="plan" disabled>Plan tiles</button>
- <button id="runDual" disabled>Run Stable Row + Pipeline Canonicalization</button>
+ <button id="runDual" disabled>Run Stable Row + Sequence Hotfix</button>
  <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
 </div>
 
@@ -3191,7 +3191,7 @@ $('runDual').onclick=async()=>{
       'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
     ].includes(r.rowStatus)).length;
 
-    $('status').innerHTML=`<span class="ok">v0.6.12 complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
+    $('status').innerHTML=`<span class="ok">v0.6.12.1 complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
   }catch(e){
     console.error(e);
     $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
@@ -3905,6 +3905,267 @@ $('exportCsv').onclick=()=>{
   const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=u;a.download='drawing-finder-v0.6.12-pipeline-o-to-0.csv';
   a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+</script>
+
+
+<script>
+// ===== v0.6.12.1 Row Backward-Sequence Hotfix =====
+//
+// PURPOSE:
+// Recover early NO-column rows when Google temporarily reads 0 but Paddle
+// preserves a monotonic sequence and a later pair of consecutive rows is
+// strongly dual-confirmed.
+//
+// IMPORTANT:
+// - No pipeline code is changed.
+// - No tag code is changed.
+// - No physical-row geometry is changed.
+// - No drawing-specific row range is hardcoded.
+// - The inferred number comes from physical-row distance to a later dual anchor.
+//
+// Example:
+//   physical rows:     A  B  C  D  E  F  G  H  I  J  K
+//   Paddle:            1  2  3  4  0  6  0  8  9 10 11
+//   Google:            0  0  0  0  0  0  0  0  0 10 11
+//   strong dual pair:                          10 11
+//   -> backward physical sequence validates 1..9.
+
+let df6121BackwardEnabled=false;
+let df6121BackwardAudit={
+  blocksChecked:0,
+  blocksRecovered:0,
+  confirmed:0,
+  overrides:0,
+  inferred:0,
+  untouchedConflicts:0
+};
+
+function df6121Num(v){
+  if(v===null||v===undefined||v==='')return null;
+  const n=Number(v);
+  return Number.isFinite(n)?n:null;
+}
+function df6121Observed(row){
+  return {
+    g:df6121Num((row.retryGoogle||row.google)?.value),
+    p:df6121Num((row.retryPaddle||row.paddle)?.value)
+  };
+}
+function df6121StrongDual(row){
+  const n=df6121Num(row.rowNo);
+  return n!==null && n>0 &&
+    ['CONFIRMED_DUAL','RESCUED_DUAL'].includes(row.rowStatus);
+}
+function df6121AlreadyGoodPositive(row){
+  const n=df6121Num(row.rowNo);
+  return n!==null && n>0 && [
+    'CONFIRMED_DUAL','RESCUED_DUAL',
+    'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE',
+    'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED',
+    'BACKWARD_SEQUENCE_CONFIRMED','BACKWARD_SEQUENCE_OVERRIDE',
+    'BACKWARD_SEQUENCE_INFERRED'
+  ].includes(row.rowStatus);
+}
+function df6121IsResolvedStatus(status){
+  return [
+    'CONFIRMED_DUAL','RESCUED_DUAL',
+    'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE',
+    'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED',
+    'BACKWARD_SEQUENCE_CONFIRMED','BACKWARD_SEQUENCE_OVERRIDE',
+    'BACKWARD_SEQUENCE_INFERRED'
+  ].includes(status);
+}
+
+function df6121FindEarliestDualPair(rows){
+  for(let i=0;i<rows.length-1;i++){
+    const a=rows[i],b=rows[i+1];
+    if(!df6121StrongDual(a)||!df6121StrongDual(b))continue;
+    const av=Number(a.rowNo),bv=Number(b.rowNo);
+    if(bv===av+1)return {index:i,value:av,nextValue:bv};
+  }
+  return null;
+}
+
+function df6121ApplyBackwardForBlock(rows,zone,blockId){
+  const br=[...rows].sort((a,b)=>a.index-b.index);
+  if(br.length<3)return false;
+
+  const anchor=df6121FindEarliestDualPair(br);
+  if(!anchor||anchor.index<=0)return false;
+
+  // Keep the recovery local. This is generic, not drawing-specific.
+  const start=Math.max(0,anchor.index-25);
+  const candidates=[];
+  for(let i=start;i<anchor.index;i++){
+    const expected=anchor.value-(anchor.index-i);
+    if(expected<=0)continue;
+    const row=br[i],{g,p}=df6121Observed(row);
+    const gMatch=g===expected,pMatch=p===expected;
+    const positiveG=g!==null&&g>0,positiveP=p!==null&&p>0;
+    const hardConflict=positiveG&&positiveP&&!gMatch&&!pMatch;
+    const zeroish=(g===null||g===0)&&(p===null||p===0);
+
+    candidates.push({
+      row,index:i,expected,g,p,gMatch,pMatch,
+      supported:gMatch||pMatch,
+      hardConflict,zeroish
+    });
+  }
+  if(candidates.length<2)return false;
+
+  const supported=candidates.filter(x=>x.supported).length;
+  const paddleSupported=candidates.filter(x=>x.pMatch).length;
+  const hard=candidates.filter(x=>x.hardConflict).length;
+  const density=supported/candidates.length;
+
+  // Require a real backward OCR pattern before inferring any unreadable gaps.
+  // The thresholds are intentionally conservative.
+  const patternStrong=
+    supported>=3 &&
+    density>=0.60 &&
+    (paddleSupported>=3 || supported>=5) &&
+    hard<=1;
+
+  if(!patternStrong)return false;
+
+  let changed=0;
+
+  for(const x of candidates){
+    const r=x.row;
+
+    // Never overwrite an already-good positive number.
+    if(df6121AlreadyGoodPositive(r))continue;
+
+    if(x.supported){
+      const otherPositiveWrong=
+        (x.gMatch && x.p!==null && x.p>0 && x.p!==x.expected) ||
+        (x.pMatch && x.g!==null && x.g>0 && x.g!==x.expected);
+
+      r.rowNo=x.expected;
+      r.rowStatus=otherPositiveWrong
+        ? 'BACKWARD_SEQUENCE_OVERRIDE'
+        : 'BACKWARD_SEQUENCE_CONFIRMED';
+      r.sequenceExpected=x.expected;
+      r.sequenceSource='BACKWARD_FROM_DUAL_PAIR';
+      r.rowEvidence=
+        `Google=${x.g??'—'}, Paddle=${x.p??'—'}; backward anchor `+
+        `${anchor.value}/${anchor.nextValue} confirms ${x.expected}`;
+
+      if(otherPositiveWrong)df6121BackwardAudit.overrides++;
+      else df6121BackwardAudit.confirmed++;
+      changed++;
+      continue;
+    }
+
+    if(x.zeroish){
+      // Both OCR engines are blank/zero, but the whole local backward sequence
+      // has already passed the strong evidence-density test.
+      r.rowNo=x.expected;
+      r.rowStatus='BACKWARD_SEQUENCE_INFERRED';
+      r.sequenceExpected=x.expected;
+      r.sequenceSource='BACKWARD_FROM_DUAL_PAIR';
+      r.rowEvidence=
+        `Google=${x.g??'—'}, Paddle=${x.p??'—'}; inferred from physical distance `+
+        `to dual anchor ${anchor.value}/${anchor.nextValue}`;
+
+      df6121BackwardAudit.inferred++;
+      changed++;
+      continue;
+    }
+
+    // A positive unsupported OCR disagreement is deliberately left untouched.
+    df6121BackwardAudit.untouchedConflicts++;
+  }
+
+  if(changed){
+    df6121BackwardAudit.blocksRecovered++;
+    return true;
+  }
+  return false;
+}
+
+function df6121ApplyBackwardSequences(){
+  df6121BackwardAudit.blocksChecked=0;
+
+  for(const model of dfColumnModels){
+    for(const block of (model.blocks||[])){
+      const rows=df66Rows.filter(r=>
+        r.zone===model.zone &&
+        r.blockId===block.blockId
+      );
+      if(!rows.length)continue;
+
+      df6121BackwardAudit.blocksChecked++;
+      df6121ApplyBackwardForBlock(rows,model.zone,block.blockId);
+    }
+  }
+}
+
+// Preserve the proven v0.6.10/v0.6.12 resolver.
+// Add backward recovery ONLY when the normal retry engine has fully completed.
+const df6121BaseResolveRows=df66ResolveRows;
+df66ResolveRows=function(finalPass=false){
+  df6121BaseResolveRows(finalPass);
+  if(finalPass&&df6121BackwardEnabled){
+    df6121ApplyBackwardSequences();
+  }
+};
+
+// During df66RunRowEngine's own retry passes the hotfix is disabled.
+// It is enabled only AFTER those retries finish, so normal OCR always gets
+// the first chance to solve the row.
+const df6121BaseRunRowEngine=df66RunRowEngine;
+df66RunRowEngine=async function(){
+  df6121BackwardEnabled=false;
+  df6121BackwardAudit={
+    blocksChecked:0,blocksRecovered:0,
+    confirmed:0,overrides:0,inferred:0,untouchedConflicts:0
+  };
+
+  await df6121BaseRunRowEngine();
+
+  df6121BackwardEnabled=true;
+  df66ResolveRows(true);
+  df66RenderRowEngine();
+};
+
+// Render the new statuses as resolved, without changing row geometry.
+df66RenderRowEngine=function(){
+  const el=$('rowEngineReport');if(!el)return;
+  if(!df66Rows.length){
+    el.innerHTML='<strong>Robust Row Number Engine</strong><br><span>No physical table rows detected.</span>';
+    return;
+  }
+
+  const good=df66Rows.filter(r=>df6121IsResolvedStatus(r.rowStatus));
+  const review=df66Rows.filter(r=>!df6121IsResolvedStatus(r.rowStatus));
+  const samples=review.slice(0,8).map(r=>
+    `Z${r.zone}/B${r.blockId}: ${escapeHtml(r.rowStatus)}`
+  ).join(' · ');
+
+  el.innerHTML=`<strong>Robust Row Number Engine</strong><br>
+    <span>Physical rows: <strong>${df66Rows.length}</strong> · resolved: <strong class="ok">${good.length}</strong> · review: <strong class="${review.length?'bad':'ok'}">${review.length}</strong></span><br>
+    <span>Backward confirmed: <strong>${df6121BackwardAudit.confirmed}</strong> ·
+    backward overrides: <strong>${df6121BackwardAudit.overrides}</strong> ·
+    backward inferred gaps: <strong>${df6121BackwardAudit.inferred}</strong> ·
+    untouched positive conflicts: <strong>${df6121BackwardAudit.untouchedConflicts}</strong></span>
+    ${samples?`<br><span class="bad">${samples}</span>`:''}`;
+};
+
+// Update only the completion counter after the existing v0.6.12 handler runs.
+const df6121BaseRunClick=$('runDual').onclick;
+$('runDual').onclick=async function(ev){
+  await df6121BaseRunClick.call(this,ev);
+
+  if(dfRecords.length){
+    const goodRows=df66Rows.filter(r=>df6121IsResolvedStatus(r.rowStatus)).length;
+    df66RenderRowEngine();
+    $('status').innerHTML=
+      `<span class="${goodRows===df66Rows.length?'ok':'warn'}">`+
+      `v0.6.12.1 complete. Records: ${dfRecords.length} · resolved rows: `+
+      `${goodRows}/${df66Rows.length} · backward-sequence hotfix applied without changing pipeline logic.</span>`;
+  }
 };
 </script>
 
