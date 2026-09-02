@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.11 — Stable Row + Pipeline Consensus</title>
+<title>Drawing Finder v0.6.12 — Pipeline O-to-0 Canonicalization</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.11 — Stable Row + Pipeline Consensus</h1>
+<h1>Drawing Finder v0.6.12 — Pipeline O→0 Canonicalization</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -106,7 +106,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <div class="buttons">
  <button id="plan" disabled>Plan tiles</button>
- <button id="runDual" disabled>Run Stable Row + Pipeline Consensus</button>
+ <button id="runDual" disabled>Run Stable Row + Pipeline Canonicalization</button>
  <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
 </div>
 
@@ -161,7 +161,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
  <span>No row-integrity analysis yet.</span>
 </div>
 <div id="v610Report" class="row" style="margin-top:8px">
- <strong>v0.6.11 Pipeline Consensus</strong><br>
+ <strong>v0.6.12 Pipeline Canonicalization</strong><br>
  <span>No safe-verification analysis yet.</span>
 </div>
 
@@ -3048,7 +3048,7 @@ function df610ApplySafeMetadata(){
 function df610RenderReport(){
   const el=$('v610Report');if(!el)return;
   if(!dfRecords.length){
-    el.innerHTML='<strong>v0.6.11 Pipeline Consensus</strong><br><span>No final records yet.</span>';return;
+    el.innerHTML='<strong>v0.6.12 Pipeline Canonicalization</strong><br><span>No final records yet.</span>';return;
   }
 
   const inst=dfRecords.filter(r=>r.profile==='INSTRUMENT_LIST');
@@ -3062,7 +3062,7 @@ function df610RenderReport(){
   const elev=inst.filter(r=>r.elevation).length;
   const floor=inst.filter(r=>r.floorElevation).length;
 
-  el.innerHTML=`<strong>v0.6.11 Pipeline Consensus</strong><br>
+  el.innerHTML=`<strong>v0.6.12 Pipeline Canonicalization</strong><br>
     <span>Records: <strong>${dfRecords.length}</strong> · row numbers resolved: <strong class="${rowGood===df66Rows.length?'ok':'warn'}">${rowGood}/${df66Rows.length}</strong></span><br>
     <span>Selective pipeline cells checked: <strong>${df610PipelineVerifyStats.attempted}</strong> · exact Google+Paddle: <strong class="ok">${df610PipelineVerifyStats.verified}</strong> · Paddle stronger replacements: <strong>${df610PipelineVerifyStats.changed}</strong> · pipeline review: <strong class="${df610PipelineVerifyStats.review?'warn':'ok'}">${df610PipelineVerifyStats.review}</strong></span><br>
     <span>Invalid final pipeline strings: <strong class="${badPipe?'bad':'ok'}">${badPipe}</strong> · multi-BR final strings: <strong class="${multiBr?'bad':'ok'}">${multiBr}</strong> · Elevation: <strong>${elev}/${inst.length}</strong> · Floor Elevation: <strong>${floor}/${inst.length}</strong></span>`;
@@ -3191,7 +3191,7 @@ $('runDual').onclick=async()=>{
       'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
     ].includes(r.rowStatus)).length;
 
-    $('status').innerHTML=`<span class="ok">v0.6.11 complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
+    $('status').innerHTML=`<span class="ok">v0.6.12 complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
   }catch(e){
     console.error(e);
     $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
@@ -3663,7 +3663,7 @@ df610ApplySafeMetadata=function(){
 df610RenderReport=function(){
   const el=$('v610Report');if(!el)return;
   if(!dfRecords.length){
-    el.innerHTML='<strong>v0.6.11 Pipeline Consensus</strong><br><span>No final records yet.</span>';
+    el.innerHTML='<strong>v0.6.12 Pipeline Canonicalization</strong><br><span>No final records yet.</span>';
     return;
   }
 
@@ -3680,7 +3680,7 @@ df610RenderReport=function(){
   const elev=inst.filter(r=>r.elevation).length;
   const floor=inst.filter(r=>r.floorElevation).length;
 
-  el.innerHTML=`<strong>v0.6.11 Pipeline Consensus</strong><br>
+  el.innerHTML=`<strong>v0.6.12 Pipeline Canonicalization</strong><br>
     <span>Records: <strong>${dfRecords.length}</strong> · stable rows resolved: <strong class="${rowGood===df66Rows.length?'ok':'warn'}">${rowGood}/${df66Rows.length}</strong></span><br>
     <span>Paddle pipeline blocks: <strong>${df611Stats.pipelineBlocks}</strong> · candidates mapped to existing rows: <strong>${df611Stats.paddleCandidates}</strong> · exact consensus: <strong class="ok">${df611Stats.exactConsensus}</strong> · punctuation normalized: <strong>${df611Stats.punctuationNormalized}</strong> · Paddle stronger: <strong>${df611Stats.paddleStronger}</strong></span><br>
     <span>Disagreement/review: <strong class="${df611Stats.disagreementReview?'warn':'ok'}">${df611Stats.disagreementReview}</strong> · suspicious Google patterns: <strong class="${suspicious?'warn':'ok'}">${suspicious}</strong> · invalid finals: <strong class="${invalid?'bad':'ok'}">${invalid}</strong> · multi-BR finals: <strong class="${multiBr?'bad':'ok'}">${multiBr}</strong></span><br>
@@ -3751,6 +3751,159 @@ $('exportCsv').onclick=()=>{
   const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=u;a.download='drawing-finder-v0.6.11-stable-row-pipeline-consensus.csv';
+  a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+</script>
+
+
+<script>
+// ===== v0.6.12 Project Rule: Pipeline letter O does not exist =====
+//
+// User-confirmed project rule:
+// - Within PIPELINE identifiers, alphabetic O is invalid.
+// - Every OCR "O" in a pipeline is therefore canonicalized to numeric "0".
+// - Raw Google/Paddle readings remain untouched in audit columns.
+// - This rule applies ONLY to pipeline strings, not to equipment/instrument tags.
+
+function df612ProjectPipelineCanonical(s){
+  // Preserve raw evidence elsewhere; canonical output is project-normalized.
+  return df611RestoreKnownPunctuation(
+    String(s||'').toUpperCase().replace(/\s+/g,'').replace(/O/g,'0')
+  );
+}
+
+function df612CanonicalReasons(raw,final){
+  const reasons=[];
+  const r=String(raw||'').toUpperCase().replace(/\s+/g,'');
+  if(r.includes('O'))reasons.push('PROJECT_RULE_O_TO_0');
+  if(df611RestoreKnownPunctuation(r)!==r)reasons.push('FORMAT_UNDERSCORE_NORMALIZED');
+  return reasons;
+}
+
+// Override pipeline resolver safely:
+// - retain all v0.6.11 consensus logic
+// - apply O→0 only to the final pipeline value
+// - keep google/paddle raw values for audit
+const df612BaseResolvePipeline = df611ResolvePipeline;
+
+df611ResolvePipeline = function(row){
+  const r=df612BaseResolvePipeline(row);
+
+  const preCanonical = r.final || '';
+  const canonical = df612ProjectPipelineCanonical(preCanonical);
+
+  const extraReasons = df612CanonicalReasons(preCanonical, canonical);
+
+  // If project-rule normalization changed the final value, record it explicitly.
+  if(canonical !== preCanonical){
+    r.final = canonical;
+    r.status = r.status && r.status !== 'GOOGLE_ONLY'
+      ? r.status + '+PROJECT_CANONICALIZED'
+      : 'PROJECT_CANONICALIZED';
+    r.suspicion = [...new Set([...(r.suspicion||[]), ...extraReasons])];
+  }else if(extraReasons.length){
+    r.suspicion = [...new Set([...(r.suspicion||[]), ...extraReasons])];
+  }
+
+  // Hard safety: final pipeline may not contain alphabetic O.
+  if(/[O]/.test(r.final)){
+    r.final = r.final.replace(/O/g,'0');
+    r.status = 'PROJECT_CANONICALIZED';
+    r.suspicion = [...new Set([...(r.suspicion||[]), 'PROJECT_RULE_O_TO_0'])];
+  }
+
+  return r;
+};
+
+// Final metadata pass: guarantee that the exported/displayed related pipeline
+// is canonicalized even if a legacy path bypassed the resolver.
+const df612BaseApplySafeMetadata = df610ApplySafeMetadata;
+
+df610ApplySafeMetadata = function(){
+  df612BaseApplySafeMetadata();
+
+  for(const r of dfRecords){
+    if(r.pipeline){
+      const before=r.pipeline;
+      const after=df612ProjectPipelineCanonical(before);
+      if(after!==before){
+        r.pipeline=after;
+        r.pipelineVerificationStatus = r.pipelineVerificationStatus
+          ? r.pipelineVerificationStatus + '+PROJECT_CANONICALIZED'
+          : 'PROJECT_CANONICALIZED';
+        r.pipelineSuspicion=[
+          ...new Set([...(r.pipelineSuspicion||[]), ...df612CanonicalReasons(before,after)])
+        ];
+      }
+    }
+  }
+};
+
+df610RenderReport = function(){
+  const el=$('v610Report');if(!el)return;
+  if(!dfRecords.length){
+    el.innerHTML='<strong>v0.6.12 Pipeline Canonicalization</strong><br><span>No final records yet.</span>';
+    return;
+  }
+
+  const inst=dfRecords.filter(r=>r.profile==='INSTRUMENT_LIST');
+  const rowGood=df66Rows.filter(r=>[
+    'CONFIRMED_DUAL','RESCUED_DUAL',
+    'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE',
+    'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
+  ].includes(r.rowStatus)).length;
+
+  const oRemaining=inst.filter(r=>/[O]/.test(String(r.pipeline||''))).length;
+  const canonCount=inst.filter(r=>
+    String(r.pipelineVerificationStatus||'').includes('PROJECT_CANONICALIZED') ||
+    (r.pipelineSuspicion||[]).includes('PROJECT_RULE_O_TO_0')
+  ).length;
+  const invalid=inst.filter(r=>r.pipeline&&!df611ValidPipeline(r.pipeline)).length;
+  const elev=inst.filter(r=>r.elevation).length;
+  const floor=inst.filter(r=>r.floorElevation).length;
+
+  el.innerHTML=`<strong>v0.6.12 Pipeline Canonicalization</strong><br>
+    <span>Records: <strong>${dfRecords.length}</strong> · stable rows resolved: <strong class="${rowGood===df66Rows.length?'ok':'warn'}">${rowGood}/${df66Rows.length}</strong></span><br>
+    <span>Pipeline O→0 canonicalized rows: <strong class="ok">${canonCount}</strong> · alphabetic O remaining in final pipelines: <strong class="${oRemaining?'bad':'ok'}">${oRemaining}</strong></span><br>
+    <span>Invalid final pipeline strings: <strong class="${invalid?'bad':'ok'}">${invalid}</strong> · Elevation: <strong>${elev}/${inst.length}</strong> · Floor Elevation: <strong>${floor}/${inst.length}</strong></span>`;
+};
+
+// Export v0.6.12 audit fields.
+$('exportCsv').onclick=()=>{
+  if(!dfRecords.length)return;
+
+  const rows=[[
+    'status','row_no','row_status','row_integrity',
+    'tag','tag_candidate_count','rejected_tags','tag_resolution','tag_rescued','tag_rescue_pass',
+    'related_pipeline','pipeline_engine','pipeline_verification_status',
+    'pipeline_google_raw','pipeline_paddle_raw','pipeline_suspicion','same_base_google_variants','rejected_pipelines',
+    'elevation','elevation_candidate_count','rejected_elevations',
+    'floor_elevation','floor_elevation_candidate_count','rejected_floor_elevations',
+    'profile','column_type','related_tag','description',
+    'row_google','row_paddle','row_retry','row_sequence_expected','row_sequence_source','row_evidence',
+    'google_confidence','paddle_confidence','relation_audit',
+    'page','zone','block_id','physical_row_id','prefix5','global_x_percent','global_y_percent'
+  ]];
+
+  for(const r of dfRecords){
+    const c=center(r.bbox);
+    rows.push([
+      r.status,r.rowNo??'',r.rowStatus,r.rowIntegrity,
+      r.tag,r.tagCandidateCount,r.rejectedTags.join(';'),r.candidateResolution,r.tagRescued,r.tagRescuePass,
+      r.pipeline,r.pipelineEngine,r.pipelineVerificationStatus,
+      r.pipelineGoogle,r.pipelinePaddle,(r.pipelineSuspicion||[]).join(';'),(r.sameBaseVariants||[]).join(';'),(r.rejectedPipelines||[]).join(';'),
+      r.elevation||'',r.elevationCandidateCount||0,(r.rejectedElevations||[]).join(';'),
+      r.floorElevation||'',r.floorElevationCandidateCount||0,(r.rejectedFloorElevations||[]).join(';'),
+      r.profile,r.column,r.related.join(';'),r.description,
+      r.rowGoogle,r.rowPaddle,r.rowRetry,r.rowSequenceExpected,r.rowSequenceSource,r.rowEvidence,
+      r.google?.confidence??'',r.paddle?.confidence??'',r.relationAudit.join(' | '),
+      r.page,r.zone,r.blockId,r.physicalRowId,dfPrefix5(r.tag),c.x*100,c.y*100
+    ]);
+  }
+
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download='drawing-finder-v0.6.12-pipeline-o-to-0.csv';
   a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
 };
 </script>
