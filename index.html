@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.12.1 — Row Backward-Sequence Hotfix</title>
+<title>Drawing Finder v0.7.0 — Recursive Project Folder Indexer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -50,18 +50,83 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 .swatch{display:inline-block;width:12px;height:12px;border:2px solid;margin-right:5px;vertical-align:-2px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:1050px){.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
+
+.project-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:8px;margin:10px 0}
+.project-file{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;word-break:break-all}
+.project-search{margin-top:10px}
+.project-results{max-height:420px}
+input[type="checkbox"]{width:auto;accent-color:var(--accent)}
+.inline-check{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;margin-top:10px}
+@media(max-width:1050px){.project-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}}
+
 </style>
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.12.1 — Row Backward-Sequence Hotfix</h1>
-<p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
+<h1>Drawing Finder v0.7.0 — Recursive Project Folder Indexer</h1>
+<p>Stable v0.6.12.1 OCR engine + recursive project-folder indexing + persistent resume + live project search.</p>
 
 <div class="note">
  <strong>Continuation-aware rule:</strong> KKS-looking pipeline prefixes are not tags unless they sit under a recognized or safely inherited tag column. Google confidence and Paddle confidence remain the OCR engines' own scores.
  A tag becomes <strong>Verified</strong> only when both engines read the same tag at the same location.
  Different readings at the same location are shown as <strong>Conflict</strong>; the app does not silently correct characters.
 </div>
+
+
+<section class="card" id="projectIndexer" style="margin:16px 0">
+<h2>Project Folder Indexer</h2>
+<div class="note">
+ <strong>Folder mode:</strong> select one project folder and the app recursively walks every subfolder for PDFs.
+ The current/saved OCR zones are used as a reusable relative template on every PDF page.
+ Each completed PDF is checkpointed to IndexedDB, so a paused or interrupted project can continue without re-OCRing completed files.
+ <strong>Keep this tab active for the fastest and most stable OCR run.</strong>
+</div>
+
+<div class="buttons">
+ <button id="selectProjectFolder">Select Project Folder</button>
+ <button id="restoreProjectFolder" class="secondary">Restore Last Project</button>
+ <button id="saveZoneTemplate" class="secondary">Save Current Zones as Template</button>
+ <button id="startProjectIndex" disabled>Start / Resume Indexing</button>
+ <button id="pauseProjectIndex" class="secondary" disabled>Pause After Current PDF</button>
+ <button id="retryProjectErrors" class="secondary" disabled>Retry Errors</button>
+ <button id="exportProjectCsv" class="secondary" disabled>Export Project Index CSV</button>
+ <button id="clearProjectIndex" class="secondary">Clear Project Index</button>
+</div>
+
+<label class="inline-check">
+ <input id="batchFullPage" type="checkbox">
+ Use full page when no saved zone template exists (slower / more Google OCR tiles)
+</label>
+
+<div id="projectFolderStatus" class="status">No project folder selected.</div>
+<div id="zoneTemplateStatus" class="status">No folder OCR-zone template saved yet.</div>
+<div class="progress-wrap"><div id="projectProgress" class="progress"></div></div>
+<div id="projectRunStatus" class="status">Folder indexer idle.</div>
+
+<div class="project-grid">
+ <div class="metric"><strong id="projectPdfCount">0</strong><span>PDFs found</span></div>
+ <div class="metric"><strong id="projectDoneCount">0</strong><span>Completed</span></div>
+ <div class="metric"><strong id="projectPendingCount">0</strong><span>Pending</span></div>
+ <div class="metric"><strong id="projectErrorCount">0</strong><span>Errors</span></div>
+ <div class="metric"><strong id="projectTagCount">0</strong><span>Indexed tags</span></div>
+</div>
+
+<label>Search project index — tag prefix, pipeline, drawing name/path</label>
+<input id="projectSearch" class="project-search" placeholder="e.g. 20NDB, 20NDA20CT054, BR001, drawing name..." disabled>
+<div id="projectSearchInfo" class="status">No indexed records yet.</div>
+<div class="result-scroll project-results">
+<table>
+<thead><tr>
+ <th>Tag</th><th>Drawing</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th><th>Status</th>
+</tr></thead>
+<tbody id="projectResults"><tr><td colspan="6" class="small">No project records yet.</td></tr></tbody>
+</table>
+</div>
+
+<div class="note" style="margin-top:12px">
+ <strong>Planned next:</strong> optional searchable/OCR-PDF export. The indexed PDF can be written as a new searchable PDF into a chosen export folder (or, where browser write permission allows, beside the original) while preserving the original PDF unchanged.
+</div>
+</section>
 
 <div class="grid">
 <section class="card">
@@ -74,7 +139,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </div>
 <div id="healthStatus" class="status"></div>
 
-<h2 style="margin-top:20px">2. Sample PDF + OCR zones</h2>
+<h2 style="margin-top:20px">2. Sample PDF + OCR zones / folder template</h2>
 <input id="pdfInput" type="file" accept=".pdf,application/pdf">
 <div id="pageInfo" class="status">No PDF loaded.</div>
 <p class="small"><strong>Include at least one header-bearing table block in each zone.</strong> Headerless continuation blocks in the same zone can inherit that schema automatically.</p>
@@ -3191,7 +3256,7 @@ $('runDual').onclick=async()=>{
       'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
     ].includes(r.rowStatus)).length;
 
-    $('status').innerHTML=`<span class="ok">v0.6.12.1 complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
+    $('status').innerHTML=`<span class="ok">v0.7.0 core complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
   }catch(e){
     console.error(e);
     $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
@@ -4163,10 +4228,520 @@ $('runDual').onclick=async function(ev){
     df66RenderRowEngine();
     $('status').innerHTML=
       `<span class="${goodRows===df66Rows.length?'ok':'warn'}">`+
-      `v0.6.12.1 complete. Records: ${dfRecords.length} · resolved rows: `+
+      `v0.7.0 core complete. Records: ${dfRecords.length} · resolved rows: `+
       `${goodRows}/${df66Rows.length} · backward-sequence hotfix applied without changing pipeline logic.</span>`;
   }
 };
+</script>
+
+
+<script>
+// ===== v0.7.0 Recursive Project Folder Indexer =====
+//
+// This layer deliberately treats the proven v0.6.12.1 OCR engine as a black box.
+// It only:
+//   1) recursively discovers PDFs,
+//   2) loads one PDF at a time,
+//   3) maps the saved relative OCR-zone template to every page,
+//   4) invokes the existing single-PDF OCR handler,
+//   5) checkpoints final dfRecords with drawing path metadata.
+//
+// It does NOT redefine tag parsing, pipeline rules, row-number logic,
+// physical-row geometry, or the Google/Paddle OCR resolvers.
+
+const DF70_DB_NAME='drawing-finder-v070';
+const DF70_DB_VERSION=1;
+const DF70_ZONE_KEY='df70_folder_zone_template_v1';
+
+let df70DbPromise=null;
+let df70ProjectHandle=null;
+let df70ProjectName='';
+let df70Entries=[];
+let df70FileState=new Map();
+let df70ProjectRecords=[];
+let df70BatchRunning=false;
+let df70PauseRequested=false;
+
+function df70Req(req){
+  return new Promise((resolve,reject)=>{
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error('IndexedDB request failed'));
+  });
+}
+function df70TxDone(tx){
+  return new Promise((resolve,reject)=>{
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error||new Error('IndexedDB transaction failed'));
+    tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
+  });
+}
+function df70Db(){
+  if(df70DbPromise)return df70DbPromise;
+  df70DbPromise=new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DF70_DB_NAME,DF70_DB_VERSION);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains('meta'))db.createObjectStore('meta',{keyPath:'key'});
+      if(!db.objectStoreNames.contains('files')){
+        const s=db.createObjectStore('files',{keyPath:'path'});
+        s.createIndex('status','status',{unique:false});
+      }
+      if(!db.objectStoreNames.contains('records')){
+        const s=db.createObjectStore('records',{keyPath:'id'});
+        s.createIndex('path','path',{unique:false});
+        s.createIndex('tag','tag',{unique:false});
+      }
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error('IndexedDB open failed'));
+  });
+  return df70DbPromise;
+}
+async function df70Put(store,value){
+  const db=await df70Db(),tx=db.transaction(store,'readwrite');
+  tx.objectStore(store).put(value);
+  await df70TxDone(tx);
+}
+async function df70Get(store,key){
+  const db=await df70Db(),tx=db.transaction(store,'readonly');
+  const v=await df70Req(tx.objectStore(store).get(key));
+  await df70TxDone(tx);
+  return v;
+}
+async function df70GetAll(store){
+  const db=await df70Db(),tx=db.transaction(store,'readonly');
+  const v=await df70Req(tx.objectStore(store).getAll());
+  await df70TxDone(tx);
+  return v||[];
+}
+async function df70DeleteRecordsForPath(path){
+  const db=await df70Db(),tx=db.transaction('records','readwrite');
+  const s=tx.objectStore('records'),idx=s.index('path');
+  const keys=await df70Req(idx.getAllKeys(IDBKeyRange.only(path)));
+  for(const key of keys)s.delete(key);
+  await df70TxDone(tx);
+}
+async function df70ClearStores(){
+  const db=await df70Db(),tx=db.transaction(['meta','files','records'],'readwrite');
+  tx.objectStore('meta').clear();
+  tx.objectStore('files').clear();
+  tx.objectStore('records').clear();
+  await df70TxDone(tx);
+}
+
+function df70NormalizePath(s){return String(s||'').replace(/\\/g,'/')}
+function df70FolderTemplate(){
+  try{
+    const raw=localStorage.getItem(DF70_ZONE_KEY);
+    const arr=raw?JSON.parse(raw):[];
+    return Array.isArray(arr)?arr.filter(z=>
+      Number.isFinite(Number(z.x))&&Number.isFinite(Number(z.y))&&
+      Number(z.w)>0&&Number(z.h)>0
+    ).map(z=>({x:+z.x,y:+z.y,w:+z.w,h:+z.h})):[];
+  }catch(_){return[]}
+}
+function df70SaveCurrentZones(){
+  if(!zones.length){
+    $('zoneTemplateStatus').innerHTML='<span class="bad">Draw at least one OCR zone on a sample PDF first.</span>';
+    return false;
+  }
+  const tpl=zones.map(z=>({x:z.x,y:z.y,w:z.w,h:z.h}));
+  localStorage.setItem(DF70_ZONE_KEY,JSON.stringify(tpl));
+  df70RenderTemplateStatus();
+  return true;
+}
+function df70RenderTemplateStatus(){
+  const tpl=df70FolderTemplate();
+  if(tpl.length){
+    $('zoneTemplateStatus').innerHTML=`<span class="ok">${tpl.length} relative OCR zone(s) saved as folder template. They will be applied to every page.</span>`;
+  }else{
+    $('zoneTemplateStatus').innerHTML='<span class="warn">No saved folder template. Draw zones on a sample PDF and save them, or enable full-page fallback.</span>';
+  }
+}
+$('saveZoneTemplate').onclick=()=>df70SaveCurrentZones();
+
+async function df70Permission(handle){
+  if(!handle)return false;
+  const opts={mode:'read'};
+  try{
+    if((await handle.queryPermission(opts))==='granted')return true;
+    return (await handle.requestPermission(opts))==='granted';
+  }catch(_){return true}
+}
+
+async function df70WalkDirectory(dirHandle,prefix=''){
+  const out=[];
+  for await(const [name,handle] of dirHandle.entries()){
+    const rel=prefix?`${prefix}/${name}`:name;
+    if(handle.kind==='directory'){
+      out.push(...await df70WalkDirectory(handle,rel));
+    }else if(handle.kind==='file'&&/\.pdf$/i.test(name)){
+      out.push({path:df70NormalizePath(rel),name,handle});
+    }
+  }
+  return out;
+}
+async function df70SetProjectHandle(handle,fromRestore=false){
+  if(!(await df70Permission(handle)))throw new Error('Folder read permission was not granted.');
+  df70ProjectHandle=handle;
+  df70ProjectName=handle.name||'Project';
+  $('projectFolderStatus').textContent='Scanning folder tree for PDFs…';
+  df70Entries=await df70WalkDirectory(handle);
+  df70Entries.sort((a,b)=>a.path.localeCompare(b.path,undefined,{numeric:true,sensitivity:'base'}));
+
+  const savedFiles=await df70GetAll('files');
+  const old=new Map(savedFiles.map(x=>[x.path,x]));
+  df70FileState=new Map();
+
+  // Preserve completed/error state only for files still present in this selected folder.
+  for(const e of df70Entries){
+    const prev=old.get(e.path);
+    const state=prev&&prev.projectName===df70ProjectName
+      ?prev
+      :{path:e.path,name:e.name,projectName:df70ProjectName,status:'pending',tagCount:0,error:'',updatedAt:Date.now()};
+    df70FileState.set(e.path,state);
+    await df70Put('files',state);
+  }
+
+  try{
+    await df70Put('meta',{key:'project',projectName:df70ProjectName,handle,updatedAt:Date.now()});
+  }catch(err){
+    console.warn('Could not persist directory handle:',err);
+    await df70Put('meta',{key:'project',projectName:df70ProjectName,updatedAt:Date.now()});
+  }
+
+  await df70ReloadRecords();
+  df70RenderProject();
+  $('projectFolderStatus').innerHTML=`<span class="ok">${escapeHtml(df70ProjectName)} — ${df70Entries.length} PDF(s) found recursively${fromRestore?' (restored)':''}.</span>`;
+}
+$('selectProjectFolder').onclick=async()=>{
+  if(!window.showDirectoryPicker){
+    $('projectFolderStatus').innerHTML='<span class="bad">This browser does not support the File System Access API. Use current Edge/Chrome.</span>';
+    return;
+  }
+  try{
+    const h=await window.showDirectoryPicker({mode:'read'});
+    await df70SetProjectHandle(h,false);
+  }catch(e){
+    if(e?.name!=='AbortError')$('projectFolderStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }
+};
+$('restoreProjectFolder').onclick=async()=>{
+  try{
+    const meta=await df70Get('meta','project');
+    if(!meta?.handle){
+      $('projectFolderStatus').innerHTML='<span class="warn">No restorable folder handle is stored. Select the project folder again.</span>';
+      return;
+    }
+    await df70SetProjectHandle(meta.handle,true);
+  }catch(e){
+    $('projectFolderStatus').innerHTML='<span class="bad">Restore failed: '+escapeHtml(e.message)+'</span>';
+  }
+};
+
+function df70MappedZones(pageCount){
+  let tpl=df70FolderTemplate();
+  if(!tpl.length&&$('batchFullPage').checked)tpl=[{x:0,y:0,w:1,h:1}];
+  if(!tpl.length)return[];
+  const out=[];
+  for(let p=1;p<=pageCount;p++){
+    for(const z of tpl)out.push({page:p,x:z.x,y:z.y,w:z.w,h:z.h});
+  }
+  return out;
+}
+
+async function df70LoadPdfForBatch(file){
+  if(pdfDoc?.destroy){
+    try{await pdfDoc.destroy()}catch(_){}
+  }
+  pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+  pageNum=1;
+  zones=df70MappedZones(pdfDoc.numPages);
+  tiles=[];
+  resetResults();
+
+  if(!zones.length){
+    throw new Error('No folder OCR-zone template. Save current zones or enable full-page fallback.');
+  }
+  await planTiles();
+}
+
+function df70SerializableRecord(r,path,fileName){
+  const c=center(r.bbox);
+  return {
+    id:`${path}::${r.page||1}::${r.physicalRowId||''}::${r.tag}`,
+    path,fileName,
+    tag:r.tag||'',
+    status:r.status||'',
+    rowNo:r.rowNo??'',
+    rowStatus:r.rowStatus||'',
+    rowIntegrity:r.rowIntegrity||'',
+    pipeline:r.pipeline||'',
+    pipelineEngine:r.pipelineEngine||'',
+    pipelineVerificationStatus:r.pipelineVerificationStatus||'',
+    elevation:r.elevation||'',
+    floorElevation:r.floorElevation||'',
+    profile:r.profile||'',
+    column:r.column||'',
+    related:Array.isArray(r.related)?r.related:[],
+    description:r.description||'',
+    page:r.page||1,
+    zone:r.zone||'',
+    blockId:r.blockId||'',
+    physicalRowId:r.physicalRowId||'',
+    googleConfidence:r.google?.confidence??'',
+    paddleConfidence:r.paddle?.confidence??'',
+    x:c?.x??'',
+    y:c?.y??'',
+    indexedAt:Date.now()
+  };
+}
+async function df70PersistPdfRecords(path,fileName,records){
+  await df70DeleteRecordsForPath(path);
+  if(!records.length)return;
+  const db=await df70Db(),tx=db.transaction('records','readwrite'),s=tx.objectStore('records');
+  for(const r of records)s.put(df70SerializableRecord(r,path,fileName));
+  await df70TxDone(tx);
+}
+async function df70ReloadRecords(){
+  df70ProjectRecords=(await df70GetAll('records'))
+    .filter(r=>!df70ProjectName||df70FileState.has(r.path));
+  df70RenderSearch();
+}
+
+async function df70ProcessEntry(entry,index,total){
+  const state=df70FileState.get(entry.path)||{
+    path:entry.path,name:entry.name,projectName:df70ProjectName,status:'pending',tagCount:0,error:''
+  };
+  state.status='processing';state.error='';state.updatedAt=Date.now();
+  df70FileState.set(entry.path,state);
+  await df70Put('files',state);
+  df70RenderProject();
+
+  $('projectRunStatus').innerHTML=
+    `<span class="purple">[${index+1}/${total}] OCR: <span class="project-file">${escapeHtml(entry.path)}</span></span>`;
+
+  try{
+    const file=await entry.handle.getFile();
+    await df70LoadPdfForBatch(file);
+
+    // Invoke the existing, already-tested v0.6.12.1 single-PDF engine.
+    await $('runDual').onclick({type:'project-batch',preventDefault(){},stopPropagation(){}});
+
+    const recs=(dfRecords||[]).map(r=>r);
+    await df70PersistPdfRecords(entry.path,entry.name,recs);
+
+    state.status='done';
+    state.tagCount=recs.length;
+    state.error='';
+    state.pages=pdfDoc?.numPages||1;
+    state.updatedAt=Date.now();
+    await df70Put('files',state);
+  }catch(e){
+    console.error('Project PDF failed',entry.path,e);
+    state.status='error';
+    state.error=String(e?.message||e);
+    state.updatedAt=Date.now();
+    await df70Put('files',state);
+  }finally{
+    df70FileState.set(entry.path,state);
+    try{if(pdfDoc?.destroy)await pdfDoc.destroy()}catch(_){}
+    pdfDoc=null;
+    zones=[];tiles=[];resetResults();
+    await df70ReloadRecords();
+    df70RenderProject();
+  }
+}
+
+async function df70Start(){
+  if(df70BatchRunning)return;
+  if(!df70ProjectHandle||!df70Entries.length){
+    $('projectRunStatus').innerHTML='<span class="bad">Select a project folder first.</span>';return;
+  }
+  if(!df70FolderTemplate().length&&!$('batchFullPage').checked){
+    $('projectRunStatus').innerHTML='<span class="bad">Save an OCR-zone template first, or enable full-page fallback.</span>';return;
+  }
+  if(!endpoint()){
+    $('projectRunStatus').innerHTML='<span class="bad">Google OCR backend endpoint is required.</span>';return;
+  }
+
+  const queue=df70Entries.filter(e=>{
+    const s=df70FileState.get(e.path);
+    return !s||s.status==='pending'||s.status==='processing';
+  });
+
+  if(!queue.length){
+    $('projectRunStatus').innerHTML='<span class="ok">No pending PDFs. Project index is up to date.</span>';
+    return;
+  }
+
+  df70BatchRunning=true;df70PauseRequested=false;
+  $('startProjectIndex').disabled=true;
+  $('pauseProjectIndex').disabled=false;
+  $('selectProjectFolder').disabled=true;
+  $('restoreProjectFolder').disabled=true;
+  $('saveZoneTemplate').disabled=true;
+
+  try{
+    for(let i=0;i<queue.length;i++){
+      if(df70PauseRequested)break;
+      await df70ProcessEntry(queue[i],i,queue.length);
+      await new Promise(r=>setTimeout(r,40));
+    }
+  }finally{
+    df70BatchRunning=false;
+    $('pauseProjectIndex').disabled=true;
+    $('selectProjectFolder').disabled=false;
+    $('restoreProjectFolder').disabled=false;
+    $('saveZoneTemplate').disabled=false;
+    df70RenderProject();
+
+    if(df70PauseRequested){
+      $('projectRunStatus').innerHTML='<span class="warn">Paused after the current PDF. Completed PDFs are checkpointed; press Start / Resume to continue.</span>';
+    }else{
+      const err=[...df70FileState.values()].filter(x=>x.status==='error').length;
+      $('projectRunStatus').innerHTML=err
+        ?`<span class="warn">Batch finished with ${err} error(s). Use Retry Errors after reviewing them.</span>`
+        :'<span class="ok">Project indexing complete.</span>';
+    }
+  }
+}
+$('startProjectIndex').onclick=df70Start;
+$('pauseProjectIndex').onclick=()=>{
+  if(df70BatchRunning){
+    df70PauseRequested=true;
+    $('projectRunStatus').innerHTML='<span class="warn">Pause requested. The current PDF will finish first.</span>';
+  }
+};
+$('retryProjectErrors').onclick=async()=>{
+  let n=0;
+  for(const [path,s] of df70FileState){
+    if(s.status==='error'){
+      s.status='pending';s.error='';s.updatedAt=Date.now();n++;
+      await df70Put('files',s);
+    }
+  }
+  df70RenderProject();
+  $('projectRunStatus').innerHTML=n
+    ?`<span class="ok">${n} error file(s) returned to the pending queue.</span>`
+    :'<span class="warn">There are no error files to retry.</span>';
+};
+
+function df70RenderProject(){
+  const vals=[...df70FileState.values()];
+  const total=df70Entries.length;
+  const done=vals.filter(x=>x.status==='done').length;
+  const pending=vals.filter(x=>x.status==='pending'||x.status==='processing').length;
+  const errors=vals.filter(x=>x.status==='error').length;
+  const tags=df70ProjectRecords.length;
+
+  $('projectPdfCount').textContent=total;
+  $('projectDoneCount').textContent=done;
+  $('projectPendingCount').textContent=pending;
+  $('projectErrorCount').textContent=errors;
+  $('projectTagCount').textContent=tags;
+  $('projectProgress').style.width=total?`${(done/total)*100}%`:'0%';
+
+  $('startProjectIndex').disabled=df70BatchRunning||!df70ProjectHandle||!total;
+  $('retryProjectErrors').disabled=df70BatchRunning||!errors;
+  $('exportProjectCsv').disabled=!tags;
+  $('projectSearch').disabled=!tags;
+  df70RenderSearch();
+}
+
+function df70RenderSearch(){
+  const q=$('projectSearch')?.value?.trim().toUpperCase()||'';
+  let matches=df70ProjectRecords;
+  if(q){
+    matches=matches.filter(r=>
+      String(r.tag||'').toUpperCase().startsWith(q) ||
+      String(r.tag||'').toUpperCase().includes(q) ||
+      String(r.pipeline||'').toUpperCase().includes(q) ||
+      String(r.path||'').toUpperCase().includes(q) ||
+      String(r.fileName||'').toUpperCase().includes(q)
+    );
+  }
+  matches=[...matches].sort((a,b)=>
+    String(a.tag).localeCompare(String(b.tag),undefined,{numeric:true}) ||
+    String(a.path).localeCompare(String(b.path),undefined,{numeric:true}) ||
+    Number(a.page||1)-Number(b.page||1) ||
+    Number(a.rowNo||0)-Number(b.rowNo||0)
+  );
+
+  const limit=400,shown=matches.slice(0,limit);
+  $('projectSearchInfo').textContent=df70ProjectRecords.length
+    ?`${matches.length} match(es) · ${df70ProjectRecords.length} total indexed tag record(s)${matches.length>limit?` · showing first ${limit}`:''}.`
+    :'No indexed records yet.';
+
+  $('projectResults').innerHTML=shown.length?shown.map(r=>`<tr>
+    <td><code>${escapeHtml(r.tag)}</code></td>
+    <td><span class="project-file">${escapeHtml(r.path)}</span></td>
+    <td>p.${escapeHtml(r.page||1)}${r.rowNo!==''?` / row ${escapeHtml(r.rowNo)}`:''}</td>
+    <td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}</td>
+    <td>${escapeHtml(r.elevation||'—')}</td>
+    <td>${escapeHtml(r.status||'')}</td>
+  </tr>`).join(''):'<tr><td colspan="6" class="small">No matching project records.</td></tr>';
+}
+$('projectSearch').addEventListener('input',df70RenderSearch);
+
+$('exportProjectCsv').onclick=()=>{
+  if(!df70ProjectRecords.length)return;
+  const head=[
+    'tag','drawing_path','file_name','page','row_no','status','row_status','row_integrity',
+    'pipeline','pipeline_engine','pipeline_verification_status','elevation','floor_elevation',
+    'profile','column_type','related_tag','description',
+    'google_confidence','paddle_confidence','physical_row_id','zone','block_id'
+  ];
+  const rows=[head];
+  for(const r of [...df70ProjectRecords].sort((a,b)=>
+    String(a.path).localeCompare(String(b.path),undefined,{numeric:true})||
+    Number(a.page||1)-Number(b.page||1)||
+    Number(a.rowNo||0)-Number(b.rowNo||0)
+  )){
+    rows.push([
+      r.tag,r.path,r.fileName,r.page,r.rowNo,r.status,r.rowStatus,r.rowIntegrity,
+      r.pipeline,r.pipelineEngine,r.pipelineVerificationStatus,r.elevation,r.floorElevation,
+      r.profile,r.column,(r.related||[]).join(';'),r.description,
+      r.googleConfidence,r.paddleConfidence,r.physicalRowId,r.zone,r.blockId
+    ]);
+  }
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download=`${(df70ProjectName||'project').replace(/[^A-Za-z0-9._-]+/g,'_')}-drawing-finder-index.csv`;
+  a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
+
+$('clearProjectIndex').onclick=async()=>{
+  if(df70BatchRunning)return;
+  if(!confirm('Clear the saved project queue and all indexed tag records from this browser?'))return;
+  await df70ClearStores();
+  df70ProjectHandle=null;df70ProjectName='';df70Entries=[];df70FileState=new Map();df70ProjectRecords=[];
+  $('projectFolderStatus').textContent='No project folder selected.';
+  $('projectRunStatus').textContent='Folder indexer idle.';
+  df70RenderProject();
+};
+
+async function df70Init(){
+  df70RenderTemplateStatus();
+  try{
+    const files=await df70GetAll('files');
+    const meta=await df70Get('meta','project');
+    if(files.length){
+      df70FileState=new Map(files.map(x=>[x.path,x]));
+      df70ProjectName=meta?.projectName||files[0]?.projectName||'Previous project';
+      df70ProjectRecords=await df70GetAll('records');
+      $('projectFolderStatus').innerHTML=
+        `<span class="warn">Saved checkpoint found for ${escapeHtml(df70ProjectName)}. Click Restore Last Project (or reselect the folder) to resume file access.</span>`;
+      df70RenderProject();
+    }else{
+      df70RenderProject();
+    }
+  }catch(e){
+    console.warn('Project index initialization failed:',e);
+    df70RenderProject();
+  }
+}
+df70Init();
 </script>
 
 </body>
