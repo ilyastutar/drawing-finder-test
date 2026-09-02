@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.6.10 — Stable Row + Pipeline Verify</title>
+<title>Drawing Finder v0.6.11 — Stable Row + Pipeline Consensus</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -54,7 +54,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.6.10 — Stable Row + Pipeline Verify</h1>
+<h1>Drawing Finder v0.6.11 — Stable Row + Pipeline Consensus</h1>
 <p>Google Document OCR + PaddleOCR verification + continuation inheritance + automatic missing-row rescue.</p>
 
 <div class="note">
@@ -106,7 +106,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
 
 <div class="buttons">
  <button id="plan" disabled>Plan tiles</button>
- <button id="runDual" disabled>Run Stable Row + Pipeline Verify</button>
+ <button id="runDual" disabled>Run Stable Row + Pipeline Consensus</button>
  <button id="exportCsv" class="secondary" disabled>Export verification CSV</button>
 </div>
 
@@ -161,7 +161,7 @@ code{background:var(--bg);border:1px solid var(--border);padding:2px 5px;border-
  <span>No row-integrity analysis yet.</span>
 </div>
 <div id="v610Report" class="row" style="margin-top:8px">
- <strong>v0.6.10 Safe Verification</strong><br>
+ <strong>v0.6.11 Pipeline Consensus</strong><br>
  <span>No safe-verification analysis yet.</span>
 </div>
 
@@ -3048,7 +3048,7 @@ function df610ApplySafeMetadata(){
 function df610RenderReport(){
   const el=$('v610Report');if(!el)return;
   if(!dfRecords.length){
-    el.innerHTML='<strong>v0.6.10 Safe Verification</strong><br><span>No final records yet.</span>';return;
+    el.innerHTML='<strong>v0.6.11 Pipeline Consensus</strong><br><span>No final records yet.</span>';return;
   }
 
   const inst=dfRecords.filter(r=>r.profile==='INSTRUMENT_LIST');
@@ -3062,7 +3062,7 @@ function df610RenderReport(){
   const elev=inst.filter(r=>r.elevation).length;
   const floor=inst.filter(r=>r.floorElevation).length;
 
-  el.innerHTML=`<strong>v0.6.10 Safe Verification</strong><br>
+  el.innerHTML=`<strong>v0.6.11 Pipeline Consensus</strong><br>
     <span>Records: <strong>${dfRecords.length}</strong> · row numbers resolved: <strong class="${rowGood===df66Rows.length?'ok':'warn'}">${rowGood}/${df66Rows.length}</strong></span><br>
     <span>Selective pipeline cells checked: <strong>${df610PipelineVerifyStats.attempted}</strong> · exact Google+Paddle: <strong class="ok">${df610PipelineVerifyStats.verified}</strong> · Paddle stronger replacements: <strong>${df610PipelineVerifyStats.changed}</strong> · pipeline review: <strong class="${df610PipelineVerifyStats.review?'warn':'ok'}">${df610PipelineVerifyStats.review}</strong></span><br>
     <span>Invalid final pipeline strings: <strong class="${badPipe?'bad':'ok'}">${badPipe}</strong> · multi-BR final strings: <strong class="${multiBr?'bad':'ok'}">${multiBr}</strong> · Elevation: <strong>${elev}/${inst.length}</strong> · Floor Elevation: <strong>${floor}/${inst.length}</strong></span>`;
@@ -3191,7 +3191,7 @@ $('runDual').onclick=async()=>{
       'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
     ].includes(r.rowStatus)).length;
 
-    $('status').innerHTML=`<span class="ok">v0.6.10 complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
+    $('status').innerHTML=`<span class="ok">v0.6.11 complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
   }catch(e){
     console.error(e);
     $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
@@ -3237,6 +3237,522 @@ $('exportCsv').onclick=()=>{
 };
 
 df610RenderReport();
+</script>
+
+
+<script>
+// ===== v0.6.11 Stable Row + Pipeline Consensus =====
+//
+// NON-NEGOTIABLE:
+// - Physical-row geometry is the v0.6.10 / v0.6.7.1 stable model.
+// - Paddle pipeline OCR may ONLY attach evidence to an already-existing row.
+// - Paddle pipeline OCR can NEVER create a physical row.
+// - Same pipeline on different rows is valid.
+// - Cross-row values are supporting evidence only; they are NEVER copied into
+//   another row unless Paddle independently reads that value in the row itself.
+
+let df611PaddleByRow = new Map();
+let df611BaseVariants = new Map();
+let df611Stats = {
+  pipelineBlocks:0,
+  paddleCandidates:0,
+  exactConsensus:0,
+  punctuationNormalized:0,
+  paddleStronger:0,
+  googleRetained:0,
+  disagreementReview:0,
+  noPaddle:0
+};
+
+function df611Norm(s){
+  return String(s||'').toUpperCase().replace(/\s+/g,'').trim();
+}
+function df611PipelineBase(s){
+  const v=df611Norm(s);
+  const m=v.match(/^(\d{2}[A-Z]{3}\d{2}BR\d{3})/);
+  return m?m[1]:'';
+}
+function df611ValidPipeline(s){
+  const v=df611Norm(s);
+  if(!/^\d{2}[A-Z]{3}\d{2}BR\d{3}/.test(v))return false;
+  if((v.match(/BR/g)||[]).length!==1)return false;
+  if(v.length<16)return false;
+  return true;
+}
+
+// Punctuation-only restoration.
+// Example: 00UMA1102 -> 00UMA11_02
+// No letters/digits are changed by this function.
+function df611RestoreKnownPunctuation(s){
+  let v=df611Norm(s);
+  v=v.replace(/(00UMA\d{2})(\d{2})$/, '$1_$2');
+  return v;
+}
+
+function df611SuspicionReasons(s){
+  const v=df611Norm(s), reasons=[];
+  if(!df611ValidPipeline(v))reasons.push('INVALID_STRUCTURE');
+  if(/C\dZO/.test(v))reasons.push('Z_LETTER_O_SUSPECT');
+  if(/00UMA\d{4}$/.test(v))reasons.push('MISSING_FINAL_UNDERSCORE');
+  if(/00U[MN]$|00UM$|00UN$|00L$|-00$/.test(v))reasons.push('TRUNCATED_END');
+  if((v.match(/BR/g)||[]).length>1)reasons.push('MULTI_BR');
+  return reasons;
+}
+
+function df611StructuralScore(s,confidence=0){
+  const raw=df611Norm(s), v=df611RestoreKnownPunctuation(raw);
+  let score=Number(confidence||0)*18;
+  if(df611ValidPipeline(raw))score+=25;
+  if(/-DN\d+/.test(v))score+=8;
+  if(/00UMA\d{2}_\d{2}$/.test(v))score+=12;
+  if(/C\dZ0/.test(v))score+=6;
+  if(/C\dZO/.test(v))score-=12;
+  if(/00U[MN]$|00UM$|00UN$|00L$|-00$/.test(raw))score-=18;
+  if((raw.match(/BR/g)||[]).length!==1)score-=40;
+  score+=Math.min(12,v.length/4);
+  return score;
+}
+
+function df611ExistingGoogle(row){
+  const g=df610ExistingGooglePipeline(row);
+  const winner=g.winner;
+  return {
+    value:winner?(winner.value||winner.text||''):'',
+    confidence:Number(winner?.confidence||0),
+    candidates:g.candidates||[]
+  };
+}
+
+function df611BuildBaseVariants(){
+  df611BaseVariants=new Map();
+  for(const row of df67IntegrityRows.filter(r=>r.profile==='INSTRUMENT_LIST')){
+    const g=df611ExistingGoogle(row);
+    if(!g.value)continue;
+    const base=df611PipelineBase(g.value);if(!base)continue;
+    if(!df611BaseVariants.has(base))df611BaseVariants.set(base,new Map());
+    const m=df611BaseVariants.get(base);
+    const raw=df611Norm(g.value);
+    if(!m.has(raw))m.set(raw,[]);
+    m.get(raw).push(row.id);
+  }
+}
+
+function df611SameBaseVariants(base){
+  const m=df611BaseVariants.get(base);
+  return m?[...m.keys()]:[];
+}
+
+function df611RowBounds(blockRows,z){
+  const rows=[...blockRows].sort((a,b)=>a.y-b.y);
+  if(!rows.length)return null;
+  const spacing=df66Median(rows.map(r=>r.spacing))||.005;
+  return {
+    y0:Math.max(z.y,rows[0].y-spacing*.7),
+    y1:Math.min(z.y+z.h,rows[rows.length-1].y+spacing*.7)
+  };
+}
+
+function df611PolyGlobal(poly,canvas,crop){
+  return dfPolyGlobal(poly||[],canvas,crop);
+}
+
+function df611CandidateFromText(text,confidence,bbox,zone,blockId){
+  const v=df611Norm(text);
+  if(!df611ValidPipeline(v))return null;
+  return {value:v,confidence:Number(confidence||0),bbox,zone,blockId};
+}
+
+function df611GroupPaddleRowItems(raw,rowSpacing){
+  const groups=[];
+  for(const item of [...raw].sort((a,b)=>center(a.bbox).y-center(b.bbox).y||center(a.bbox).x-center(b.bbox).x)){
+    let best=null,dy=1e9;
+    for(const g of groups){
+      const d=Math.abs(center(item.bbox).y-g.y);
+      if(d<dy&&d<=Math.max(.0022,rowSpacing*.38)){dy=d;best=g}
+    }
+    if(!best){
+      best={items:[],y:center(item.bbox).y};
+      groups.push(best);
+    }
+    best.items.push(item);
+    best.y=best.items.reduce((s,x)=>s+center(x.bbox).y,0)/best.items.length;
+  }
+  return groups;
+}
+
+async function df611ScanPipelineColumns(){
+  df611PaddleByRow=new Map();
+  df611Stats.pipelineBlocks=0;
+  df611Stats.paddleCandidates=0;
+
+  const ocr=await loadPaddle();
+  const blocks=[];
+
+  for(const model of dfColumnModels){
+    const z=zones[model.zone-1];
+    for(const block of (model.blocks||[])){
+      const col=(block.columns||[]).find(c=>c.subtype==='PIPELINE');
+      const rows=df67IntegrityRows.filter(r=>
+        r.profile==='INSTRUMENT_LIST' &&
+        r.zone===model.zone &&
+        r.blockId===block.blockId
+      );
+      if(!col||!rows.length)continue;
+      const bounds=df611RowBounds(rows,z);if(!bounds)continue;
+      blocks.push({model,z,block,col,rows,bounds});
+    }
+  }
+
+  for(let bi=0;bi<blocks.length;bi++){
+    const {model,z,block,col,rows,bounds}=blocks[bi];
+    df611Stats.pipelineBlocks++;
+
+    const xm=Math.max(.002,(col.right-col.left)*.025);
+    const crop={
+      x:Math.max(z.x,col.left-xm),
+      y:bounds.y0,
+      w:Math.min(z.x+z.w,col.right+xm)-Math.max(z.x,col.left-xm),
+      h:bounds.y1-bounds.y0
+    };
+    if(crop.w<=0||crop.h<=0)continue;
+
+    $('status').textContent=`Pipeline consensus: Paddle column ${bi+1}/${blocks.length}…`;
+
+    // Narrow column scan: one Paddle call per real table block, never per row.
+    const c=await dfRenderNormCrop(z.page,crop,340,6000);
+    const [res]=await ocr.predict(c,{
+      textDetLimitSideLen:2304,
+      textDetLimitType:'max',
+      textDetMaxSideLimit:6000,
+      textDetThresh:.16,
+      textDetBoxThresh:.28,
+      textDetUnclipRatio:1.30,
+      textRecScoreThresh:.20
+    });
+
+    const raw=[];
+    for(const item of (res.items||[])){
+      const bbox=df611PolyGlobal(item.poly||[],c,crop);if(!bbox)continue;
+      raw.push({
+        text:String(item.text||''),
+        confidence:Number(item.score||0),
+        bbox,
+        zone:model.zone,
+        blockId:block.blockId
+      });
+    }
+
+    const spacing=df66Median(rows.map(r=>r.spacing))||.005;
+    const groups=df611GroupPaddleRowItems(raw,spacing);
+    const rowCandidates=[];
+
+    for(const g of groups){
+      const items=[...g.items].sort((a,b)=>center(a.bbox).x-center(b.bbox).x);
+
+      // Direct OCR items.
+      for(const it of items){
+        const cand=df611CandidateFromText(it.text,it.confidence,it.bbox,model.zone,block.blockId);
+        if(cand)rowCandidates.push(cand);
+      }
+
+      // Reconstruct split pipeline strings, but reject any concatenation that
+      // contains a second BR occurrence.
+      for(let start=0;start<items.length;start++){
+        let text='',boxes=[],conf=1;
+        for(let end=start;end<Math.min(items.length,start+6);end++){
+          text+=String(items[end].text||'').replace(/\s+/g,'');
+          boxes.push(items[end].bbox);
+          conf=Math.min(conf,Number(items[end].confidence||0));
+          if((String(text).toUpperCase().match(/BR/g)||[]).length>1)break;
+          const cand=df611CandidateFromText(text,conf,unionBboxes(boxes),model.zone,block.blockId);
+          if(cand)rowCandidates.push(cand);
+        }
+      }
+    }
+
+    // Attach Paddle evidence ONLY to pre-existing physical rows.
+    for(const cand of rowCandidates){
+      const row=[...rows].sort((a,b)=>Math.abs(a.y-center(cand.bbox).y)-Math.abs(b.y-center(cand.bbox).y))[0];
+      if(!row)continue;
+      if(Math.abs(row.y-center(cand.bbox).y)>Math.max(.0025,row.spacing*.44))continue;
+
+      if(!df611PaddleByRow.has(row.id))df611PaddleByRow.set(row.id,[]);
+      const arr=df611PaddleByRow.get(row.id);
+
+      if(!arr.some(x=>x.value===cand.value)){
+        arr.push(cand);
+        df611Stats.paddleCandidates++;
+      }else{
+        const old=arr.find(x=>x.value===cand.value);
+        if(cand.confidence>old.confidence)Object.assign(old,cand);
+      }
+    }
+
+    c.width=1;c.height=1;
+    await new Promise(r=>setTimeout(r,0));
+  }
+}
+
+function df611BestPaddleForRow(row,googleValue){
+  const base=df611PipelineBase(googleValue);
+  const pref=dfPrefix5(row.items?.[0]?.tag||'');
+  const vals=(df611PaddleByRow.get(row.id)||[])
+    .filter(x=>df611PipelineBase(x.value)===base)
+    .filter(x=>!pref||dfPrefix5(x.value)===pref);
+
+  return [...vals].sort((a,b)=>
+    df611StructuralScore(b.value,b.confidence)-
+    df611StructuralScore(a.value,a.confidence)
+  )[0]||null;
+}
+
+function df611ResolvePipeline(row){
+  const g=df611ExistingGoogle(row);
+  const gv=df611Norm(g.value);
+  const base=df611PipelineBase(gv);
+  const siblingVariants=df611SameBaseVariants(base);
+  const baseDisagreement=siblingVariants.length>1;
+  const gReasons=df611SuspicionReasons(gv);
+  const p=df611BestPaddleForRow(row,gv);
+  const pv=p?df611Norm(p.value):'';
+
+  let final=gv;
+  let engine=gv?'Google':'';
+  let status='GOOGLE_ONLY';
+  let rejected=g.candidates.slice(1).map(x=>df611Norm(x.value||x.text));
+  let suspicion=[...gReasons];
+  if(baseDisagreement)suspicion.push('SAME_BASE_DISAGREEMENT');
+
+  const gCanon=df611RestoreKnownPunctuation(gv);
+  const pCanon=df611RestoreKnownPunctuation(pv);
+
+  if(pv){
+    if(gv===pv){
+      final=gCanon;
+      engine='Google+Paddle';
+      status=final!==gv?'CONSENSUS_FORMAT_NORMALIZED':'EXACT_CONSENSUS';
+      if(final!==gv)df611Stats.punctuationNormalized++;
+      else df611Stats.exactConsensus++;
+    }else if(gCanon===pCanon){
+      // Engines agree on every alphanumeric character; only punctuation differs.
+      final=gCanon;
+      engine='Google+Paddle';
+      status='CONSENSUS_FORMAT_NORMALIZED';
+      df611Stats.punctuationNormalized++;
+      rejected.push(gv,pv);
+    }else{
+      let ps=df611StructuralScore(pv,p.confidence);
+      let gs=df611StructuralScore(gv,g.confidence);
+
+      // Cross-row evidence is ONLY a bonus when Paddle independently reads that
+      // sibling variant in THIS row. No sibling text is copied automatically.
+      const siblingCanonical=siblingVariants.map(df611RestoreKnownPunctuation);
+      if(siblingCanonical.includes(pCanon))ps+=8;
+
+      if(
+        base &&
+        df611PipelineBase(pv)===base &&
+        ps>=gs+7 &&
+        !df611SuspicionReasons(pv).includes('MULTI_BR')
+      ){
+        final=pCanon;
+        engine='Paddle';
+        status=siblingCanonical.includes(pCanon)
+          ? 'PADDLE_STRONGER_SIBLING_SUPPORTED'
+          : 'PADDLE_STRONGER';
+        rejected.push(gv);
+        df611Stats.paddleStronger++;
+      }else{
+        final=gCanon;
+        engine='Google';
+        status=(gReasons.length||baseDisagreement)
+          ? 'DISAGREEMENT_REVIEW'
+          : 'GOOGLE_RETAINED';
+        rejected.push(pv);
+        if(status==='DISAGREEMENT_REVIEW')df611Stats.disagreementReview++;
+        else df611Stats.googleRetained++;
+        if(final!==gv)df611Stats.punctuationNormalized++;
+      }
+    }
+  }else{
+    final=gCanon;
+    engine=gv?'Google':'';
+    status=(gReasons.length||baseDisagreement)?'GOOGLE_SUSPICIOUS_NO_PADDLE':'GOOGLE_ONLY';
+    if(final!==gv)df611Stats.punctuationNormalized++;
+    df611Stats.noPaddle++;
+  }
+
+  // Final hard safety.
+  if(final && !df611ValidPipeline(final)){
+    status='PIPELINE_REVIEW';
+  }
+  if((final.match(/BR/g)||[]).length>1){
+    final=gv;
+    engine='Google';
+    status='PIPELINE_REVIEW';
+  }
+
+  return {
+    google:gv,
+    paddle:pv,
+    final,
+    engine,
+    status,
+    suspicion:[...new Set(suspicion)],
+    sameBaseVariants:siblingVariants,
+    rejected:[...new Set(rejected.filter(Boolean).filter(x=>x!==final))]
+  };
+}
+
+// Replace v0.6.10 selective cell verification with efficient whole-column
+// verification, while keeping the SAME fixed physical rows.
+df610VerifyPipelineCells=async function(){
+  df610PipelineAudit=new Map();
+  df610PipelineVerifyStats={attempted:0,verified:0,changed:0,review:0,skipped:0};
+
+  df611Stats={
+    pipelineBlocks:0,paddleCandidates:0,exactConsensus:0,
+    punctuationNormalized:0,paddleStronger:0,googleRetained:0,
+    disagreementReview:0,noPaddle:0
+  };
+
+  df611BuildBaseVariants();
+  await df611ScanPipelineColumns();
+
+  for(const row of df67IntegrityRows.filter(r=>r.profile==='INSTRUMENT_LIST')){
+    const r=df611ResolvePipeline(row);
+    df610PipelineVerifyStats.attempted++;
+    if(['EXACT_CONSENSUS','CONSENSUS_FORMAT_NORMALIZED'].includes(r.status)){
+      df610PipelineVerifyStats.verified++;
+    }
+    if(r.engine==='Paddle')df610PipelineVerifyStats.changed++;
+    if(/REVIEW|SUSPICIOUS/.test(r.status))df610PipelineVerifyStats.review++;
+
+    df610PipelineAudit.set(row.id,{
+      google:r.google,
+      paddle:r.paddle,
+      final:r.final,
+      engine:r.engine,
+      status:r.status,
+      rejected:r.rejected,
+      suspicion:r.suspicion,
+      sameBaseVariants:r.sameBaseVariants
+    });
+  }
+};
+
+// Keep elevation metadata from v0.6.10, then add v0.6.11 audit and the clearer
+// row-integrity label. No row geometry is changed.
+const df611BaseApplySafeMetadata=df610ApplySafeMetadata;
+df610ApplySafeMetadata=function(){
+  df611BaseApplySafeMetadata();
+
+  for(const r of dfRecords){
+    const row=df67IntegrityRows.find(x=>x.id===r.physicalRowId);
+    const pa=row?df610PipelineAudit.get(row.id):null;
+
+    r.pipelineSuspicion=pa?.suspicion||[];
+    r.sameBaseVariants=pa?.sameBaseVariants||[];
+
+    if(r.rowIntegrity==='MULTIPLE_PIPELINES'){
+      r.rowIntegrity='PIPELINE_OCR_VARIANTS_RESOLVED';
+    }
+  }
+};
+
+df610RenderReport=function(){
+  const el=$('v610Report');if(!el)return;
+  if(!dfRecords.length){
+    el.innerHTML='<strong>v0.6.11 Pipeline Consensus</strong><br><span>No final records yet.</span>';
+    return;
+  }
+
+  const inst=dfRecords.filter(r=>r.profile==='INSTRUMENT_LIST');
+  const rowGood=df66Rows.filter(r=>[
+    'CONFIRMED_DUAL','RESCUED_DUAL',
+    'CONFIRMED_SEQUENCE_OVERRIDE','RESCUED_SEQUENCE_OVERRIDE',
+    'SEQUENCE_CONFIRMED','OCR_EXTENSION_RESOLVED'
+  ].includes(r.rowStatus)).length;
+
+  const invalid=inst.filter(r=>r.pipeline&&!df611ValidPipeline(r.pipeline)).length;
+  const multiBr=inst.filter(r=>(String(r.pipeline||'').match(/BR/g)||[]).length>1).length;
+  const suspicious=inst.filter(r=>(r.pipelineSuspicion||[]).length>0).length;
+  const elev=inst.filter(r=>r.elevation).length;
+  const floor=inst.filter(r=>r.floorElevation).length;
+
+  el.innerHTML=`<strong>v0.6.11 Pipeline Consensus</strong><br>
+    <span>Records: <strong>${dfRecords.length}</strong> · stable rows resolved: <strong class="${rowGood===df66Rows.length?'ok':'warn'}">${rowGood}/${df66Rows.length}</strong></span><br>
+    <span>Paddle pipeline blocks: <strong>${df611Stats.pipelineBlocks}</strong> · candidates mapped to existing rows: <strong>${df611Stats.paddleCandidates}</strong> · exact consensus: <strong class="ok">${df611Stats.exactConsensus}</strong> · punctuation normalized: <strong>${df611Stats.punctuationNormalized}</strong> · Paddle stronger: <strong>${df611Stats.paddleStronger}</strong></span><br>
+    <span>Disagreement/review: <strong class="${df611Stats.disagreementReview?'warn':'ok'}">${df611Stats.disagreementReview}</strong> · suspicious Google patterns: <strong class="${suspicious?'warn':'ok'}">${suspicious}</strong> · invalid finals: <strong class="${invalid?'bad':'ok'}">${invalid}</strong> · multi-BR finals: <strong class="${multiBr?'bad':'ok'}">${multiBr}</strong></span><br>
+    <span>Elevation: <strong>${elev}/${inst.length}</strong> · Floor Elevation: <strong>${floor}/${inst.length}</strong></span>`;
+};
+
+// Better UI label status.
+renderResults=function(){
+  if(!dfRecords.length){
+    $('results').innerHTML='<tr><td colspan="8" class="small">No records yet.</td></tr>';return;
+  }
+  const goodIntegrity=new Set(['COMPLETE','DUPLICATE_TAG_RESOLVED','PIPELINE_OCR_VARIANTS_RESOLVED']);
+  $('results').innerHTML=[...dfRecords]
+    .sort((a,b)=>(Number(a.rowNo)||99999)-(Number(b.rowNo)||99999)||center(a.bbox).y-center(b.bbox).y)
+    .map(r=>`<tr>
+      <td>${dfBadge(r.status)}<br><span class="${goodIntegrity.has(r.rowIntegrity)?'ok':'warn'}">${escapeHtml(r.rowIntegrity)}</span></td>
+      <td><code>${escapeHtml(r.tag)}</code>${r.rowNo!==''?`<br><strong>row ${r.rowNo}</strong>`:'<br><span class="bad">row unresolved</span>'}${r.rejectedTags?.length?`<br><span class="warn">rejected tag: ${r.rejectedTags.map(escapeHtml).join(', ')}</span>`:''}</td>
+      <td>${escapeHtml(r.column)}<br><span>tag candidates: ${r.tagCandidateCount}</span></td>
+      <td>${r.related.length?r.related.map(t=>`<code>${escapeHtml(t)}</code>`).join(' '):'—'}</td>
+      <td>
+        ${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}
+        <br><span>pipeline: ${escapeHtml(r.pipelineVerificationStatus||'')}</span>
+        ${r.pipelineEngine?`<br><span>engine: ${escapeHtml(r.pipelineEngine)}</span>`:''}
+        ${(r.pipelineSuspicion||[]).length?`<br><span class="warn">audit: ${escapeHtml(r.pipelineSuspicion.join(', '))}</span>`:''}
+        <br><strong>Elevation:</strong> ${escapeHtml(r.elevation||'—')}
+        ${r.floorElevation?`<br><strong>Floor:</strong> ${escapeHtml(r.floorElevation)}`:''}
+      </td>
+      <td>${escapeHtml(r.description||'—')}<br><span>NO: ${escapeHtml(r.rowStatus)} · G=${r.rowGoogle||'—'} · P=${r.rowPaddle||'—'}</span></td>
+      <td>${r.google?pct(r.google.confidence):'—'}</td>
+      <td>${r.paddle?pct(r.paddle.confidence):'—'}</td>
+    </tr>`).join('');
+};
+
+// Replace only export. The v0.6.10 run orchestration remains unchanged and
+// therefore preserves the stable row model.
+$('exportCsv').onclick=()=>{
+  if(!dfRecords.length)return;
+
+  const rows=[[
+    'status','row_no','row_status','row_integrity',
+    'tag','tag_candidate_count','rejected_tags','tag_resolution','tag_rescued','tag_rescue_pass',
+    'related_pipeline','pipeline_engine','pipeline_verification_status',
+    'pipeline_google','pipeline_paddle','pipeline_suspicion','same_base_google_variants','rejected_pipelines',
+    'elevation','elevation_candidate_count','rejected_elevations',
+    'floor_elevation','floor_elevation_candidate_count','rejected_floor_elevations',
+    'profile','column_type','related_tag','description',
+    'row_google','row_paddle','row_retry','row_sequence_expected','row_sequence_source','row_evidence',
+    'google_confidence','paddle_confidence','relation_audit',
+    'page','zone','block_id','physical_row_id','prefix5','global_x_percent','global_y_percent'
+  ]];
+
+  for(const r of dfRecords){
+    const c=center(r.bbox);
+    rows.push([
+      r.status,r.rowNo??'',r.rowStatus,r.rowIntegrity,
+      r.tag,r.tagCandidateCount,r.rejectedTags.join(';'),r.candidateResolution,r.tagRescued,r.tagRescuePass,
+      r.pipeline,r.pipelineEngine,r.pipelineVerificationStatus,
+      r.pipelineGoogle,r.pipelinePaddle,(r.pipelineSuspicion||[]).join(';'),(r.sameBaseVariants||[]).join(';'),(r.rejectedPipelines||[]).join(';'),
+      r.elevation||'',r.elevationCandidateCount||0,(r.rejectedElevations||[]).join(';'),
+      r.floorElevation||'',r.floorElevationCandidateCount||0,(r.rejectedFloorElevations||[]).join(';'),
+      r.profile,r.column,r.related.join(';'),r.description,
+      r.rowGoogle,r.rowPaddle,r.rowRetry,r.rowSequenceExpected,r.rowSequenceSource,r.rowEvidence,
+      r.google?.confidence??'',r.paddle?.confidence??'',r.relationAudit.join(' | '),
+      r.page,r.zone,r.blockId,r.physicalRowId,dfPrefix5(r.tag),c.x*100,c.y*100
+    ]);
+  }
+
+  const csv=rows.map(a=>a.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download='drawing-finder-v0.6.11-stable-row-pipeline-consensus.csv';
+  a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+};
 </script>
 
 </body>
