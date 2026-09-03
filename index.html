@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.7.0 — Recursive Project Folder Indexer</title>
+<title>Drawing Finder v0.8.0 — Cloud Project Index</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -59,12 +59,19 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 .inline-check{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;margin-top:10px}
 @media(max-width:1050px){.project-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}}
 
+
+.cloud-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px}
+.cloud-search-results{max-height:430px}
+.secret-row{display:grid;grid-template-columns:1fr auto;gap:8px}
+.cloud-badge{display:inline-block;padding:2px 7px;border-radius:999px;background:#f0f4ff;color:#3548a8;font-size:11px}
+@media(max-width:950px){.cloud-grid{grid-template-columns:1fr}.secret-row{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.7.0 — Recursive Project Folder Indexer</h1>
-<p>Stable v0.6.12.1 OCR engine + recursive project-folder indexing + persistent resume + live project search.</p>
+<h1>Drawing Finder v0.8.0 — Cloud Project Index</h1>
+<p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
  <strong>Continuation-aware rule:</strong> KKS-looking pipeline prefixes are not tags unless they sit under a recognized or safely inherited tag column. Google confidence and Paddle confidence remain the OCR engines' own scores.
@@ -125,6 +132,68 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 
 <div class="note" style="margin-top:12px">
  <strong>Planned next:</strong> optional searchable/OCR-PDF export. The indexed PDF can be written as a new searchable PDF into a chosen export folder (or, where browser write permission allows, beside the original) while preserving the original PDF unchanged.
+</div>
+</section>
+
+
+<section class="card" id="cloudIndex" style="margin:16px 0">
+<h2>Cloud Project Index — Firestore</h2>
+<div class="note">
+ <strong>Purpose:</strong> IndexedDB remains the local checkpoint. Firestore is the central index.
+ After each PDF is indexed locally, this page can sync its tag records to Cloud Run → Firestore.
+ Then <code>search.html</code> can search the same project from another computer or phone.
+ <br><strong>Security:</strong> the access key is not embedded in GitHub Pages. Enter it here once; it is stored only in this browser's local storage.
+</div>
+
+<div class="cloud-grid">
+ <div>
+  <label>Cloud Project ID</label>
+  <input id="cloudProjectId" list="cloudProjectList" placeholder="e.g. hamburg-project">
+  <datalist id="cloudProjectList"></datalist>
+ </div>
+ <div>
+  <label>Project display name</label>
+  <input id="cloudProjectName" placeholder="e.g. Hamburg Project">
+ </div>
+ <div>
+  <label>Auto sync after each PDF</label>
+  <label class="inline-check"><input id="cloudAutoSync" type="checkbox" checked> Enabled</label>
+ </div>
+</div>
+
+<label>Cloud access key</label>
+<div class="secret-row">
+ <input id="cloudAccessKey" type="password" autocomplete="off" placeholder="Enter the same DF_ACCESS_KEY configured in Cloud Run">
+ <button id="generateCloudKey" class="secondary">Generate Key</button>
+</div>
+
+<div class="buttons">
+ <button id="saveCloudSettings" class="secondary">Save Cloud Settings</button>
+ <button id="testCloud" class="secondary">Test Firestore</button>
+ <button id="loadCloudProjects" class="secondary">Load Projects</button>
+ <button id="syncAllLocalCloud">Sync Local Project to Cloud</button>
+ <button id="retryCloudPending" class="secondary">Retry Pending Cloud Sync</button>
+</div>
+<div id="cloudStatus" class="status">Cloud index not tested yet.</div>
+<div id="cloudSyncStatus" class="status">No cloud sync running.</div>
+<div class="progress-wrap"><div id="cloudSyncProgress" class="progress"></div></div>
+
+<h3 style="margin-top:16px">Remote tag search</h3>
+<label>Search Firestore by tag prefix</label>
+<input id="cloudSearch" placeholder="e.g. 20NDB, 20NDA20CT054">
+<div id="cloudSearchStatus" class="status">Enter a tag or prefix.</div>
+<div class="result-scroll cloud-search-results">
+<table>
+<thead><tr>
+ <th>Tag</th><th>Drawing</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th><th>Status</th>
+</tr></thead>
+<tbody id="cloudResults"><tr><td colspan="6" class="small">No remote search yet.</td></tr></tbody>
+</table>
+</div>
+
+<div class="note" style="margin-top:12px">
+ Lightweight remote-search page included in this release:
+ <strong><code>search.html</code></strong>. Upload it beside <code>index.html</code> on GitHub Pages and open it from any device.
 </div>
 </section>
 
@@ -282,7 +351,7 @@ function tagsInside(s){
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function pct(v){return (Number(v||0)*100).toFixed(1)+'%'}
 
-$('endpoint').value=localStorage.getItem('df_google_endpoint')||'';
+$('endpoint').value=localStorage.getItem('df_google_endpoint')||'https://drawing-finder-ocr-api-639231007303.europe-west1.run.app';
 $('saveEndpoint').onclick=()=>{
  localStorage.setItem('df_google_endpoint',endpoint());
  $('healthStatus').innerHTML='<span class="ok">Saved.</span>'; update();
@@ -4742,6 +4811,308 @@ async function df70Init(){
   }
 }
 df70Init();
+</script>
+
+
+<script>
+// ===== v0.8.0 Cloud Project Index =====
+//
+// Existing OCR engine -> IndexedDB local checkpoint -> Cloud Run API -> Firestore.
+// Firestore is never called directly from GitHub Pages.
+// A user-entered X-DF-Key protects /api/* endpoints.
+// This script does not redefine the OCR/tag/row/pipeline core.
+
+const DF80_PROJECT_KEY='df80_cloud_project_id';
+const DF80_PROJECT_NAME_KEY='df80_cloud_project_name';
+const DF80_ACCESS_KEY='df80_cloud_access_key';
+const DF80_AUTO_SYNC='df80_cloud_auto_sync';
+const DF80_PENDING='df80_cloud_pending_paths';
+
+let df80CloudBusy=false;
+let df80SearchTimer=null;
+
+function df80Slug(s){
+  let v=String(s||'').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g,'-')
+    .replace(/^-+|-+$/g,'')
+    .slice(0,63);
+  if(!v)v='project';
+  if(!/^[a-z]/.test(v))v='p-'+v;
+  if(v.length<4)v=(v+'-proj').slice(0,8);
+  return v.replace(/-+$/,'');
+}
+function df80Endpoint(){return endpoint()}
+function df80Key(){return $('cloudAccessKey').value.trim()}
+function df80ProjectId(){return df80Slug($('cloudProjectId').value)}
+function df80ProjectName(){return $('cloudProjectName').value.trim()||df70ProjectName||df80ProjectId()}
+function df80Headers(json=true){
+  const h={'X-DF-Key':df80Key()};
+  if(json)h['Content-Type']='application/json';
+  return h;
+}
+function df80Pending(){
+  try{
+    const a=JSON.parse(localStorage.getItem(DF80_PENDING)||'[]');
+    return new Set(Array.isArray(a)?a:[]);
+  }catch(_){return new Set()}
+}
+function df80SavePending(set){
+  localStorage.setItem(DF80_PENDING,JSON.stringify([...set]));
+  df80RenderPending();
+}
+function df80AddPending(path){const s=df80Pending();s.add(path);df80SavePending(s)}
+function df80RemovePending(path){const s=df80Pending();s.delete(path);df80SavePending(s)}
+function df80RenderPending(){
+  const n=df80Pending().size;
+  $('retryCloudPending').disabled=df80CloudBusy||!n;
+  if(n && !$('cloudSyncStatus').textContent.includes('Syncing')){
+    $('cloudSyncStatus').innerHTML=`<span class="warn">${n} drawing(s) pending cloud sync.</span>`;
+  }
+}
+function df80SaveSettings(){
+  $('cloudProjectId').value=df80ProjectId();
+  localStorage.setItem(DF80_PROJECT_KEY,$('cloudProjectId').value);
+  localStorage.setItem(DF80_PROJECT_NAME_KEY,$('cloudProjectName').value.trim());
+  localStorage.setItem(DF80_ACCESS_KEY,df80Key());
+  localStorage.setItem(DF80_AUTO_SYNC,$('cloudAutoSync').checked?'1':'0');
+  $('cloudStatus').innerHTML='<span class="ok">Cloud settings saved in this browser.</span>';
+}
+$('saveCloudSettings').onclick=df80SaveSettings;
+
+$('generateCloudKey').onclick=()=>{
+  const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);
+  const key=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
+  $('cloudAccessKey').value=key;
+  localStorage.setItem(DF80_ACCESS_KEY,key);
+  $('cloudStatus').innerHTML=
+    '<span class="warn">New key generated. Copy this exact key into Cloud Run environment variable <code>DF_ACCESS_KEY</code>, then redeploy/update the service.</span>';
+  $('cloudAccessKey').type='text';
+  setTimeout(()=>$('cloudAccessKey').type='password',12000);
+};
+
+async function df80Fetch(path,opts={}){
+  if(!df80Endpoint())throw new Error('Cloud Run endpoint is empty.');
+  if(!df80Key())throw new Error('Cloud access key is empty.');
+  const r=await fetch(df80Endpoint()+path,{
+    ...opts,
+    headers:{...df80Headers(opts.body!==undefined),...(opts.headers||{})}
+  });
+  let j=null;
+  try{j=await r.json()}catch(_){}
+  if(!r.ok||!j?.ok)throw new Error(j?.error||`${r.status} ${r.statusText}`);
+  return j;
+}
+
+$('testCloud').onclick=async()=>{
+  try{
+    df80SaveSettings();
+    $('cloudStatus').textContent='Testing Firestore connection…';
+    const j=await df80Fetch('/api/cloud-health',{method:'GET'});
+    $('cloudStatus').innerHTML=
+      `<span class="ok">Firestore connected.</span> `+
+      `<span class="cloud-badge">${escapeHtml(j.databaseId||'(default)')}</span>`;
+  }catch(e){
+    $('cloudStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }
+};
+
+$('loadCloudProjects').onclick=async()=>{
+  try{
+    $('cloudStatus').textContent='Loading cloud projects…';
+    const j=await df80Fetch('/api/projects',{method:'GET'});
+    const dl=$('cloudProjectList');
+    dl.innerHTML=(j.projects||[]).map(p=>
+      `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name||p.id)}</option>`
+    ).join('');
+    $('cloudStatus').innerHTML=
+      `<span class="ok">${(j.projects||[]).length} cloud project(s) loaded.</span>`;
+  }catch(e){
+    $('cloudStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }
+};
+
+function df80CloudRecordFromRaw(r,path,fileName){
+  return df70SerializableRecord(r,path,fileName);
+}
+
+async function df80UploadPdf(path,fileName,records,source='auto'){
+  const payload={
+    projectId:df80ProjectId(),
+    projectName:df80ProjectName(),
+    drawingPath:path,
+    fileName,
+    source,
+    records
+  };
+  const j=await df80Fetch('/api/index/pdf',{
+    method:'POST',
+    body:JSON.stringify(payload)
+  });
+  df80RemovePending(path);
+  return j;
+}
+
+// Auto-sync is non-fatal: local OCR completion stays valid even if cloud sync fails.
+const df80BasePersistPdfRecords=df70PersistPdfRecords;
+df70PersistPdfRecords=async function(path,fileName,records){
+  await df80BasePersistPdfRecords(path,fileName,records);
+
+  if(!$('cloudAutoSync').checked)return;
+  if(!df80Key()||!df80ProjectId()){
+    df80AddPending(path);
+    return;
+  }
+
+  try{
+    const cloudRecords=records.map(r=>df80CloudRecordFromRaw(r,path,fileName));
+    $('cloudSyncStatus').innerHTML=
+      `<span class="purple">Cloud sync: ${escapeHtml(path)}</span>`;
+    await df80UploadPdf(path,fileName,cloudRecords,'auto');
+    $('cloudSyncStatus').innerHTML=
+      `<span class="ok">Cloud synced: ${escapeHtml(path)} (${cloudRecords.length} records)</span>`;
+  }catch(e){
+    console.warn('Cloud auto-sync failed',path,e);
+    df80AddPending(path);
+    $('cloudSyncStatus').innerHTML=
+      `<span class="warn">Local OCR saved; cloud sync pending for ${escapeHtml(path)}: ${escapeHtml(e.message)}</span>`;
+  }
+};
+
+function df80GroupLocalRecords(){
+  const m=new Map();
+  for(const r of df70ProjectRecords){
+    if(!m.has(r.path))m.set(r.path,[]);
+    m.get(r.path).push(r);
+  }
+  return m;
+}
+async function df80SyncPaths(paths,label){
+  if(df80CloudBusy)return;
+  if(!df80Key()){
+    $('cloudSyncStatus').innerHTML='<span class="bad">Enter cloud access key first.</span>';return;
+  }
+  if(!df80ProjectId()){
+    $('cloudSyncStatus').innerHTML='<span class="bad">Enter Cloud Project ID first.</span>';return;
+  }
+
+  const groups=df80GroupLocalRecords();
+  const jobs=paths
+    .map(path=>({path,records:groups.get(path)||[]}))
+    .filter(x=>x.records.length || df70FileState.get(x.path)?.status==='done');
+
+  if(!jobs.length){
+    $('cloudSyncStatus').innerHTML='<span class="warn">No local completed drawings available to sync.</span>';
+    return;
+  }
+
+  df80CloudBusy=true;
+  $('syncAllLocalCloud').disabled=true;
+  $('retryCloudPending').disabled=true;
+  $('cloudSyncProgress').style.width='0%';
+
+  let ok=0,fail=0;
+  try{
+    for(let i=0;i<jobs.length;i++){
+      const job=jobs[i];
+      const state=df70FileState.get(job.path);
+      const fileName=state?.name||job.records[0]?.fileName||job.path.split('/').pop();
+
+      $('cloudSyncStatus').innerHTML=
+        `<span class="purple">${escapeHtml(label)} ${i+1}/${jobs.length}: ${escapeHtml(job.path)}</span>`;
+
+      try{
+        await df80UploadPdf(job.path,fileName,job.records,'manual');
+        ok++;
+      }catch(e){
+        console.warn('Cloud sync failed',job.path,e);
+        df80AddPending(job.path);
+        fail++;
+      }
+
+      $('cloudSyncProgress').style.width=`${((i+1)/jobs.length)*100}%`;
+      await new Promise(r=>setTimeout(r,20));
+    }
+  }finally{
+    df80CloudBusy=false;
+    $('syncAllLocalCloud').disabled=false;
+    df80RenderPending();
+    $('cloudSyncStatus').innerHTML=
+      `<span class="${fail?'warn':'ok'}">${escapeHtml(label)} finished: ${ok} synced, ${fail} failed.</span>`;
+  }
+}
+
+$('syncAllLocalCloud').onclick=async()=>{
+  df80SaveSettings();
+  await df70ReloadRecords();
+  const paths=[...new Set(
+    [...df70FileState.values()]
+      .filter(s=>s.status==='done')
+      .map(s=>s.path)
+  )];
+  await df80SyncPaths(paths,'Full cloud sync');
+};
+
+$('retryCloudPending').onclick=async()=>{
+  df80SaveSettings();
+  await df70ReloadRecords();
+  await df80SyncPaths([...df80Pending()],'Pending cloud sync');
+};
+
+async function df80RemoteSearch(){
+  const q=$('cloudSearch').value.trim().toUpperCase();
+  if(!q){
+    $('cloudSearchStatus').textContent='Enter a tag or prefix.';
+    $('cloudResults').innerHTML='<tr><td colspan="6" class="small">No remote search yet.</td></tr>';
+    return;
+  }
+  if(!df80Key()||!df80ProjectId()){
+    $('cloudSearchStatus').innerHTML='<span class="bad">Cloud Project ID and access key are required.</span>';
+    return;
+  }
+
+  try{
+    $('cloudSearchStatus').textContent='Searching Firestore…';
+    const params=new URLSearchParams({projectId:df80ProjectId(),q,limit:'150'});
+    const j=await df80Fetch('/api/search?'+params.toString(),{method:'GET'});
+    const rows=j.results||[];
+    $('cloudSearchStatus').innerHTML=`<span class="ok">${rows.length} remote match(es).</span>`;
+    $('cloudResults').innerHTML=rows.length?rows.map(r=>`<tr>
+      <td><code>${escapeHtml(r.tag||'')}</code></td>
+      <td><span class="project-file">${escapeHtml(r.drawing_path||'')}</span></td>
+      <td>p.${escapeHtml(r.page||1)}${r.row_no!==''&&r.row_no!==null&&r.row_no!==undefined?` / row ${escapeHtml(r.row_no)}`:''}</td>
+      <td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}</td>
+      <td>${escapeHtml(r.elevation||'—')}</td>
+      <td>${escapeHtml(r.status||'')}</td>
+    </tr>`).join(''):'<tr><td colspan="6" class="small">No cloud matches.</td></tr>';
+  }catch(e){
+    $('cloudSearchStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+  }
+}
+$('cloudSearch').addEventListener('input',()=>{
+  clearTimeout(df80SearchTimer);
+  df80SearchTimer=setTimeout(df80RemoteSearch,260);
+});
+
+const df80BaseSetProjectHandle=df70SetProjectHandle;
+df70SetProjectHandle=async function(handle,fromRestore=false){
+  await df80BaseSetProjectHandle(handle,fromRestore);
+  if(!$('cloudProjectId').value.trim())$('cloudProjectId').value=df80Slug(df70ProjectName);
+  if(!$('cloudProjectName').value.trim())$('cloudProjectName').value=df70ProjectName;
+};
+
+function df80Init(){
+  $('cloudProjectId').value=localStorage.getItem(DF80_PROJECT_KEY)||'';
+  $('cloudProjectName').value=localStorage.getItem(DF80_PROJECT_NAME_KEY)||'';
+  $('cloudAccessKey').value=localStorage.getItem(DF80_ACCESS_KEY)||'';
+  $('cloudAutoSync').checked=localStorage.getItem(DF80_AUTO_SYNC)!=='0';
+
+  $('cloudProjectId').addEventListener('change',()=>{
+    $('cloudProjectId').value=df80Slug($('cloudProjectId').value);
+  });
+  $('cloudAutoSync').addEventListener('change',df80SaveSettings);
+  df80RenderPending();
+}
+df80Init();
 </script>
 
 </body>
