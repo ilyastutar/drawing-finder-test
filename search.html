@@ -3,111 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder — Cloud Search</title>
+<title>Hamburg Project — Drawing Finder</title>
 <style>
-:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#687086;--border:#dce1eb;--accent:#3157d5;--ok:#147a45;--bad:#b42318}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Inter,system-ui,Arial,sans-serif;color:var(--text)}
-main{max-width:1150px;margin:0 auto;padding:24px}.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
-h1{margin:0 0 6px}p{color:var(--muted)}label{display:block;font-size:12px;font-weight:700;margin:10px 0 5px}
-input,button{font:inherit}input{width:100%;padding:11px;border:1px solid var(--border);border-radius:9px;background:#fff}
-button{padding:10px 14px;border:0;border-radius:9px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
-button.secondary{background:#eef2ff;color:#3049a0}.grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
-.buttons{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.status{color:var(--muted);font-size:13px;margin:9px 0}
-.ok{color:var(--ok)}.bad{color:var(--bad)}table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{border-bottom:1px solid var(--border);padding:9px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#fff}
-.wrap{max-height:62vh;overflow:auto;border:1px solid var(--border);border-radius:10px}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;word-break:break-all}
-@media(max-width:800px){main{padding:10px}.grid{grid-template-columns:1fr}th:nth-child(4),td:nth-child(4){display:none}}
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#687086;--border:#dce1eb;--ok:#147a45;--bad:#b42318}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--text)}
+main{max-width:1180px;margin:0 auto;padding:28px 18px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 8px 30px rgba(30,45,80,.06)}
+h1{margin:0 0 5px;font-size:26px}.subtitle{color:var(--muted);margin:0 0 22px}
+.searchbox{font-size:18px;width:100%;padding:14px 16px;border:1px solid var(--border);border-radius:12px;outline:none}
+.searchbox:focus{border-color:#9eb0ef;box-shadow:0 0 0 3px #edf1ff}
+.status{font-size:13px;color:var(--muted);margin:10px 2px}.ok{color:var(--ok)}.bad{color:var(--bad)}
+.wrap{max-height:68vh;overflow:auto;border:1px solid var(--border);border-radius:12px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:#fff;z-index:1}
+code,.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.path{font-size:11px;word-break:break-word}
+.empty{padding:28px;color:var(--muted);text-align:center}
+@media(max-width:760px){main{padding:10px}.card{padding:14px}h1{font-size:22px}th:nth-child(4),td:nth-child(4){display:none}table{font-size:12px}}
 </style>
 </head>
 <body>
 <main>
-<div class="card">
-<h1>Drawing Finder — Cloud Search</h1>
-<p>Search the Firestore project index from any device. No PDF folder access or OCR engine is required on this page.</p>
+<section class="card">
+<h1>Hamburg Project</h1>
+<p class="subtitle">Drawing Finder</p>
 
-<div class="grid">
-<div><label>Cloud Run endpoint</label><input id="endpoint" value="https://drawing-finder-ocr-api-639231007303.europe-west1.run.app"></div>
-<div><label>Cloud Project ID</label><input id="projectId" list="projects" placeholder="hamburg-project"><datalist id="projects"></datalist></div>
-<div><label>Access key</label><input id="key" type="password" placeholder="DF_ACCESS_KEY"></div>
-</div>
-<div class="buttons">
-<button id="save" class="secondary">Save</button>
-<button id="test" class="secondary">Test Cloud</button>
-<button id="load" class="secondary">Load Projects</button>
-</div>
-<div id="status" class="status">Enter project ID and access key.</div>
+<input id="q" class="searchbox" autofocus autocomplete="off"
+       placeholder="Search tag… e.g. 20NDA20CT054 or 20NDA20">
 
-<label>Tag or tag prefix</label>
-<input id="q" autofocus placeholder="e.g. 20NDA20CT054 or 20NDA20">
-<div id="searchStatus" class="status">Waiting for search.</div>
+<div id="status" class="status">Type at least 2 characters.</div>
 
 <div class="wrap">
 <table>
 <thead><tr><th>Tag</th><th>Drawing</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th></tr></thead>
-<tbody id="results"><tr><td colspan="5">No results yet.</td></tr></tbody>
+<tbody id="results"><tr><td colspan="5" class="empty">No search yet.</td></tr></tbody>
 </table>
 </div>
-</div>
+</section>
 </main>
+
 <script>
+const API='https://drawing-finder-ocr-api-639231007303.europe-west1.run.app';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const ep=()=>String($('endpoint').value||'').trim().replace(/\/+$/,'');
-const key=()=>$('key').value.trim();
-const pid=()=>$('projectId').value.trim().toLowerCase();
+let timer=null,lastController=null;
 
-$('endpoint').value=localStorage.getItem('df_remote_endpoint')||$('endpoint').value;
-$('projectId').value=localStorage.getItem('df_remote_project')||'';
-$('key').value=localStorage.getItem('df_remote_key')||'';
-
-function save(){
- localStorage.setItem('df_remote_endpoint',ep());
- localStorage.setItem('df_remote_project',pid());
- localStorage.setItem('df_remote_key',key());
- $('status').innerHTML='<span class="ok">Saved on this device.</span>';
-}
-$('save').onclick=save;
-
-async function api(path){
- if(!ep()||!key())throw new Error('Endpoint and access key are required.');
- const r=await fetch(ep()+path,{headers:{'X-DF-Key':key()}});
- let j=null;try{j=await r.json()}catch(_){}
- if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
- return j;
-}
-$('test').onclick=async()=>{
- try{save();$('status').textContent='Testing…';const j=await api('/api/cloud-health');$('status').innerHTML='<span class="ok">Firestore connected: '+esc(j.databaseId)+'</span>';}
- catch(e){$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>';}
-};
-$('load').onclick=async()=>{
- try{
-  const j=await api('/api/projects');
-  $('projects').innerHTML=(j.projects||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name||p.id)+'</option>').join('');
-  $('status').innerHTML='<span class="ok">'+(j.projects||[]).length+' project(s) loaded.</span>';
- }catch(e){$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>';}
-};
-
-let timer=null;
 async function search(){
- const q=$('q').value.trim().toUpperCase().replace(/\s+/g,'');
- if(!q){$('searchStatus').textContent='Waiting for search.';return}
- if(!pid()){$('searchStatus').innerHTML='<span class="bad">Project ID is required.</span>';return}
- try{
-  $('searchStatus').textContent='Searching…';
-  const p=new URLSearchParams({projectId:pid(),q,limit:'200'});
-  const j=await api('/api/search?'+p.toString()),rows=j.results||[];
-  $('searchStatus').innerHTML='<span class="ok">'+rows.length+' match(es).</span>';
-  $('results').innerHTML=rows.length?rows.map(r=>`<tr>
-   <td><code>${esc(r.tag)}</code></td>
-   <td><span class="path">${esc(r.drawing_path)}</span></td>
-   <td>p.${esc(r.page||1)}${r.row_no!==''&&r.row_no!=null?' / row '+esc(r.row_no):''}</td>
-   <td>${r.pipeline?'<code>'+esc(r.pipeline)+'</code>':'—'}</td>
-   <td>${esc(r.elevation||'—')}</td>
-  </tr>`).join(''):'<tr><td colspan="5">No matches.</td></tr>';
- }catch(e){$('searchStatus').innerHTML='<span class="bad">'+esc(e.message)+'</span>';}
+  const q=$('q').value.trim().toUpperCase().replace(/\s+/g,'');
+  if(q.length<2){
+    $('status').textContent='Type at least 2 characters.';
+    $('results').innerHTML='<tr><td colspan="5" class="empty">No search yet.</td></tr>';
+    return;
+  }
+
+  if(lastController)lastController.abort();
+  lastController=new AbortController();
+
+  try{
+    $('status').textContent='Searching…';
+    const p=new URLSearchParams({q,limit:'150'});
+    const r=await fetch(API+'/api/public/search?'+p.toString(),{signal:lastController.signal});
+    const j=await r.json();
+    if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
+
+    const rows=j.results||[];
+    $('status').innerHTML='<span class="ok">'+rows.length+' match(es).</span>';
+    $('results').innerHTML=rows.length?rows.map(x=>`<tr>
+      <td><code>${esc(x.tag)}</code></td>
+      <td><span class="path">${esc(x.drawing_path)}</span></td>
+      <td>p.${esc(x.page||1)}${x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):''}</td>
+      <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
+      <td>${esc(x.elevation||'—')}</td>
+    </tr>`).join(''):'<tr><td colspan="5" class="empty">No matching tags.</td></tr>';
+  }catch(e){
+    if(e.name==='AbortError')return;
+    $('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>';
+  }
 }
-$('q').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,220)});
+$('q').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180)});
 </script>
 </body>
 </html>

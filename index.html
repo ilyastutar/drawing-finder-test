@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.8.0 — Cloud Project Index</title>
+<title>Drawing Finder v0.8.1.1 — Truncated Pipeline Rescue</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -70,7 +70,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.8.0 — Cloud Project Index</h1>
+<h1>Drawing Finder v0.8.1.1 — Truncated Pipeline Rescue</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
@@ -79,6 +79,12 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
  Different readings at the same location are shown as <strong>Conflict</strong>; the app does not silently correct characters.
 </div>
 
+
+
+<div id="truncatedPipelineReport" class="report">
+  <strong>Truncated Pipeline Rescue</strong><br>
+  <span>No rescue run yet.</span>
+</div>
 
 <section class="card" id="projectIndexer" style="margin:16px 0">
 <h2>Project Folder Indexer</h2>
@@ -147,13 +153,15 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 
 <div class="cloud-grid">
  <div>
-  <label>Cloud Project ID</label>
-  <input id="cloudProjectId" list="cloudProjectList" placeholder="e.g. hamburg-project">
+  <label>Cloud target</label>
+  <div class="status"><strong>Hamburg Project</strong> <span class="cloud-badge">automatic</span></div>
+  <input id="cloudProjectId" type="hidden" value="hamburg-project">
+  <input id="cloudProjectName" type="hidden" value="Hamburg Project">
   <datalist id="cloudProjectList"></datalist>
  </div>
  <div>
-  <label>Project display name</label>
-  <input id="cloudProjectName" placeholder="e.g. Hamburg Project">
+  <label>Write access</label>
+  <div id="writeKeyState" class="status">One-time setup on this OCR browser.</div>
  </div>
  <div>
   <label>Auto sync after each PDF</label>
@@ -161,16 +169,16 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
  </div>
 </div>
 
-<label>Cloud access key</label>
+<label>Write access key — only needed once on this OCR/indexing browser</label>
 <div class="secret-row">
- <input id="cloudAccessKey" type="password" autocomplete="off" placeholder="Enter the same DF_ACCESS_KEY configured in Cloud Run">
+ <input id="cloudAccessKey" type="password" autocomplete="off" placeholder="One-time write key; search.html never asks for this">
  <button id="generateCloudKey" class="secondary">Generate Key</button>
 </div>
 
 <div class="buttons">
  <button id="saveCloudSettings" class="secondary">Save Cloud Settings</button>
  <button id="testCloud" class="secondary">Test Firestore</button>
- <button id="loadCloudProjects" class="secondary">Load Projects</button>
+ 
  <button id="syncAllLocalCloud">Sync Local Project to Cloud</button>
  <button id="retryCloudPending" class="secondary">Retry Pending Cloud Sync</button>
 </div>
@@ -178,7 +186,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <div id="cloudSyncStatus" class="status">No cloud sync running.</div>
 <div class="progress-wrap"><div id="cloudSyncProgress" class="progress"></div></div>
 
-<h3 style="margin-top:16px">Remote tag search</h3>
+<h3 style="margin-top:16px">Remote tag search — Hamburg Project</h3>
 <label>Search Firestore by tag prefix</label>
 <input id="cloudSearch" placeholder="e.g. 20NDB, 20NDA20CT054">
 <div id="cloudSearchStatus" class="status">Enter a tag or prefix.</div>
@@ -5113,6 +5121,396 @@ function df80Init(){
   df80RenderPending();
 }
 df80Init();
+</script>
+
+
+<script>
+// ===== v0.8.1 Fixed Hamburg Project + one-time write-key UX =====
+const DF81_FIXED_PROJECT_ID='hamburg-project';
+const DF81_FIXED_PROJECT_NAME='Hamburg Project';
+
+df80ProjectId=function(){return DF81_FIXED_PROJECT_ID};
+df80ProjectName=function(){return DF81_FIXED_PROJECT_NAME};
+
+const df81BaseSaveSettings=df80SaveSettings;
+df80SaveSettings=function(){
+  $('cloudProjectId').value=DF81_FIXED_PROJECT_ID;
+  $('cloudProjectName').value=DF81_FIXED_PROJECT_NAME;
+  df81BaseSaveSettings();
+  df81RenderWriteKeyState();
+};
+
+function df81RenderWriteKeyState(){
+  const saved=!!localStorage.getItem(DF80_ACCESS_KEY);
+  const el=$('writeKeyState');
+  if(!el)return;
+  el.innerHTML=saved
+    ?'<span class="ok">Write key saved on this browser. You do not need to enter it again.</span>'
+    :'<span class="warn">Enter the write key once, then click Save Cloud Settings.</span>';
+}
+
+$('cloudProjectId').value=DF81_FIXED_PROJECT_ID;
+$('cloudProjectName').value=DF81_FIXED_PROJECT_NAME;
+df81RenderWriteKeyState();
+</script>
+
+
+<script>
+// ===== v0.8.1.1 Truncated Pipeline Rescue =====
+//
+// Scope:
+// - NO change to physical rows
+// - NO change to row numbering
+// - NO change to tag resolution
+// - NO cross-row pipeline copying
+//
+// After the existing v0.6.11/v0.6.12 pipeline consensus finishes, only rows
+// whose FINAL pipeline is clearly truncated are re-OCRed at the EXISTING
+// physical row's pipeline cell.
+//
+// Examples that trigger retry:
+//   ...-DN800-0
+//   ...-DN800-00
+//   ...-DN800-00U
+//   ...-DN800-00UM
+//   ...-DN800-00UN
+//
+// A retry replaces the current value only when the SAME pipeline base is read
+// locally in the SAME row and is clearly more complete.
+
+let df811TruncatedStats={
+  detected:0,attempted:0,recovered:0,
+  recoveredGoogle:0,recoveredPaddle:0,recoveredDual:0,
+  remaining:0,errors:0
+};
+
+function df811Norm(s){
+  return String(s||'').toUpperCase().replace(/\s+/g,'').trim();
+}
+function df811Canon(s){
+  // Project rule from v0.6.12: pipeline letter O does not exist.
+  return typeof df612ProjectPipelineCanonical==='function'
+    ? df612ProjectPipelineCanonical(s)
+    : df811Norm(s).replace(/O/g,'0');
+}
+function df811Base(s){
+  const v=df811Canon(s);
+  const m=v.match(/^(\d{2}[A-Z]{3}\d{2}BR\d{3})/);
+  return m?m[1]:'';
+}
+function df811HasFullKnownSuffix(s){
+  const v=df811Canon(s);
+  return /-00UMA\d{2}_\d{2}$/.test(v);
+}
+function df811IsTruncated(s){
+  const v=df811Canon(s);
+  if(!v)return true;
+  if(!/^\d{2}[A-Z]{3}\d{2}BR\d{3}/.test(v))return true;
+  if((v.match(/BR/g)||[]).length!==1)return true;
+
+  // Very short tail immediately after DN is the exact failure seen in the
+  // current project run: "...-DN800-0".
+  if(/-DN\d+-(?:0|00|00U|00UM|00UN)$/.test(v))return true;
+
+  // Explicit incomplete UMA tail.
+  if(/-00UMA?$/.test(v) || /-00UMA\d{0,2}$/.test(v) || /-00UMA\d{2}_?$/.test(v))return true;
+
+  // A pipeline that reaches DN but has an unusually short suffix should be
+  // retried. This is a trigger only; it does not fabricate missing characters.
+  const m=v.match(/-DN\d+-(.+)$/);
+  if(m && m[1].length<6)return true;
+
+  return false;
+}
+function df811Score(s,confidence=0){
+  const v=df811Canon(s);
+  if(!v)return -999;
+  let score=Number(confidence||0)*15 + Math.min(25,v.length/2);
+  if(df811Base(v))score+=30;
+  if(/-C\dZ0-/.test(v))score+=5;
+  if(/-DN\d+-/.test(v))score+=10;
+  if(df811HasFullKnownSuffix(v))score+=30;
+  if(df811IsTruncated(v))score-=35;
+  if((v.match(/BR/g)||[]).length!==1)score-=80;
+  return score;
+}
+
+function df811TextCandidates(text,confidence,expectedBase,engine){
+  const raw=df811Norm(text);
+  if(!raw)return [];
+  const variants=[raw,raw.replace(/[|]/g,'')];
+  const out=[];
+
+  for(const v0 of variants){
+    // Keep punctuation that belongs to the pipeline, drop obvious surrounding
+    // OCR noise without changing letters/digits.
+    const matches=v0.match(/\d{2}[A-Z]{3}\d{2}BR\d{3}(?:-[A-Z0-9_]+)+/g)||[];
+    for(const rawValue of matches){
+      const value=df811Canon(rawValue);
+      if(!df811Base(value))continue;
+      if(expectedBase && df811Base(value)!==expectedBase)continue;
+      if((value.match(/BR/g)||[]).length!==1)continue;
+      out.push({raw:rawValue,value,confidence:Number(confidence||0),engine});
+    }
+  }
+  return out;
+}
+function df811DedupeCandidates(items){
+  const m=new Map();
+  for(const x of items){
+    const key=x.value;
+    if(!m.has(key)||df811Score(x.value,x.confidence)>df811Score(m.get(key).value,m.get(key).confidence)){
+      m.set(key,x);
+    }
+  }
+  return [...m.values()];
+}
+
+async function df811GooglePipelineCell(blob,expectedBase){
+  const fd=new FormData();
+  fd.append('file',blob,'truncated-pipeline-google.png');
+  const rr=await fetch(endpoint()+'/ocr',{method:'POST',body:fd});
+  const j=await rr.json();
+  if(!rr.ok||!j.ok)throw new Error(j.error||rr.statusText);
+
+  const candidates=[];
+  // fullText is often strongest for a narrow one-row crop.
+  candidates.push(...df811TextCandidates(j.fullText||'',.90,expectedBase,'Google'));
+
+  for(const pg of (j.pages||[])){
+    for(const x of (pg.lines||[])){
+      candidates.push(...df811TextCandidates(x.text,Number(x.confidence||0),expectedBase,'Google'));
+    }
+    // Also reconstruct token sequence for Document AI cases where the line is split.
+    const toks=(pg.tokens||[]).map(x=>String(x.text||'')).join('');
+    if(toks)candidates.push(...df811TextCandidates(toks,.85,expectedBase,'Google'));
+  }
+  return df811DedupeCandidates(candidates);
+}
+
+async function df811PaddlePipelineCell(canvas,expectedBase){
+  const ocr=await loadPaddle();
+  const [res]=await ocr.predict(canvas,{
+    textDetLimitSideLen:2100,
+    textDetLimitType:'max',
+    textDetMaxSideLimit:3600,
+    textDetThresh:.15,
+    textDetBoxThresh:.25,
+    textDetUnclipRatio:1.30,
+    textRecScoreThresh:.18
+  });
+
+  const items=[...(res.items||[])];
+  const candidates=[];
+
+  for(const x of items){
+    candidates.push(...df811TextCandidates(
+      x.text,Number(x.score||x.confidence||0),expectedBase,'Paddle'
+    ));
+  }
+
+  // Reconstruct left-to-right OCR pieces only inside this one existing cell.
+  const sorted=[...items].sort((a,b)=>{
+    const ax=Math.min(...(a.poly||[]).map(p=>Array.isArray(p)?Number(p[0]||0):Number(p.x||0)),0);
+    const bx=Math.min(...(b.poly||[]).map(p=>Array.isArray(p)?Number(p[0]||0):Number(p.x||0)),0);
+    return ax-bx;
+  });
+  const joined=sorted.map(x=>String(x.text||'').replace(/\s+/g,'')).join('');
+  const conf=sorted.length
+    ?Math.min(...sorted.map(x=>Number(x.score||x.confidence||0)))
+    :.80;
+  if(joined)candidates.push(...df811TextCandidates(joined,conf,expectedBase,'Paddle'));
+
+  return df811DedupeCandidates(candidates);
+}
+
+function df811BestCandidate(items,current){
+  const base=df811Base(current);
+  return [...items]
+    .filter(x=>df811Base(x.value)===base)
+    .sort((a,b)=>df811Score(b.value,b.confidence)-df811Score(a.value,a.confidence))[0]||null;
+}
+
+function df811ClearlyBetter(current,candidate){
+  if(!candidate)return false;
+  const cur=df811Canon(current), cand=df811Canon(candidate.value);
+  if(!cur||!cand)return false;
+  if(df811Base(cur)!==df811Base(cand))return false;
+  if((cand.match(/BR/g)||[]).length!==1)return false;
+
+  // The primary safe condition: current is truncated but candidate has the
+  // known complete project suffix.
+  if(df811IsTruncated(cur)&&df811HasFullKnownSuffix(cand))return true;
+
+  // Or candidate is substantially longer and structurally much stronger.
+  return (
+    df811IsTruncated(cur) &&
+    cand.length>=cur.length+6 &&
+    df811Score(cand,candidate.confidence)>=df811Score(cur,0)+14 &&
+    !df811IsTruncated(cand)
+  );
+}
+
+async function df811RescueOne(row,audit,index,total){
+  const current=df811Canon(audit?.final||audit?.google||'');
+  const expectedBase=df811Base(current);
+  const crop=df610PipelineCellCrop(row);
+  if(!crop||!expectedBase)return false;
+
+  df811TruncatedStats.attempted++;
+  let bestG=null,bestP=null;
+
+  for(let pass=1;pass<=2;pass++){
+    $('status').textContent=
+      `Truncated pipeline rescue ${pass}/2: ${index}/${total} · ${expectedBase}…`;
+
+    const dpi=pass===1?700:900;
+    const maxSide=pass===1?3000:3600;
+    const c=await dfRenderNormCrop(zones[row.zone-1].page,crop,dpi,maxSide);
+    const blob=await canvasBlob(c);
+
+    try{
+      const [gvals,pvals]=await Promise.all([
+        df811GooglePipelineCell(blob,expectedBase),
+        df811PaddlePipelineCell(c,expectedBase)
+      ]);
+
+      const g=df811BestCandidate(gvals,current);
+      const p=df811BestCandidate(pvals,current);
+      if(g && (!bestG || df811Score(g.value,g.confidence)>df811Score(bestG.value,bestG.confidence)))bestG=g;
+      if(p && (!bestP || df811Score(p.value,p.confidence)>df811Score(bestP.value,bestP.confidence)))bestP=p;
+    }finally{
+      c.width=1;c.height=1;
+    }
+
+    // If both engines locally agree on a complete value, stop immediately.
+    if(bestG&&bestP&&bestG.value===bestP.value&&df811HasFullKnownSuffix(bestG.value))break;
+    // If either engine already has a very strong complete local result, one pass
+    // is often enough, but allow pass 2 only when disagreement remains.
+    if(pass===1 && bestG&&bestP && bestG.value===bestP.value)break;
+  }
+
+  const options=[bestG,bestP].filter(Boolean);
+  const best=df811BestCandidate(options,current);
+  if(!df811ClearlyBetter(current,best))return false;
+
+  // Prefer dual-local agreement when possible.
+  let status='TRUNCATED_RESCUED';
+  let engine=best.engine;
+  if(bestG&&bestP&&bestG.value===bestP.value){
+    status='TRUNCATED_RESCUED_DUAL';
+    engine='Google+Paddle';
+    df811TruncatedStats.recoveredDual++;
+  }else if(best.engine==='Google'){
+    status='TRUNCATED_RESCUED_GOOGLE';
+    df811TruncatedStats.recoveredGoogle++;
+  }else{
+    status='TRUNCATED_RESCUED_PADDLE';
+    df811TruncatedStats.recoveredPaddle++;
+  }
+
+  const rejected=[
+    ...(audit.rejected||[]),
+    current,
+    ...(bestG&&bestG.value!==best.value?[bestG.value]:[]),
+    ...(bestP&&bestP.value!==best.value?[bestP.value]:[])
+  ].filter(Boolean);
+
+  audit.final=best.value;
+  audit.engine=engine;
+  audit.status=status;
+  audit.googleRetry=bestG?.value||'';
+  audit.paddleRetry=bestP?.value||'';
+  audit.rejected=[...new Set(rejected.filter(x=>x!==best.value))];
+  audit.suspicion=[...new Set([...(audit.suspicion||[]),'TRUNCATED_PIPELINE_RESCUED'])];
+
+  df811TruncatedStats.recovered++;
+  return true;
+}
+
+async function df811RunTruncatedPipelineRescue(){
+  df811TruncatedStats={
+    detected:0,attempted:0,recovered:0,
+    recoveredGoogle:0,recoveredPaddle:0,recoveredDual:0,
+    remaining:0,errors:0
+  };
+
+  const targets=[];
+  for(const row of df67IntegrityRows.filter(r=>r.profile==='INSTRUMENT_LIST')){
+    const a=df610PipelineAudit.get(row.id);
+    const final=df811Canon(a?.final||a?.google||'');
+    if(final && df811IsTruncated(final))targets.push({row,a});
+  }
+
+  df811TruncatedStats.detected=targets.length;
+
+  // A bad OCR zone should never create hundreds of retry calls.
+  const capped=targets.slice(0,30);
+
+  for(let i=0;i<capped.length;i++){
+    const {row,a}=capped[i];
+    try{
+      await df811RescueOne(row,a,i+1,capped.length);
+    }catch(e){
+      console.warn('Truncated pipeline rescue failed for row',row.id,e);
+      df811TruncatedStats.errors++;
+    }
+    await new Promise(r=>setTimeout(r,0));
+  }
+
+  // Count unresolved final values after retry.
+  df811TruncatedStats.remaining=targets.filter(({row})=>{
+    const a=df610PipelineAudit.get(row.id);
+    return df811IsTruncated(a?.final||a?.google||'');
+  }).length;
+
+  df811RenderTruncatedReport();
+}
+
+function df811RenderTruncatedReport(){
+  const el=$('truncatedPipelineReport');
+  if(!el)return;
+  const s=df811TruncatedStats;
+  el.innerHTML=`<strong>Truncated Pipeline Rescue</strong><br>
+    <span>Detected: <strong>${s.detected}</strong> · attempted: <strong>${s.attempted}</strong> ·
+    recovered: <strong class="${s.recovered?'ok':''}">${s.recovered}</strong> ·
+    remaining: <strong class="${s.remaining?'warn':'ok'}">${s.remaining}</strong> ·
+    errors: <strong class="${s.errors?'bad':'ok'}">${s.errors}</strong></span><br>
+    <span>Dual: ${s.recoveredDual} · Google: ${s.recoveredGoogle} · Paddle: ${s.recoveredPaddle}</span>`;
+}
+
+// Wrap the current v0.8.1/v0.6.11 verifier. The existing whole-column consensus
+// always runs first; the new code only retries clearly truncated finals.
+const df811BaseVerifyPipelineCells=df610VerifyPipelineCells;
+df610VerifyPipelineCells=async function(){
+  await df811BaseVerifyPipelineCells();
+  await df811RunTruncatedPipelineRescue();
+};
+
+// Preserve retry audit values on final CSV/project records.
+const df811BaseApplySafeMetadata=df610ApplySafeMetadata;
+df610ApplySafeMetadata=function(){
+  df811BaseApplySafeMetadata();
+
+  for(const r of dfRecords){
+    const row=df67IntegrityRows.find(x=>x.id===r.physicalRowId);
+    const a=row?df610PipelineAudit.get(row.id):null;
+    if(!a)continue;
+
+    r.pipelineGoogleRetry=a.googleRetry||'';
+    r.pipelinePaddleRetry=a.paddleRetry||'';
+
+    if(String(a.status||'').startsWith('TRUNCATED_RESCUED')){
+      r.pipeline=a.final||r.pipeline||'';
+      r.pipelineEngine=a.engine||r.pipelineEngine||'';
+      r.pipelineVerificationStatus=a.status;
+      r.pipelineSuspicion=[
+        ...new Set([...(r.pipelineSuspicion||[]),'TRUNCATED_PIPELINE_RESCUED'])
+      ];
+      r.rejectedPipelines=a.rejected||r.rejectedPipelines||[];
+    }
+  }
+};
 </script>
 
 </body>
