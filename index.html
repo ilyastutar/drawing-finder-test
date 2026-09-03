@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.8.1.1 — Truncated Pipeline Rescue</title>
+<title>Drawing Finder v0.8.1.2 — Cloud Sync Hotfix</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -70,7 +70,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.8.1.1 — Truncated Pipeline Rescue</h1>
+<h1>Drawing Finder v0.8.1.2 — Cloud Sync Hotfix</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
@@ -4924,20 +4924,23 @@ $('testCloud').onclick=async()=>{
   }
 };
 
-$('loadCloudProjects').onclick=async()=>{
-  try{
-    $('cloudStatus').textContent='Loading cloud projects…';
-    const j=await df80Fetch('/api/projects',{method:'GET'});
-    const dl=$('cloudProjectList');
-    dl.innerHTML=(j.projects||[]).map(p=>
-      `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name||p.id)}</option>`
-    ).join('');
-    $('cloudStatus').innerHTML=
-      `<span class="ok">${(j.projects||[]).length} cloud project(s) loaded.</span>`;
-  }catch(e){
-    $('cloudStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
-  }
-};
+const df80LoadProjectsBtn=$('loadCloudProjects');
+if(df80LoadProjectsBtn){
+  df80LoadProjectsBtn.onclick=async()=>{
+    try{
+      $('cloudStatus').textContent='Loading cloud projects…';
+      const j=await df80Fetch('/api/projects',{method:'GET'});
+      const dl=$('cloudProjectList');
+      dl.innerHTML=(j.projects||[]).map(p=>
+        `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name||p.id)}</option>`
+      ).join('');
+      $('cloudStatus').innerHTML=
+        `<span class="ok">${(j.projects||[]).length} cloud project(s) loaded.</span>`;
+    }catch(e){
+      $('cloudStatus').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+    }
+  };
+}
 
 function df80CloudRecordFromRaw(r,path,fileName){
   return df70SerializableRecord(r,path,fileName);
@@ -5511,6 +5514,21 @@ df610ApplySafeMetadata=function(){
     }
   }
 };
+</script>
+
+
+<script>
+// ===== v0.8.1.2 Cloud Sync Hotfix diagnostic =====
+(function(){
+  const btn=$('syncAllLocalCloud');
+  const retry=$('retryCloudPending');
+  const ok=!!btn && typeof btn.onclick==='function' &&
+           !!retry && typeof retry.onclick==='function';
+  if(!ok){
+    const el=$('cloudSyncStatus');
+    if(el)el.innerHTML='<span class="bad">Cloud sync controls failed to initialize. Hard refresh this page.</span>';
+  }
+})();
 </script>
 
 </body>
