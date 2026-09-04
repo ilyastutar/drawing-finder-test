@@ -5,22 +5,67 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hamburg Project — Drawing Finder</title>
 <style>
-:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#687086;--border:#dce1eb;--ok:#147a45;--bad:#b42318}
+:root{
+  --bg:#0f141b;--card:#171d25;--card2:#11171e;--text:#eef2f7;--muted:#99a3b2;
+  --border:#303946;--accent:#4c8dff;--accent2:#233b63;--ok:#46cf7a;--bad:#ff6b6b;
+  --chip:#26313f;--chipBorder:#435166;--warn:#ffcc66
+}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--text)}
-main{max-width:1180px;margin:0 auto;padding:28px 18px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 8px 30px rgba(30,45,80,.06)}
-h1{margin:0 0 5px;font-size:26px}.subtitle{color:var(--muted);margin:0 0 22px}
-.searchbox{font-size:18px;width:100%;padding:14px 16px;border:1px solid var(--border);border-radius:12px;outline:none}
-.searchbox:focus{border-color:#9eb0ef;box-shadow:0 0 0 3px #edf1ff}
-.status{font-size:13px;color:var(--muted);margin:10px 2px}.ok{color:var(--ok)}.bad{color:var(--bad)}
-.wrap{max-height:68vh;overflow:auto;border:1px solid var(--border);border-radius:12px;margin-top:10px}
+main{max-width:1280px;margin:0 auto;padding:28px 18px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 10px 34px rgba(0,0,0,.18)}
+h1{margin:0 0 5px;font-size:27px}
+.subtitle{color:var(--muted);margin:0 0 20px}
+.hint{color:var(--muted);font-size:13px;margin:0 0 10px}
+.search-shell{
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  min-height:54px;padding:8px 10px;background:var(--card2);
+  border:1px solid var(--border);border-radius:12px
+}
+.search-shell:focus-within{border-color:#6b99e8;box-shadow:0 0 0 3px rgba(76,141,255,.12)}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;padding:7px 9px;border-radius:8px;
+  background:var(--chip);border:1px solid var(--chipBorder);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:13px
+}
+.chip .count{color:var(--warn);font-family:Inter,system-ui,sans-serif;font-weight:700}
+.chip button{
+  border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;padding:0 1px;line-height:1
+}
+.chip button:hover{color:var(--text)}
+#q{
+  flex:1;min-width:230px;background:transparent;color:var(--text);border:0;outline:0;
+  font-size:17px;padding:7px 4px
+}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+button.action{
+  background:#222b36;color:var(--text);border:1px solid var(--border);border-radius:9px;
+  padding:8px 11px;cursor:pointer;font-weight:650
+}
+button.action:hover{border-color:#556579}
+.status{font-size:13px;color:var(--muted);margin:12px 2px 8px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.summary{
+  display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 2px
+}
+.stat{
+  padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--card2);font-size:13px
+}
+.wrap{max-height:67vh;overflow:auto;border:1px solid var(--border);border-radius:12px;margin-top:10px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
-th{position:sticky;top:0;background:#fff;z-index:1}
-code,.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.path{font-size:11px;word-break:break-word}
-.empty{padding:28px;color:var(--muted);text-align:center}
-@media(max-width:760px){main{padding:10px}.card{padding:14px}h1{font-size:22px}th:nth-child(4),td:nth-child(4){display:none}table{font-size:12px}}
+th{position:sticky;top:0;background:#171d25;z-index:1}
+code,.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.path{font-size:11px;word-break:break-word}
+.empty{padding:30px;color:var(--muted);text-align:center}
+.found{color:var(--ok);font-weight:700}.notfound{color:var(--bad);font-weight:700}
+.input-tag{font-weight:700}
+tr.not-found-row{background:rgba(255,107,107,.035)}
+@media(max-width:800px){
+ main{padding:10px}.card{padding:14px}h1{font-size:22px}
+ th:nth-child(4),td:nth-child(4),th:nth-child(5),td:nth-child(5){display:none}
+ table{font-size:12px}.search-shell{min-height:50px}
+}
 </style>
 </head>
 <body>
@@ -29,15 +74,40 @@ code,.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.path{font
 <h1>Hamburg Project</h1>
 <p class="subtitle">Drawing Finder</p>
 
-<input id="q" class="searchbox" autofocus autocomplete="off"
-       placeholder="Search tag… e.g. 20NDA20CT054 or 20NDA20">
+<p class="hint">
+Normal arama: tag'i direkt yazın. Çoklu arama: virgül, boşluk, Enter veya Tab ile tag ekleyin.
+Excel'den yalnızca tag içeren hücreleri seçip doğrudan Ctrl+V yapabilirsiniz.
+</p>
 
-<div id="status" class="status">Type at least 2 characters.</div>
+<div id="searchShell" class="search-shell">
+  <div id="chips"></div>
+  <input id="q" autocomplete="off" spellcheck="false"
+    placeholder="Tag yazın veya Excel'den tag hücrelerini yapıştırın…">
+</div>
+
+<div class="toolbar">
+  <button id="clearAll" class="action">Clear all</button>
+  <button id="copyNotFound" class="action" style="display:none">Copy not found</button>
+</div>
+
+<div id="status" class="status">Tag yazmaya başlayın.</div>
+<div id="summary" class="summary" style="display:none"></div>
 
 <div class="wrap">
 <table>
-<thead><tr><th>Tag</th><th>Drawing</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th></tr></thead>
-<tbody id="results"><tr><td colspan="5" class="empty">No search yet.</td></tr></tbody>
+<thead>
+<tr>
+  <th>Requested Tag</th>
+  <th>Drawing</th>
+  <th>Page / Row</th>
+  <th>Pipeline</th>
+  <th>Elevation</th>
+  <th>Status</th>
+</tr>
+</thead>
+<tbody id="results">
+<tr><td colspan="6" class="empty">No search yet.</td></tr>
+</tbody>
 </table>
 </div>
 </section>
@@ -47,41 +117,278 @@ code,.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.path{font
 const API='https://drawing-finder-ocr-api-639231007303.europe-west1.run.app';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let timer=null,lastController=null;
 
-async function search(){
-  const q=$('q').value.trim().toUpperCase().replace(/\s+/g,'');
-  if(q.length<2){
-    $('status').textContent='Type at least 2 characters.';
-    $('results').innerHTML='<tr><td colspan="5" class="empty">No search yet.</td></tr>';
+let tokenOrder=[];               // preserves first paste/entry order
+let tokenCounts=new Map();       // TAG -> duplicate count
+let liveTimer=null;
+let liveController=null;
+let batchRun=0;
+let lastNotFound=[];
+
+function normalizeToken(v){
+  // No extraction. The whole cell/token value becomes the query.
+  return String(v??'').trim().toUpperCase();
+}
+
+function splitPastedCells(text){
+  // Excel row/column separators + user-requested delimiters.
+  // No tag regex and no attempt to extract a tag from descriptive text.
+  return String(text??'')
+    .split(/[\t\r\n,; ]+/)
+    .map(normalizeToken)
+    .filter(Boolean);
+}
+
+function addToken(raw, count=1){
+  const t=normalizeToken(raw);
+  if(!t)return false;
+  if(!tokenCounts.has(t)){
+    tokenOrder.push(t);
+    tokenCounts.set(t,0);
+  }
+  tokenCounts.set(t,tokenCounts.get(t)+Math.max(1,Number(count)||1));
+  return true;
+}
+
+function addMany(values){
+  let changed=false;
+  for(const v of values)changed=addToken(v)||changed;
+  if(changed){
+    renderChips();
+    $('q').value='';
+    runBatchSearch();
+  }
+}
+
+function removeToken(t){
+  tokenCounts.delete(t);
+  tokenOrder=tokenOrder.filter(x=>x!==t);
+  renderChips();
+  if(tokenOrder.length)runBatchSearch();
+  else{
+    $('summary').style.display='none';
+    $('copyNotFound').style.display='none';
+    $('results').innerHTML='<tr><td colspan="6" class="empty">No search yet.</td></tr>';
+    $('status').textContent='Tag yazmaya başlayın.';
+  }
+}
+
+function renderChips(){
+  $('chips').innerHTML=tokenOrder.map(t=>{
+    const n=tokenCounts.get(t)||1;
+    return `<span class="chip" data-tag="${esc(t)}">
+      <span>${esc(t)}</span>
+      ${n>1?`<span class="count">×${n}</span>`:''}
+      <button title="Remove" data-remove="${esc(t)}">×</button>
+    </span>`;
+  }).join('');
+  $('chips').querySelectorAll('[data-remove]').forEach(b=>{
+    b.onclick=()=>removeToken(b.getAttribute('data-remove'));
+  });
+}
+
+function commitInput(){
+  const raw=$('q').value;
+  const vals=splitPastedCells(raw);
+  if(!vals.length)return false;
+  addMany(vals);
+  return true;
+}
+
+$('q').addEventListener('keydown',e=>{
+  if(e.key==='Backspace' && !$('q').value && tokenOrder.length){
+    removeToken(tokenOrder[tokenOrder.length-1]);
+    e.preventDefault();
     return;
   }
+  if(['Enter','Tab',',',' '].includes(e.key)){
+    if($('q').value.trim()){
+      e.preventDefault();
+      commitInput();
+    }
+  }
+});
 
-  if(lastController)lastController.abort();
-  lastController=new AbortController();
+$('q').addEventListener('paste',e=>{
+  const text=e.clipboardData?.getData('text/plain')||'';
+  const vals=splitPastedCells(text);
+  if(!vals.length)return;
+  e.preventDefault();
+  addMany(vals);
+});
 
+$('q').addEventListener('input',()=>{
+  clearTimeout(liveTimer);
+  // Once chips exist, current typing is waiting to become the next chip.
+  if(tokenOrder.length){
+    $('status').textContent=$('q').value.trim()
+      ?'Yeni tag için Enter, Tab, virgül veya boşluk kullanın.'
+      :`${tokenOrder.length} unique tag selected.`;
+    return;
+  }
+  liveTimer=setTimeout(runLivePrefixSearch,240);
+});
+
+$('clearAll').onclick=()=>{
+  tokenOrder=[];
+  tokenCounts.clear();
+  $('q').value='';
+  renderChips();
+  $('summary').style.display='none';
+  $('copyNotFound').style.display='none';
+  $('results').innerHTML='<tr><td colspan="6" class="empty">No search yet.</td></tr>';
+  $('status').textContent='Tag yazmaya başlayın.';
+  $('q').focus();
+};
+
+$('copyNotFound').onclick=async()=>{
+  if(!lastNotFound.length)return;
+  try{
+    await navigator.clipboard.writeText(lastNotFound.join('\n'));
+    $('status').innerHTML=`<span class="ok">${lastNotFound.length} not-found tag copied.</span>`;
+  }catch(e){
+    $('status').innerHTML='<span class="bad">Clipboard permission denied.</span>';
+  }
+};
+
+async function runLivePrefixSearch(){
+  const q=normalizeToken($('q').value);
+  if(q.length<2){
+    $('status').textContent='Tag yazmaya başlayın.';
+    $('summary').style.display='none';
+    $('results').innerHTML='<tr><td colspan="6" class="empty">No search yet.</td></tr>';
+    return;
+  }
+  if(liveController)liveController.abort();
+  liveController=new AbortController();
   try{
     $('status').textContent='Searching…';
     const p=new URLSearchParams({q,limit:'150'});
-    const r=await fetch(API+'/api/public/search?'+p.toString(),{signal:lastController.signal});
+    const r=await fetch(API+'/api/public/search?'+p.toString(),{signal:liveController.signal});
     const j=await r.json();
     if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
-
-    const rows=j.results||[];
-    $('status').innerHTML='<span class="ok">'+rows.length+' match(es).</span>';
-    $('results').innerHTML=rows.length?rows.map(x=>`<tr>
-      <td><code>${esc(x.tag)}</code></td>
-      <td><span class="path">${esc(x.drawing_path)}</span></td>
-      <td>p.${esc(x.page||1)}${x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):''}</td>
-      <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
-      <td>${esc(x.elevation||'—')}</td>
-    </tr>`).join(''):'<tr><td colspan="5" class="empty">No matching tags.</td></tr>';
+    renderPrefixRows(q,j.results||[]);
   }catch(e){
     if(e.name==='AbortError')return;
     $('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>';
   }
 }
-$('q').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180)});
+
+function renderPrefixRows(q,rows){
+  $('summary').style.display='none';
+  $('copyNotFound').style.display='none';
+  $('status').innerHTML=`<span class="ok">${rows.length} match(es).</span> <span>Use a delimiter to keep this tag and add another.</span>`;
+  $('results').innerHTML=rows.length?rows.map(x=>`<tr>
+    <td><code>${esc(x.tag)}</code></td>
+    <td><span class="path">${esc(x.drawing_path||x.file_name||'')}</span></td>
+    <td>p.${esc(x.page||1)}${x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):''}</td>
+    <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
+    <td>${esc(x.elevation||'—')}</td>
+    <td><span class="found">FOUND</span></td>
+  </tr>`).join(''):'<tr><td colspan="6" class="empty">No matching tags.</td></tr>';
+}
+
+async function fetchBatch(tags){
+  // Preferred v0.8.2 endpoint: one HTTP request for a large Excel paste.
+  const r=await fetch(API+'/api/public/search-batch',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tags})
+  });
+
+  if(r.status!==404){
+    const j=await r.json();
+    if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
+    return j.items||[];
+  }
+
+  // Compatibility fallback for an older backend.
+  // Safe for small lists; v0.8.2 backend is strongly recommended for large Excel batches.
+  if(tags.length>100){
+    throw new Error('Large multi-tag search needs the v0.8.2 backend. Please deploy the new backend package.');
+  }
+
+  const items=[];
+  for(let i=0;i<tags.length;i+=6){
+    const block=tags.slice(i,i+6);
+    const blockResults=await Promise.all(block.map(async tag=>{
+      const p=new URLSearchParams({q:tag,limit:'150'});
+      const rr=await fetch(API+'/api/public/search?'+p.toString());
+      const jj=await rr.json();
+      if(!rr.ok||!jj?.ok)throw new Error(jj?.error||rr.statusText);
+      const exact=(jj.results||[]).filter(x=>normalizeToken(x.tag)===tag);
+      return {query:tag,results:exact};
+    }));
+    items.push(...blockResults);
+    if(i+6<tags.length)await new Promise(r=>setTimeout(r,500));
+  }
+  return items;
+}
+
+async function runBatchSearch(){
+  const run=++batchRun;
+  const tags=[...tokenOrder];
+  if(!tags.length)return;
+
+  $('status').textContent=`Searching ${tags.length} unique tag(s)…`;
+  $('summary').style.display='none';
+  $('copyNotFound').style.display='none';
+
+  try{
+    const items=await fetchBatch(tags);
+    if(run!==batchRun)return;
+
+    const map=new Map(items.map(x=>[normalizeToken(x.query),x.results||[]]));
+    let foundTags=0,totalMatches=0;
+    const notFound=[];
+    const rows=[];
+
+    for(const tag of tags){
+      const matches=(map.get(tag)||[]).filter(x=>normalizeToken(x.tag)===tag);
+      if(matches.length){
+        foundTags++;
+        totalMatches+=matches.length;
+        for(const x of matches){
+          rows.push(`<tr>
+            <td class="input-tag"><code>${esc(tag)}</code>${(tokenCounts.get(tag)||1)>1?` <span class="warn">×${tokenCounts.get(tag)}</span>`:''}</td>
+            <td><span class="path">${esc(x.drawing_path||x.file_name||'')}</span></td>
+            <td>p.${esc(x.page||1)}${x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):''}</td>
+            <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
+            <td>${esc(x.elevation||'—')}</td>
+            <td><span class="found">FOUND</span></td>
+          </tr>`);
+        }
+      }else{
+        notFound.push(tag);
+        rows.push(`<tr class="not-found-row">
+          <td class="input-tag"><code>${esc(tag)}</code>${(tokenCounts.get(tag)||1)>1?` <span class="warn">×${tokenCounts.get(tag)}</span>`:''}</td>
+          <td>—</td><td>—</td><td>—</td><td>—</td>
+          <td><span class="notfound">NOT FOUND</span></td>
+        </tr>`);
+      }
+    }
+
+    lastNotFound=notFound;
+    $('copyNotFound').style.display=notFound.length?'inline-block':'none';
+    $('status').innerHTML=notFound.length
+      ?`<span class="ok">Search complete.</span> <span class="warn">${notFound.length} tag not found.</span>`
+      :'<span class="ok">All tags found.</span>';
+
+    $('summary').style.display='flex';
+    $('summary').innerHTML=`
+      <span class="stat"><strong>${tags.length}</strong> unique tags</span>
+      <span class="stat"><strong class="ok">${foundTags}</strong> found</span>
+      <span class="stat"><strong class="${notFound.length?'bad':'ok'}">${notFound.length}</strong> not found</span>
+      <span class="stat"><strong>${totalMatches}</strong> drawing matches</span>
+    `;
+    $('results').innerHTML=rows.join('');
+  }catch(e){
+    if(run!==batchRun)return;
+    $('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>';
+  }
+}
+
+$('q').focus();
 </script>
 </body>
 </html>
