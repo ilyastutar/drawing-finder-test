@@ -1,70 +1,83 @@
 <!doctype html>
-<html lang="en">
+<html lang="tr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hamburg Project — Drawing Finder</title>
 <style>
 :root{
-  --bg:#0f141b;--card:#171d25;--card2:#11171e;--text:#eef2f7;--muted:#99a3b2;
-  --border:#303946;--accent:#4c8dff;--accent2:#233b63;--ok:#46cf7a;--bad:#ff6b6b;
-  --chip:#26313f;--chipBorder:#435166;--warn:#ffcc66
+  --bg:#0f141b;--card:#171d25;--card2:#11171e;--text:#eef2f7;--muted:#929dad;
+  --border:#303946;--accent:#4c8dff;--ok:#46cf7a;--bad:#ff6b6b;--warn:#ffcc66;
+  --chip:#26313f;--chipBorder:#435166
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--text)}
 main{max-width:1280px;margin:0 auto;padding:28px 18px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 10px 34px rgba(0,0,0,.18)}
-h1{margin:0 0 5px;font-size:27px}
-.subtitle{color:var(--muted);margin:0 0 20px}
-.hint{color:var(--muted);font-size:13px;margin:0 0 10px}
+h1{margin:0 0 5px;font-size:27px}.subtitle{color:var(--muted);margin:0 0 18px}
+.search-wrap{position:relative}
 .search-shell{
-  display:flex;align-items:center;gap:7px;flex-wrap:wrap;
-  min-height:54px;padding:8px 10px;background:var(--card2);
-  border:1px solid var(--border);border-radius:12px
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-height:54px;padding:8px 10px;
+  background:var(--card2);border:1px solid var(--border);border-radius:12px
 }
 .search-shell:focus-within{border-color:#6b99e8;box-shadow:0 0 0 3px rgba(76,141,255,.12)}
+.mode-pill{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 9px;border-radius:8px;
+  border:1px solid #4f6683;background:#1d2b3c;font-size:13px;font-weight:750;white-space:nowrap
+}
+.mode-pill.tag{opacity:.78}
+.mode-pill button{border:0;background:transparent;color:var(--muted);cursor:pointer;padding:0;font-size:15px}
+#chips{display:contents}
 .chip{
   display:inline-flex;align-items:center;gap:7px;padding:7px 9px;border-radius:8px;
-  background:var(--chip);border:1px solid var(--chipBorder);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
-  font-size:13px
+  background:var(--chip);border:1px solid var(--chipBorder);
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px
 }
 .chip .count{color:var(--warn);font-family:Inter,system-ui,sans-serif;font-weight:700}
-.chip button{
-  border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;padding:0 1px;line-height:1
+.chip button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;padding:0 1px;line-height:1}
+#q{flex:1;min-width:230px;background:transparent;color:var(--text);border:0;outline:0;font-size:17px;padding:7px 4px}
+.suggest{
+  position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;background:#131a22;
+  border:1px solid var(--border);border-radius:11px;overflow:hidden;box-shadow:0 14px 30px rgba(0,0,0,.3)
 }
-.chip button:hover{color:var(--text)}
-#q{
-  flex:1;min-width:230px;background:transparent;color:var(--text);border:0;outline:0;
-  font-size:17px;padding:7px 4px
+.suggest[hidden]{display:none}
+.suggest-label{padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.suggest-row{
+  width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;text-align:left;
+  border:0;border-bottom:1px solid #26303b;background:transparent;color:var(--text);padding:11px 12px;cursor:pointer
 }
+.suggest-row:last-child{border-bottom:0}.suggest-row.active{background:#223047}
+.suggest-main{min-width:0}.suggest-title{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.suggest-sub{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.key{border:1px solid #526071;border-bottom-width:2px;border-radius:5px;padding:2px 6px;font-size:11px;color:#c4ceda;white-space:nowrap}
+.mode-ghost strong{font-size:16px}.mode-ghost span{color:#788493;font-size:16px}
+.hint{color:var(--muted);font-size:12px;margin:9px 2px 0}
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 button.action{
   background:#222b36;color:var(--text);border:1px solid var(--border);border-radius:9px;
   padding:8px 11px;cursor:pointer;font-weight:650
 }
-button.action:hover{border-color:#556579}
-.status{font-size:13px;color:var(--muted);margin:12px 2px 8px}
-.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
-.summary{
-  display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 2px
-}
-.stat{
-  padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--card2);font-size:13px
-}
+.status{font-size:13px;color:var(--muted);margin:12px 2px 8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.summary{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 2px}.stat{padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--card2);font-size:13px}
 .wrap{max-height:67vh;overflow:auto;border:1px solid var(--border);border-radius:12px;margin-top:10px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
 th{position:sticky;top:0;background:#171d25;z-index:1}
-code,.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-.path{font-size:11px;word-break:break-word}
-.empty{padding:30px;color:var(--muted);text-align:center}
-.found{color:var(--ok);font-weight:700}.notfound{color:var(--bad);font-weight:700}
-.input-tag{font-weight:700}
+code,.path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.path{font-size:11px;word-break:break-word}
+.empty{padding:30px;color:var(--muted);text-align:center}.found{color:var(--ok);font-weight:700}.notfound{color:var(--bad);font-weight:700}
+.related-list{display:flex;gap:6px;flex-wrap:wrap}
+.related-tag{
+  display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:7px;
+  border:1px solid #4c5e74;background:#202b38;color:#dce7f5;cursor:pointer;
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px
+}
+.related-tag:hover{border-color:#7391b6;background:#26374a}
+.related-tag::before{content:'↗';font-family:Inter,system-ui,sans-serif;color:#8eb1dc;font-size:11px}
 tr.not-found-row{background:rgba(255,107,107,.035)}
 @media(max-width:800px){
- main{padding:10px}.card{padding:14px}h1{font-size:22px}
- th:nth-child(4),td:nth-child(4),th:nth-child(5),td:nth-child(5){display:none}
- table{font-size:12px}.search-shell{min-height:50px}
+  main{padding:10px}.card{padding:14px}h1{font-size:22px}
+  th:nth-child(4),td:nth-child(4),th:nth-child(5),td:nth-child(5){display:none}
+  table{font-size:12px}.suggest-row{padding:10px}.hint{line-height:1.45}
 }
 </style>
 </head>
@@ -74,20 +87,25 @@ tr.not-found-row{background:rgba(255,107,107,.035)}
 <h1>Hamburg Project</h1>
 <p class="subtitle">Drawing Finder</p>
 
-<p class="hint">
-Normal arama: tag'i direkt yazın. Çoklu arama: virgül, boşluk, Enter veya Tab ile tag ekleyin.
-Excel'den yalnızca tag içeren hücreleri seçip doğrudan Ctrl+V yapabilirsiniz.
-</p>
-
-<div id="searchShell" class="search-shell">
-  <div id="chips"></div>
-  <input id="q" autocomplete="off" spellcheck="false"
-    placeholder="Tag yazın veya Excel'den tag hücrelerini yapıştırın…">
+<div class="search-wrap">
+  <div id="searchShell" class="search-shell">
+    <span id="modePill" class="mode-pill tag">Tag</span>
+    <div id="chips"></div>
+    <input id="q" autocomplete="off" spellcheck="false"
+      placeholder="Tag yazın veya Excel'den tag hücrelerini yapıştırın…">
+  </div>
+  <div id="suggestions" class="suggest" hidden></div>
 </div>
 
+<p id="modeHint" class="hint">
+Arama modu: <strong>D</strong> + Tab = Drawing · <strong>R</strong> + Tab = Row ·
+<strong>P</strong> + Tab = Pipeline · <strong>T</strong> + Tab = Tag.
+Tag modunda Excel hücrelerini Ctrl+V ile toplu arayabilirsiniz.
+</p>
+
 <div class="toolbar">
-  <button id="clearAll" class="action">Clear all</button>
-  <button id="copyNotFound" class="action" style="display:none">Copy not found</button>
+  <button id="clearAll" class="action">Temizle</button>
+  <button id="copyNotFound" class="action" style="display:none">Bulunamayanları kopyala</button>
 </div>
 
 <div id="status" class="status">Tag yazmaya başlayın.</div>
@@ -97,7 +115,8 @@ Excel'den yalnızca tag içeren hücreleri seçip doğrudan Ctrl+V yapabilirsini
 <table>
 <thead>
 <tr>
-  <th>Requested Tag</th>
+  <th>Tag</th>
+  <th>Related Tag</th>
   <th>Drawing</th>
   <th>Page / Row</th>
   <th>Pipeline</th>
@@ -106,7 +125,7 @@ Excel'den yalnızca tag içeren hücreleri seçip doğrudan Ctrl+V yapabilirsini
 </tr>
 </thead>
 <tbody id="results">
-<tr><td colspan="6" class="empty">No search yet.</td></tr>
+<tr><td colspan="7" class="empty">Henüz arama yapılmadı.</td></tr>
 </tbody>
 </table>
 </div>
@@ -117,278 +136,406 @@ Excel'den yalnızca tag içeren hücreleri seçip doğrudan Ctrl+V yapabilirsini
 const API='https://drawing-finder-ocr-api-639231007303.europe-west1.run.app';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=s=>String(s??'').trim().toUpperCase();
 
-let tokenOrder=[];               // preserves first paste/entry order
-let tokenCounts=new Map();       // TAG -> duplicate count
-let liveTimer=null;
-let liveController=null;
+const MODES={
+  tag:{label:'Tag',key:'T',rest:'ag',placeholder:"Tag yazın veya Excel'den tag hücrelerini yapıştırın…"},
+  drawing:{label:'Drawing',key:'D',rest:'rawing',placeholder:'Drawing numarası / adı yazın…'},
+  row:{label:'Row',key:'R',rest:'ow',placeholder:'Row numarası yazın…'},
+  pipeline:{label:'Pipeline',key:'P',rest:'ipeline',placeholder:'Pipeline yazın…'}
+};
+const KEY_TO_MODE={T:'tag',D:'drawing',R:'row',P:'pipeline'};
+
+let mode='tag';
+let tokenOrder=[];
+let tokenCounts=new Map();
+let timer=null;
+let controller=null;
+let suggestionItems=[];
+let suggestionIndex=0;
+let commandMode=null;
 let batchRun=0;
 let lastNotFound=[];
 
-function normalizeToken(v){
-  // No extraction. The whole cell/token value becomes the query.
-  return String(v??'').trim().toUpperCase();
-}
+function setMode(next,keepText=false){
+  if(!MODES[next])return;
+  mode=next;
+  commandMode=null;
+  hideSuggestions();
 
-function splitPastedCells(text){
-  // Excel row/column separators + user-requested delimiters.
-  // No tag regex and no attempt to extract a tag from descriptive text.
-  return String(text??'')
-    .split(/[\t\r\n,; ]+/)
-    .map(normalizeToken)
-    .filter(Boolean);
-}
-
-function addToken(raw, count=1){
-  const t=normalizeToken(raw);
-  if(!t)return false;
-  if(!tokenCounts.has(t)){
-    tokenOrder.push(t);
-    tokenCounts.set(t,0);
-  }
-  tokenCounts.set(t,tokenCounts.get(t)+Math.max(1,Number(count)||1));
-  return true;
-}
-
-function addMany(values){
-  let changed=false;
-  for(const v of values)changed=addToken(v)||changed;
-  if(changed){
+  if(mode!=='tag'){
+    tokenOrder=[];
+    tokenCounts.clear();
     renderChips();
-    $('q').value='';
-    runBatchSearch();
   }
+  if(!keepText)$('q').value='';
+
+  $('modePill').className='mode-pill'+(mode==='tag'?' tag':'');
+  $('modePill').innerHTML=mode==='tag'
+    ?'Tag'
+    :`${esc(MODES[mode].label)} <button type="button" title="Tag moduna dön" aria-label="Tag moduna dön">×</button>`;
+  const close=$('modePill').querySelector('button');
+  if(close)close.addEventListener('click',()=>setMode('tag'));
+
+  $('q').placeholder=MODES[mode].placeholder;
+  $('summary').style.display='none';
+  $('copyNotFound').style.display='none';
+  $('results').innerHTML='<tr><td colspan="7" class="empty">Henüz arama yapılmadı.</td></tr>';
+  $('status').textContent=mode==='tag'?'Tag yazmaya başlayın.':`${MODES[mode].label} araması aktif.`;
+  $('q').focus();
 }
 
-function removeToken(t){
-  tokenCounts.delete(t);
-  tokenOrder=tokenOrder.filter(x=>x!==t);
-  renderChips();
-  if(tokenOrder.length)runBatchSearch();
-  else{
-    $('summary').style.display='none';
-    $('copyNotFound').style.display='none';
-    $('results').innerHTML='<tr><td colspan="6" class="empty">No search yet.</td></tr>';
-    $('status').textContent='Tag yazmaya başlayın.';
-  }
+function showCommandSuggestion(m){
+  commandMode=m;
+  const x=MODES[m];
+  suggestionItems=[{type:'command',mode:m}];
+  suggestionIndex=0;
+  $('suggestions').hidden=false;
+  $('suggestions').innerHTML=`
+    <div class="suggest-label">Arama modu</div>
+    <button type="button" class="suggest-row active" data-index="0">
+      <span class="suggest-main">
+        <span class="suggest-title mode-ghost"><strong>${esc(x.key)}</strong><span>${esc(x.rest)}</span></span>
+        <span class="suggest-sub">${esc(x.label)} içinde arama yap</span>
+      </span>
+      <span class="key">Tab</span>
+    </button>`;
+  bindSuggestionRows();
 }
 
-function renderChips(){
-  $('chips').innerHTML=tokenOrder.map(t=>{
-    const n=tokenCounts.get(t)||1;
-    return `<span class="chip" data-tag="${esc(t)}">
-      <span>${esc(t)}</span>
-      ${n>1?`<span class="count">×${n}</span>`:''}
-      <button title="Remove" data-remove="${esc(t)}">×</button>
-    </span>`;
-  }).join('');
-  $('chips').querySelectorAll('[data-remove]').forEach(b=>{
-    b.onclick=()=>removeToken(b.getAttribute('data-remove'));
+function hideSuggestions(){
+  $('suggestions').hidden=true;
+  $('suggestions').innerHTML='';
+  suggestionItems=[];
+  suggestionIndex=0;
+  commandMode=null;
+}
+
+function bindSuggestionRows(){
+  $('suggestions').querySelectorAll('[data-index]').forEach(btn=>{
+    btn.addEventListener('mousedown',e=>e.preventDefault());
+    btn.addEventListener('click',()=>chooseSuggestion(Number(btn.dataset.index)));
   });
 }
 
-function commitInput(){
-  const raw=$('q').value;
-  const vals=splitPastedCells(raw);
-  if(!vals.length)return false;
-  addMany(vals);
-  return true;
+function setSuggestionActive(i){
+  if(!suggestionItems.length)return;
+  suggestionIndex=(i+suggestionItems.length)%suggestionItems.length;
+  $('suggestions').querySelectorAll('.suggest-row').forEach((el,n)=>el.classList.toggle('active',n===suggestionIndex));
 }
 
-$('q').addEventListener('keydown',e=>{
-  if(e.key==='Backspace' && !$('q').value && tokenOrder.length){
-    removeToken(tokenOrder[tokenOrder.length-1]);
-    e.preventDefault();
+function chooseSuggestion(i=suggestionIndex){
+  const item=suggestionItems[i];
+  if(!item)return;
+
+  if(item.type==='command'){
+    setMode(item.mode);
     return;
   }
-  if(['Enter','Tab',',',' '].includes(e.key)){
-    if($('q').value.trim()){
-      e.preventDefault();
-      commitInput();
-    }
+  if(item.type==='drawing'){
+    $('q').value=item.file_name||item.path||'';
+    hideSuggestions();
+    runDrawingRecords(item.id,item.file_name||item.path||'');
   }
-});
+}
 
-$('q').addEventListener('paste',e=>{
-  const text=e.clipboardData?.getData('text/plain')||'';
-  const vals=splitPastedCells(text);
-  if(!vals.length)return;
-  e.preventDefault();
-  addMany(vals);
-});
-
-$('q').addEventListener('input',()=>{
-  clearTimeout(liveTimer);
-  // Once chips exist, current typing is waiting to become the next chip.
-  if(tokenOrder.length){
-    $('status').textContent=$('q').value.trim()
-      ?'Yeni tag için Enter, Tab, virgül veya boşluk kullanın.'
-      :`${tokenOrder.length} unique tag selected.`;
-    return;
-  }
-  liveTimer=setTimeout(runLivePrefixSearch,240);
-});
-
-$('clearAll').onclick=()=>{
-  tokenOrder=[];
-  tokenCounts.clear();
-  $('q').value='';
+function splitTagInput(text){
+  // No extraction: every pasted Excel cell/token is used as the full tag value.
+  return String(text??'').split(/[\t\r\n,; ]+/).map(norm).filter(Boolean);
+}
+function addTag(raw){
+  const t=norm(raw); if(!t)return;
+  if(!tokenCounts.has(t)){tokenOrder.push(t);tokenCounts.set(t,0)}
+  tokenCounts.set(t,tokenCounts.get(t)+1);
+}
+function addManyTags(vals){
+  vals.forEach(addTag);
   renderChips();
-  $('summary').style.display='none';
-  $('copyNotFound').style.display='none';
-  $('results').innerHTML='<tr><td colspan="6" class="empty">No search yet.</td></tr>';
-  $('status').textContent='Tag yazmaya başlayın.';
-  $('q').focus();
-};
-
-$('copyNotFound').onclick=async()=>{
-  if(!lastNotFound.length)return;
-  try{
-    await navigator.clipboard.writeText(lastNotFound.join('\n'));
-    $('status').innerHTML=`<span class="ok">${lastNotFound.length} not-found tag copied.</span>`;
-  }catch(e){
-    $('status').innerHTML='<span class="bad">Clipboard permission denied.</span>';
-  }
-};
-
-async function runLivePrefixSearch(){
-  const q=normalizeToken($('q').value);
-  if(q.length<2){
-    $('status').textContent='Tag yazmaya başlayın.';
-    $('summary').style.display='none';
-    $('results').innerHTML='<tr><td colspan="6" class="empty">No search yet.</td></tr>';
-    return;
-  }
-  if(liveController)liveController.abort();
-  liveController=new AbortController();
-  try{
-    $('status').textContent='Searching…';
-    const p=new URLSearchParams({q,limit:'150'});
-    const r=await fetch(API+'/api/public/search?'+p.toString(),{signal:liveController.signal});
-    const j=await r.json();
-    if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
-    renderPrefixRows(q,j.results||[]);
-  }catch(e){
-    if(e.name==='AbortError')return;
-    $('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>';
-  }
+  $('q').value='';
+  if(tokenOrder.length)runBatchTagSearch();
+}
+function renderChips(){
+  $('chips').innerHTML=tokenOrder.map(t=>{
+    const n=tokenCounts.get(t)||1;
+    return `<span class="chip">
+      <span>${esc(t)}</span>${n>1?`<span class="count">×${n}</span>`:''}
+      <button type="button" data-remove="${esc(t)}" title="Sil">×</button>
+    </span>`;
+  }).join('');
+  $('chips').querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>{
+    const t=b.dataset.remove;
+    tokenCounts.delete(t); tokenOrder=tokenOrder.filter(x=>x!==t); renderChips();
+    if(tokenOrder.length)runBatchTagSearch(); else resetResults();
+  }));
+}
+function resetResults(){
+  $('summary').style.display='none'; $('copyNotFound').style.display='none';
+  $('results').innerHTML='<tr><td colspan="7" class="empty">Henüz arama yapılmadı.</td></tr>';
+}
+function relatedHtml(x){
+  const arr=Array.isArray(x.related_tag)
+    ?x.related_tag
+    :(x.related_tag?[x.related_tag]:[]);
+  const clean=[...new Set(arr.map(norm).filter(Boolean))];
+  if(!clean.length)return '—';
+  return `<div class="related-list">${clean.map(t=>
+    `<button type="button" class="related-tag" data-related="${esc(t)}" title="Bu related tag'i aramaya ekle">${esc(t)}</button>`
+  ).join('')}</div>`;
 }
 
-function renderPrefixRows(q,rows){
-  $('summary').style.display='none';
-  $('copyNotFound').style.display='none';
-  $('status').innerHTML=`<span class="ok">${rows.length} match(es).</span> <span>Use a delimiter to keep this tag and add another.</span>`;
-  $('results').innerHTML=rows.length?rows.map(x=>`<tr>
-    <td><code>${esc(x.tag)}</code></td>
+function bindRelatedButtons(){
+  document.querySelectorAll('[data-related]').forEach(btn=>{
+    btn.onclick=()=>{
+      const t=norm(btn.getAttribute('data-related'));
+      if(!t)return;
+
+      // Always return to Tag mode. Preserve existing tag chips where possible.
+      if(mode!=='tag')setMode('tag');
+
+      // Preserve a currently typed exact-looking tag as a chip before adding the related tag.
+      const current=norm($('q').value);
+      if(current){
+        addTag(current);
+        $('q').value='';
+      }
+
+      addTag(t);
+      renderChips();
+      runBatchTagSearch();
+      $('q').focus();
+    };
+  });
+}
+
+function rowHtml(x,status='FOUND',requested=''){
+  return `<tr>
+    <td><code>${esc(requested||x.tag||'')}</code></td>
+    <td>${relatedHtml(x)}</td>
     <td><span class="path">${esc(x.drawing_path||x.file_name||'')}</span></td>
     <td>p.${esc(x.page||1)}${x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):''}</td>
     <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
     <td>${esc(x.elevation||'—')}</td>
-    <td><span class="found">FOUND</span></td>
-  </tr>`).join(''):'<tr><td colspan="6" class="empty">No matching tags.</td></tr>';
+    <td><span class="found">${esc(status)}</span></td>
+  </tr>`;
+}
+
+$('q').addEventListener('keydown',e=>{
+  if(!$('suggestions').hidden && suggestionItems.length){
+    if(e.key==='ArrowDown'){e.preventDefault();setSuggestionActive(suggestionIndex+1);return}
+    if(e.key==='ArrowUp'){e.preventDefault();setSuggestionActive(suggestionIndex-1);return}
+    if(e.key==='Enter'){e.preventDefault();chooseSuggestion();return}
+    if(e.key==='Tab' && commandMode){e.preventDefault();chooseSuggestion();return}
+  }
+
+  if(e.key==='Escape'){
+    if(mode!=='tag'){e.preventDefault();setMode('tag');return}
+    hideSuggestions(); return;
+  }
+
+  if(mode==='tag'){
+    if(e.key==='Backspace' && !$('q').value && tokenOrder.length){
+      const t=tokenOrder[tokenOrder.length-1];
+      tokenCounts.delete(t);tokenOrder.pop();renderChips();
+      if(tokenOrder.length)runBatchTagSearch();else resetResults();
+      e.preventDefault();return;
+    }
+    if(['Enter','Tab',',',' '].includes(e.key) && $('q').value.trim()){
+      // Single D/R/P/T + Tab is reserved for mode activation.
+      if(e.key==='Tab' && commandMode)return;
+      e.preventDefault();
+      addManyTags(splitTagInput($('q').value));
+      return;
+    }
+  }else if(e.key==='Enter'){
+    e.preventDefault();
+    runModeSearch();
+  }
+});
+
+$('q').addEventListener('paste',e=>{
+  if(mode!=='tag')return;
+  const text=e.clipboardData?.getData('text/plain')||'';
+  const vals=splitTagInput(text);
+  if(!vals.length)return;
+  e.preventDefault(); hideSuggestions(); addManyTags(vals);
+});
+
+$('q').addEventListener('input',()=>{
+  clearTimeout(timer);
+  if(controller)controller.abort();
+
+  const raw=$('q').value;
+  const upper=norm(raw);
+
+  // Mode command only when default Tag mode has no stored chips and the input
+  // contains exactly one command letter.
+  if(mode==='tag' && !tokenOrder.length && upper.length===1 && KEY_TO_MODE[upper]){
+    showCommandSuggestion(KEY_TO_MODE[upper]);
+    $('status').textContent=`Tab ile ${MODES[KEY_TO_MODE[upper]].label} moduna geçebilirsiniz.`;
+    return;
+  }
+
+  commandMode=null;
+  hideSuggestions();
+
+  if(mode==='tag'){
+    if(tokenOrder.length){
+      $('status').textContent=raw.trim()
+        ?'Yeni tag için Enter, Tab, virgül veya boşluk kullanın.'
+        :`${tokenOrder.length} unique tag seçildi.`;
+      return;
+    }
+    timer=setTimeout(runTagPrefix,230);
+  }else if(mode==='drawing'){
+    timer=setTimeout(runDrawingSuggest,180);
+  }else{
+    timer=setTimeout(runModeSearch,230);
+  }
+});
+
+$('clearAll').addEventListener('click',()=>{
+  tokenOrder=[];tokenCounts.clear();lastNotFound=[];
+  renderChips();$('q').value='';hideSuggestions();setMode('tag');
+});
+$('copyNotFound').addEventListener('click',async()=>{
+  if(!lastNotFound.length)return;
+  try{
+    await navigator.clipboard.writeText(lastNotFound.join('\n'));
+    $('status').innerHTML=`<span class="ok">${lastNotFound.length} tag kopyalandı.</span>`;
+  }catch(e){$('status').innerHTML='<span class="bad">Clipboard izni alınamadı.</span>'}
+});
+
+async function getJson(url,options={}){
+  const r=await fetch(url,options);
+  const j=await r.json();
+  if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
+  return j;
+}
+
+async function runTagPrefix(){
+  const q=norm($('q').value);
+  if(q.length<2){resetResults();$('status').textContent='Tag yazmaya başlayın.';return}
+  controller=new AbortController();
+  try{
+    $('status').textContent='Tag aranıyor…';
+    const j=await getJson(API+'/api/public/search?'+new URLSearchParams({q,limit:'150'}),{signal:controller.signal});
+    const rows=j.results||[];
+    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.</span> Virgül / boşluk / Enter / Tab ile tag'i tutup yenisini ekleyebilirsiniz.`;
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Eşleşme bulunamadı.</td></tr>'; bindRelatedButtons(); bindRelatedButtons();
+  }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
+}
+
+async function runDrawingSuggest(){
+  const q=$('q').value.trim();
+  if(!q){hideSuggestions();resetResults();$('status').textContent='Drawing numarası / adı yazın.';return}
+  controller=new AbortController();
+  try{
+    const j=await getJson(API+'/api/public/drawing-suggest?'+new URLSearchParams({q,limit:'12'}),{signal:controller.signal});
+    const rows=j.drawings||[];
+    suggestionItems=rows.map(x=>({type:'drawing',...x}));
+    suggestionIndex=0;
+    if(!rows.length){
+      hideSuggestions();
+      $('status').textContent='Drawing bulunamadı.';
+      return;
+    }
+    $('suggestions').hidden=false;
+    $('suggestions').innerHTML=`
+      <div class="suggest-label">Drawing önerileri · ↑ ↓ seç · Enter aç</div>
+      ${rows.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}">
+        <span class="suggest-main">
+          <span class="suggest-title">${highlightPrefix(x.file_name||x.path||'',q)}</span>
+          <span class="suggest-sub">${esc(x.path||'')} · ${esc(x.record_count||0)} indexed tags</span>
+        </span>
+        <span class="key">Enter</span>
+      </button>`).join('')}`;
+    bindSuggestionRows();
+    $('status').textContent=`${rows.length} drawing önerisi.`;
+  }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
+}
+
+function highlightPrefix(text,q){
+  const s=String(text||''), n=String(q||'').length;
+  if(!n)return esc(s);
+  const idx=s.toUpperCase().indexOf(String(q).toUpperCase());
+  if(idx<0)return esc(s);
+  return esc(s.slice(0,idx))+'<strong>'+esc(s.slice(idx,idx+n))+'</strong>'+esc(s.slice(idx+n));
+}
+
+async function runDrawingRecords(id,label){
+  try{
+    $('status').textContent=`${label} yükleniyor…`;
+    const j=await getJson(API+'/api/public/drawing-records?'+new URLSearchParams({id,limit:'2000'}));
+    const rows=j.results||[];
+    $('summary').style.display='flex';
+    $('summary').innerHTML=`<span class="stat"><strong>${esc(label)}</strong></span><span class="stat"><strong>${rows.length}</strong> indexed tags</span>`;
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Bu drawing için kayıt bulunamadı.</td></tr>'; bindRelatedButtons();
+    $('status').innerHTML=`<span class="ok">${rows.length} kayıt bulundu.</span>`;
+  }catch(e){$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
+}
+
+async function runModeSearch(){
+  const q=$('q').value.trim();
+  if(mode==='tag'){runTagPrefix();return}
+  if(mode==='drawing'){runDrawingSuggest();return}
+  if(!q){resetResults();$('status').textContent=`${MODES[mode].label} değeri yazın.`;return}
+
+  controller=new AbortController();
+  try{
+    $('status').textContent=`${MODES[mode].label} aranıyor…`;
+    const j=await getJson(API+'/api/public/search-mode?'+new URLSearchParams({mode,q,limit:'250'}),{signal:controller.signal});
+    const rows=j.results||[];
+    $('summary').style.display='none';
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Eşleşme bulunamadı.</td></tr>'; bindRelatedButtons();
+    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.</span>`;
+  }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
 async function fetchBatch(tags){
-  // Preferred v0.8.2 endpoint: one HTTP request for a large Excel paste.
   const r=await fetch(API+'/api/public/search-batch',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({tags})
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tags})
   });
-
-  if(r.status!==404){
-    const j=await r.json();
-    if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
-    return j.items||[];
-  }
-
-  // Compatibility fallback for an older backend.
-  // Safe for small lists; v0.8.2 backend is strongly recommended for large Excel batches.
-  if(tags.length>100){
-    throw new Error('Large multi-tag search needs the v0.8.2 backend. Please deploy the new backend package.');
-  }
-
-  const items=[];
-  for(let i=0;i<tags.length;i+=6){
-    const block=tags.slice(i,i+6);
-    const blockResults=await Promise.all(block.map(async tag=>{
-      const p=new URLSearchParams({q:tag,limit:'150'});
-      const rr=await fetch(API+'/api/public/search?'+p.toString());
-      const jj=await rr.json();
-      if(!rr.ok||!jj?.ok)throw new Error(jj?.error||rr.statusText);
-      const exact=(jj.results||[]).filter(x=>normalizeToken(x.tag)===tag);
-      return {query:tag,results:exact};
-    }));
-    items.push(...blockResults);
-    if(i+6<tags.length)await new Promise(r=>setTimeout(r,500));
-  }
-  return items;
+  const j=await r.json();
+  if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
+  return j.items||[];
 }
 
-async function runBatchSearch(){
-  const run=++batchRun;
-  const tags=[...tokenOrder];
+async function runBatchTagSearch(){
+  const run=++batchRun, tags=[...tokenOrder];
   if(!tags.length)return;
-
-  $('status').textContent=`Searching ${tags.length} unique tag(s)…`;
-  $('summary').style.display='none';
-  $('copyNotFound').style.display='none';
-
+  hideSuggestions();
+  $('status').textContent=`${tags.length} unique tag aranıyor…`;
   try{
     const items=await fetchBatch(tags);
     if(run!==batchRun)return;
-
-    const map=new Map(items.map(x=>[normalizeToken(x.query),x.results||[]]));
-    let foundTags=0,totalMatches=0;
-    const notFound=[];
-    const rows=[];
-
+    const map=new Map(items.map(x=>[norm(x.query),x.results||[]]));
+    let found=0,total=0;const missing=[],rows=[];
     for(const tag of tags){
-      const matches=(map.get(tag)||[]).filter(x=>normalizeToken(x.tag)===tag);
+      const matches=(map.get(tag)||[]).filter(x=>norm(x.tag)===tag);
       if(matches.length){
-        foundTags++;
-        totalMatches+=matches.length;
-        for(const x of matches){
-          rows.push(`<tr>
-            <td class="input-tag"><code>${esc(tag)}</code>${(tokenCounts.get(tag)||1)>1?` <span class="warn">×${tokenCounts.get(tag)}</span>`:''}</td>
-            <td><span class="path">${esc(x.drawing_path||x.file_name||'')}</span></td>
-            <td>p.${esc(x.page||1)}${x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):''}</td>
-            <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
-            <td>${esc(x.elevation||'—')}</td>
-            <td><span class="found">FOUND</span></td>
-          </tr>`);
-        }
+        found++;total+=matches.length;
+        for(const x of matches)rows.push(rowHtml(x,'FOUND',tag));
       }else{
-        notFound.push(tag);
-        rows.push(`<tr class="not-found-row">
-          <td class="input-tag"><code>${esc(tag)}</code>${(tokenCounts.get(tag)||1)>1?` <span class="warn">×${tokenCounts.get(tag)}</span>`:''}</td>
-          <td>—</td><td>—</td><td>—</td><td>—</td>
-          <td><span class="notfound">NOT FOUND</span></td>
-        </tr>`);
+        missing.push(tag);
+        rows.push(`<tr class="not-found-row"><td><code>${esc(tag)}</code></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="notfound">NOT FOUND</span></td></tr>`);
       }
     }
-
-    lastNotFound=notFound;
-    $('copyNotFound').style.display=notFound.length?'inline-block':'none';
-    $('status').innerHTML=notFound.length
-      ?`<span class="ok">Search complete.</span> <span class="warn">${notFound.length} tag not found.</span>`
-      :'<span class="ok">All tags found.</span>';
-
+    lastNotFound=missing;
+    $('copyNotFound').style.display=missing.length?'inline-block':'none';
     $('summary').style.display='flex';
     $('summary').innerHTML=`
       <span class="stat"><strong>${tags.length}</strong> unique tags</span>
-      <span class="stat"><strong class="ok">${foundTags}</strong> found</span>
-      <span class="stat"><strong class="${notFound.length?'bad':'ok'}">${notFound.length}</strong> not found</span>
-      <span class="stat"><strong>${totalMatches}</strong> drawing matches</span>
-    `;
-    $('results').innerHTML=rows.join('');
-  }catch(e){
-    if(run!==batchRun)return;
-    $('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>';
-  }
+      <span class="stat"><strong class="ok">${found}</strong> found</span>
+      <span class="stat"><strong class="${missing.length?'bad':'ok'}">${missing.length}</strong> not found</span>
+      <span class="stat"><strong>${total}</strong> drawing matches</span>`;
+    $('results').innerHTML=rows.join(''); bindRelatedButtons();
+    $('status').innerHTML=missing.length
+      ?`<span class="ok">Arama tamamlandı.</span> <span class="warn">${missing.length} tag bulunamadı.</span>`
+      :'<span class="ok">Bütün tagler bulundu.</span>';
+  }catch(e){if(run===batchRun)$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
-$('q').focus();
+setMode('tag');
 </script>
 </body>
 </html>
