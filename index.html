@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.8.2 — Multi-Tag Search</title>
+<title>Drawing Finder v0.9.0 — Automatic Table Detection</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -70,7 +70,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.8.2 — Multi-Tag Search</h1>
+<h1>Drawing Finder v0.9.0 — Automatic Table Detection</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
@@ -90,7 +90,9 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <h2>Project Folder Indexer</h2>
 <div class="note">
  <strong>Folder mode:</strong> select one project folder and the app recursively walks every subfolder for PDFs.
- The current/saved OCR zones are used as a reusable relative template on every PDF page.
+ <strong>Automatic Table Detection</strong> is now the primary discovery method: every page is first rendered at low resolution,
+ grid/table candidates are detected anywhere on the page, and only those table crops are sent to the existing high-resolution Google + Paddle OCR engine.
+ Saved OCR zones are kept only as a fallback for pages where no table candidate is detected.
  Each completed PDF is checkpointed to IndexedDB, so a paused or interrupted project can continue without re-OCRing completed files.
  <strong>Keep this tab active for the fastest and most stable OCR run.</strong>
 </div>
@@ -106,13 +108,26 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
  <button id="clearProjectIndex" class="secondary">Clear Project Index</button>
 </div>
 
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
 <label class="inline-check">
- <input id="batchFullPage" type="checkbox">
- Use full page when no saved zone template exists (slower / more Google OCR tiles)
+ <input id="batchAutoTables" type="checkbox" checked>
+ Automatically detect tables on every PDF page <strong>(recommended)</strong>
 </label>
+<label class="inline-check">
+ <input id="batchZoneFallback" type="checkbox" checked>
+ Use saved zone template when a page has no detected table
+</label>
+<label class="inline-check">
+ <input id="batchFullPage" type="checkbox" checked>
+ Use full-page safety fallback when neither table nor saved zone is available
+</label>
+</div>
+<div id="tableDetectorStatus" class="status">
+ Automatic table detector ready. Saved zones are no longer required for folder indexing.
+</div>
 
 <div id="projectFolderStatus" class="status">No project folder selected.</div>
-<div id="zoneTemplateStatus" class="status">No folder OCR-zone template saved yet.</div>
+<div id="zoneTemplateStatus" class="status">Manual zone fallback: none saved yet.</div>
 <div class="progress-wrap"><div id="projectProgress" class="progress"></div></div>
 <div id="projectRunStatus" class="status">Folder indexer idle.</div>
 
@@ -122,6 +137,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
  <div class="metric"><strong id="projectPendingCount">0</strong><span>Pending</span></div>
  <div class="metric"><strong id="projectErrorCount">0</strong><span>Errors</span></div>
  <div class="metric"><strong id="projectTagCount">0</strong><span>Indexed tags</span></div>
+ <div class="metric"><strong id="projectTableCount">0</strong><span>Table candidates</span></div>
 </div>
 
 <label>Search project index — tag prefix, pipeline, drawing name/path</label>
@@ -4430,9 +4446,9 @@ function df70SaveCurrentZones(){
 function df70RenderTemplateStatus(){
   const tpl=df70FolderTemplate();
   if(tpl.length){
-    $('zoneTemplateStatus').innerHTML=`<span class="ok">${tpl.length} relative OCR zone(s) saved as folder template. They will be applied to every page.</span>`;
+    $('zoneTemplateStatus').innerHTML=`<span class="ok">${tpl.length} relative OCR zone(s) saved as fallback template. Automatic table detection remains primary.</span>`;
   }else{
-    $('zoneTemplateStatus').innerHTML='<span class="warn">No saved folder template. Draw zones on a sample PDF and save them, or enable full-page fallback.</span>';
+    $('zoneTemplateStatus').innerHTML='<span class="warn">No manual fallback template saved. This is fine while Automatic Table Detection is enabled.</span>';
   }
 }
 $('saveZoneTemplate').onclick=()=>df70SaveCurrentZones();
@@ -4516,6 +4532,267 @@ $('restoreProjectFolder').onclick=async()=>{
   }
 };
 
+
+// =====================================================================
+// v0.9.0 — AUTOMATIC TABLE DETECTION
+// Discovery only: row/tag/pipeline/profile logic remains unchanged.
+// =====================================================================
+
+let df90LastDetection={
+  mode:'AUTO_TABLE',pages:0,candidateCount:0,autoPages:0,
+  zoneFallbackPages:0,fullPageFallbackPages:0,pageAudit:[]
+};
+
+function df90Clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function df90Overlap1D(a0,a1,b0,b1){return Math.max(0,Math.min(a1,b1)-Math.max(a0,b0))}
+function df90RectArea(r){return Math.max(0,r.w)*Math.max(0,r.h)}
+function df90IoU(a,b){
+  const ix=df90Overlap1D(a.x,a.x+a.w,b.x,b.x+b.w);
+  const iy=df90Overlap1D(a.y,a.y+a.h,b.y,b.y+b.h);
+  const inter=ix*iy,den=df90RectArea(a)+df90RectArea(b)-inter;
+  return den>0?inter/den:0;
+}
+function df90Containment(a,b){
+  const ix=df90Overlap1D(a.x,a.x+a.w,b.x,b.x+b.w);
+  const iy=df90Overlap1D(a.y,a.y+a.h,b.y,b.y+b.h);
+  const inter=ix*iy;
+  return inter/Math.max(1e-9,Math.min(df90RectArea(a),df90RectArea(b)));
+}
+function df90MergeRects(a,b){
+  const x0=Math.min(a.x,b.x),y0=Math.min(a.y,b.y);
+  const x1=Math.max(a.x+a.w,b.x+b.w),y1=Math.max(a.y+a.h,b.y+b.h);
+  return {
+    x:x0,y:y0,w:x1-x0,h:y1-y0,
+    score:Math.max(a.score||0,b.score||0)+(Math.min(a.score||0,b.score||0)*.25),
+    intersections:(a.intersections||0)+(b.intersections||0),
+    hCells:(a.hCells||0)+(b.hCells||0),
+    vCells:(a.vCells||0)+(b.vCells||0)
+  };
+}
+function df90DedupeCandidates(input){
+  const out=[];
+  for(const c0 of [...input].sort((a,b)=>(b.score||0)-(a.score||0))){
+    let merged=false;
+    for(let i=0;i<out.length;i++){
+      if(df90IoU(c0,out[i])>.42 || df90Containment(c0,out[i])>.78){
+        out[i]=df90MergeRects(out[i],c0);merged=true;break;
+      }
+    }
+    if(!merged)out.push({...c0});
+  }
+  let changed=true;
+  while(changed){
+    changed=false;
+    outer:for(let i=0;i<out.length;i++)for(let j=i+1;j<out.length;j++){
+      if(df90IoU(out[i],out[j])>.42 || df90Containment(out[i],out[j])>.78){
+        out[i]=df90MergeRects(out[i],out[j]);out.splice(j,1);changed=true;break outer;
+      }
+    }
+  }
+  return out.sort((a,b)=>(b.score||0)-(a.score||0));
+}
+
+function df90MarkHorizontalRuns(dark,W,H,minRun,cell,gw,hGrid){
+  const gh=Math.ceil(H/cell);
+  for(let y=0;y<H;y++){
+    const off=y*W;let start=-1,last=-1,gaps=0;
+    for(let x=0;x<=W;x++){
+      const isDark=x<W&&dark[off+x]===1;
+      if(isDark){
+        if(start<0)start=x;
+        last=x;gaps=0;
+      }else if(start>=0){
+        gaps++;
+        if(gaps>2||x===W){
+          const end=last+1;
+          if(end-start>=minRun){
+            const gy=Math.min(Math.floor(y/cell),gh-1);
+            const c0=Math.floor(start/cell),c1=Math.floor((end-1)/cell);
+            for(let cx=c0;cx<=c1;cx++)hGrid[gy*gw+cx]=1;
+          }
+          start=-1;last=-1;gaps=0;
+        }
+      }
+    }
+  }
+}
+function df90MarkVerticalRuns(dark,W,H,minRun,cell,gw,gh,vGrid){
+  for(let x=0;x<W;x++){
+    let start=-1,last=-1,gaps=0;
+    for(let y=0;y<=H;y++){
+      const isDark=y<H&&dark[y*W+x]===1;
+      if(isDark){
+        if(start<0)start=y;
+        last=y;gaps=0;
+      }else if(start>=0){
+        gaps++;
+        if(gaps>2||y===H){
+          const end=last+1;
+          if(end-start>=minRun){
+            const gx=Math.min(Math.floor(x/cell),gw-1);
+            const r0=Math.floor(start/cell),r1=Math.floor((end-1)/cell);
+            for(let ry=r0;ry<=r1;ry++)vGrid[ry*gw+gx]=1;
+          }
+          start=-1;last=-1;gaps=0;
+        }
+      }
+    }
+  }
+}
+
+function df90GridComponents(hGrid,vGrid,gw,gh,W,H,cell){
+  const active=new Uint8Array(gw*gh),inter=new Uint8Array(gw*gh);
+  for(let i=0;i<active.length;i++){
+    if(hGrid[i]||vGrid[i])active[i]=1;
+    if(hGrid[i]&&vGrid[i])inter[i]=1;
+  }
+
+  // Bridge one-cell holes on line networks.
+  const bridged=active.slice();
+  for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){
+    const i=y*gw+x;if(active[i])continue;
+    const lr=x>0&&x<gw-1&&active[i-1]&&active[i+1];
+    const ud=y>0&&y<gh-1&&active[i-gw]&&active[i+gw];
+    if(lr||ud)bridged[i]=1;
+  }
+
+  const seen=new Uint8Array(gw*gh),out=[];
+  const qx=new Int16Array(gw*gh),qy=new Int16Array(gw*gh);
+
+  for(let sy=0;sy<gh;sy++)for(let sx=0;sx<gw;sx++){
+    const seed=sy*gw+sx;
+    if(!bridged[seed]||seen[seed])continue;
+
+    let head=0,tail=0;
+    qx[tail]=sx;qy[tail]=sy;tail++;seen[seed]=1;
+    let minx=sx,maxx=sx,miny=sy,maxy=sy,cells=0,hCells=0,vCells=0,intersections=0;
+
+    while(head<tail){
+      const x=qx[head],y=qy[head];head++;
+      const i=y*gw+x;cells++;
+      if(hGrid[i])hCells++;
+      if(vGrid[i])vCells++;
+      if(inter[i])intersections++;
+      if(x<minx)minx=x;if(x>maxx)maxx=x;
+      if(y<miny)miny=y;if(y>maxy)maxy=y;
+
+      if(x>0){const ni=i-1;if(bridged[ni]&&!seen[ni]){seen[ni]=1;qx[tail]=x-1;qy[tail]=y;tail++}}
+      if(x<gw-1){const ni=i+1;if(bridged[ni]&&!seen[ni]){seen[ni]=1;qx[tail]=x+1;qy[tail]=y;tail++}}
+      if(y>0){const ni=i-gw;if(bridged[ni]&&!seen[ni]){seen[ni]=1;qx[tail]=x;qy[tail]=y-1;tail++}}
+      if(y<gh-1){const ni=i+gw;if(bridged[ni]&&!seen[ni]){seen[ni]=1;qx[tail]=x;qy[tail]=y+1;tail++}}
+    }
+
+    const px0=minx*cell,py0=miny*cell;
+    const px1=Math.min(W,(maxx+1)*cell),py1=Math.min(H,(maxy+1)*cell);
+    const w=px1-px0,h=py1-py0;
+    const areaFrac=(w*h)/(W*H),widthFrac=w/W,heightFrac=h/H;
+    if(widthFrac<.10||heightFrac<.035||areaFrac<.004)continue;
+    if(hCells<5||vCells<3||intersections<3)continue;
+
+    const hRatio=hCells/Math.max(1,cells),vRatio=vCells/Math.max(1,cells);
+    const iRatio=intersections/Math.max(1,Math.min(hCells,vCells));
+    if(hRatio<.10||vRatio<.06)continue;
+    if(areaFrac>.82&&(intersections<12||iRatio<.10))continue;
+
+    const score=
+      Math.min(40,intersections*2.4)+
+      Math.min(22,hCells*.45)+
+      Math.min(18,vCells*.65)+
+      Math.min(12,areaFrac*35)+
+      Math.min(8,iRatio*25);
+
+    out.push({
+      x:px0/W,y:py0/H,w:w/W,h:h/H,
+      score,intersections,hCells,vCells
+    });
+  }
+  return out;
+}
+
+async function df90DetectTableZonesOnPage(pageNo){
+  const page=await pdfDoc.getPage(pageNo),base=page.getViewport({scale:1});
+  const scale=df90Clamp(1700/Math.max(1,Math.max(base.width,base.height)),.28,1.8);
+  const vp=page.getViewport({scale});
+  const W=Math.max(1,Math.ceil(vp.width)),H=Math.max(1,Math.ceil(vp.height));
+
+  const c=document.createElement('canvas');
+  c.width=W;c.height=H;
+  const ctx=c.getContext('2d',{alpha:false,willReadFrequently:true});
+  ctx.fillStyle='white';ctx.fillRect(0,0,W,H);
+  await page.render({canvasContext:ctx,viewport:vp}).promise;
+
+  const data=ctx.getImageData(0,0,W,H).data,dark=new Uint8Array(W*H);
+  for(let i=0,p=0;i<data.length;i+=4,p++){
+    const lum=(data[i]*77+data[i+1]*150+data[i+2]*29)>>8;
+    dark[p]=lum<188?1:0;
+  }
+
+  const cell=df90Clamp(Math.round(Math.min(W,H)/38),20,42);
+  const gw=Math.ceil(W/cell),gh=Math.ceil(H/cell);
+  const hGrid=new Uint8Array(gw*gh),vGrid=new Uint8Array(gw*gh);
+  df90MarkHorizontalRuns(dark,W,H,Math.max(52,Math.round(W*.045)),cell,gw,hGrid);
+  df90MarkVerticalRuns(dark,W,H,Math.max(38,Math.round(H*.035)),cell,gw,gh,vGrid);
+
+  let candidates=df90DedupeCandidates(df90GridComponents(hGrid,vGrid,gw,gh,W,H,cell));
+
+  const mx=Math.max(.004,10/W),my=Math.max(.006,10/H);
+  candidates=candidates.map(r=>{
+    const x=df90Clamp(r.x-mx,0,1),y=df90Clamp(r.y-my,0,1);
+    const x1=df90Clamp(r.x+r.w+mx,0,1),y1=df90Clamp(r.y+r.h+my,0,1);
+    return {...r,x,y,w:x1-x,h:y1-y};
+  }).slice(0,12);
+
+  c.width=1;c.height=1;
+  return candidates;
+}
+
+async function df90DetectTablesInPdf(pageCount){
+  const tpl=df70FolderTemplate();
+  const useZoneFallback=$('batchZoneFallback')?.checked!==false;
+  const useFullPage=$('batchFullPage')?.checked===true;
+  const out=[];
+
+  df90LastDetection={
+    mode:'AUTO_TABLE',pages:pageCount,candidateCount:0,autoPages:0,
+    zoneFallbackPages:0,fullPageFallbackPages:0,pageAudit:[]
+  };
+
+  for(let p=1;p<=pageCount;p++){
+    $('tableDetectorStatus').innerHTML=`<span class="purple">Table discovery: page ${p}/${pageCount}…</span>`;
+    $('projectRunStatus').innerHTML=`<span class="purple">Low-resolution table discovery: page ${p}/${pageCount}…</span>`;
+
+    let cands=[];
+    try{cands=await df90DetectTableZonesOnPage(p)}
+    catch(err){console.warn('Automatic table detection failed on page',p,err)}
+
+    if(cands.length){
+      df90LastDetection.autoPages++;
+      df90LastDetection.candidateCount+=cands.length;
+      for(const c of cands)out.push({page:p,x:c.x,y:c.y,w:c.w,h:c.h,autoTable:true,tableScore:c.score});
+      df90LastDetection.pageAudit.push({page:p,mode:'AUTO_TABLE',count:cands.length});
+    }else if(useZoneFallback&&tpl.length){
+      df90LastDetection.zoneFallbackPages++;
+      for(const z of tpl)out.push({page:p,x:z.x,y:z.y,w:z.w,h:z.h,zoneFallback:true});
+      df90LastDetection.pageAudit.push({page:p,mode:'ZONE_FALLBACK',count:tpl.length});
+    }else if(useFullPage){
+      df90LastDetection.fullPageFallbackPages++;
+      out.push({page:p,x:0,y:0,w:1,h:1,fullPageFallback:true});
+      df90LastDetection.pageAudit.push({page:p,mode:'FULL_PAGE_FALLBACK',count:1});
+    }else{
+      df90LastDetection.pageAudit.push({page:p,mode:'NO_REGION',count:0});
+    }
+
+    await new Promise(r=>setTimeout(r,0));
+  }
+
+  $('tableDetectorStatus').innerHTML=
+    `<span class="ok">Automatic discovery: ${df90LastDetection.candidateCount} table candidate(s) on ${df90LastDetection.autoPages}/${pageCount} page(s).</span>`+
+    (df90LastDetection.zoneFallbackPages?` <span class="warn">Zone fallback: ${df90LastDetection.zoneFallbackPages} page(s).</span>`:'')+
+    (df90LastDetection.fullPageFallbackPages?` <span class="warn">Full-page fallback: ${df90LastDetection.fullPageFallbackPages} page(s).</span>`:'');
+
+  return out;
+}
+
 function df70MappedZones(pageCount){
   let tpl=df70FolderTemplate();
   if(!tpl.length&&$('batchFullPage').checked)tpl=[{x:0,y:0,w:1,h:1}];
@@ -4532,13 +4809,20 @@ async function df70LoadPdfForBatch(file){
     try{await pdfDoc.destroy()}catch(_){}
   }
   pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-  pageNum=1;
-  zones=df70MappedZones(pdfDoc.numPages);
-  tiles=[];
-  resetResults();
+  pageNum=1;tiles=[];resetResults();
+
+  if($('batchAutoTables')?.checked!==false){
+    zones=await df90DetectTablesInPdf(pdfDoc.numPages);
+  }else{
+    zones=df70MappedZones(pdfDoc.numPages);
+    df90LastDetection={
+      mode:'MANUAL_ZONE',pages:pdfDoc.numPages,candidateCount:zones.length,
+      autoPages:0,zoneFallbackPages:pdfDoc.numPages,fullPageFallbackPages:0,pageAudit:[]
+    };
+  }
 
   if(!zones.length){
-    throw new Error('No folder OCR-zone template. Save current zones or enable full-page fallback.');
+    throw new Error('No table region detected and no enabled fallback region is available.');
   }
   await planTiles();
 }
@@ -4612,6 +4896,12 @@ async function df70ProcessEntry(entry,index,total){
     state.tagCount=recs.length;
     state.error='';
     state.pages=pdfDoc?.numPages||1;
+    state.tableMode=df90LastDetection?.mode||'';
+    state.tableCandidates=Number(df90LastDetection?.candidateCount||0);
+    state.tableAutoPages=Number(df90LastDetection?.autoPages||0);
+    state.tableZoneFallbackPages=Number(df90LastDetection?.zoneFallbackPages||0);
+    state.tableFullPageFallbackPages=Number(df90LastDetection?.fullPageFallbackPages||0);
+    state.recognizedProfiles=Array.isArray(dfProfiles)?dfProfiles.length:0;
     state.updatedAt=Date.now();
     await df70Put('files',state);
   }catch(e){
@@ -4635,8 +4925,8 @@ async function df70Start(){
   if(!df70ProjectHandle||!df70Entries.length){
     $('projectRunStatus').innerHTML='<span class="bad">Select a project folder first.</span>';return;
   }
-  if(!df70FolderTemplate().length&&!$('batchFullPage').checked){
-    $('projectRunStatus').innerHTML='<span class="bad">Save an OCR-zone template first, or enable full-page fallback.</span>';return;
+  if($('batchAutoTables')?.checked===false && !df70FolderTemplate().length && !$('batchFullPage').checked){
+    $('projectRunStatus').innerHTML='<span class="bad">Automatic table detection is disabled. Save a manual OCR-zone template or enable full-page fallback.</span>';return;
   }
   if(!endpoint()){
     $('projectRunStatus').innerHTML='<span class="bad">Google OCR backend endpoint is required.</span>';return;
@@ -4711,12 +5001,14 @@ function df70RenderProject(){
   const pending=vals.filter(x=>x.status==='pending'||x.status==='processing').length;
   const errors=vals.filter(x=>x.status==='error').length;
   const tags=df70ProjectRecords.length;
+  const tableCandidates=vals.reduce((n,x)=>n+Number(x.tableCandidates||0),0);
 
   $('projectPdfCount').textContent=total;
   $('projectDoneCount').textContent=done;
   $('projectPendingCount').textContent=pending;
   $('projectErrorCount').textContent=errors;
   $('projectTagCount').textContent=tags;
+  $('projectTableCount').textContent=tableCandidates;
   $('projectProgress').style.width=total?`${(done/total)*100}%`:'0%';
 
   $('startProjectIndex').disabled=df70BatchRunning||!df70ProjectHandle||!total;
@@ -5529,6 +5821,21 @@ df610ApplySafeMetadata=function(){
     if(el)el.innerHTML='<span class="bad">Cloud sync controls failed to initialize. Hard refresh this page.</span>';
   }
 })();
+</script>
+
+
+<script>
+// v0.9.0 detector UI state
+['batchAutoTables','batchZoneFallback','batchFullPage'].forEach(id=>{
+  const el=$(id);if(!el)return;
+  el.addEventListener('change',()=>{
+    if($('batchAutoTables').checked){
+      $('tableDetectorStatus').innerHTML='<span class="ok">Automatic table detection enabled. Manual zones are fallback only.</span>';
+    }else{
+      $('tableDetectorStatus').innerHTML='<span class="warn">Automatic table detection disabled. Folder indexing will use manual zones / full-page fallback.</span>';
+    }
+  });
+});
 </script>
 
 </body>
