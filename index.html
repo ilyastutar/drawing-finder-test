@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.9.0 — Automatic Table Detection</title>
+<title>Drawing Finder v0.9.0.1 — Auto Table Plan Tiles Hotfix</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -70,7 +70,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.9.0 — Automatic Table Detection</h1>
+<h1>Drawing Finder v0.9.0.1 — Auto Table Plan Tiles Hotfix</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
@@ -400,7 +400,7 @@ $('pdfInput').onchange=async e=>{
   pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
   pageNum=1;zones=[];tiles=[];resetResults();
   await renderPreview();update();
-  $('status').innerHTML='<span class="ok">PDF loaded. Draw one or more OCR zones.</span>';
+  $('status').innerHTML='<span class="ok">PDF loaded. Click Plan tiles for automatic table detection, or draw manual zones if you want to override it.</span>';
  }catch(err){$('status').innerHTML='<span class="bad">'+escapeHtml(err.message)+'</span>'}
 };
 
@@ -462,12 +462,12 @@ function resetResults(){
 
 function update(){
  $('undoZone').disabled=!zones.length;$('clearZones').disabled=!zones.length;
- $('plan').disabled=!zones.length;
+ $('plan').disabled=!pdfDoc;
  $('runDual').disabled=!tiles.length||!endpoint();
  $('exportCsv').disabled=!verificationRows.length;
  $('zoneCount').textContent=zones.length;$('tileCount').textContent=tiles.length;
 
- if(!zones.length)$('zoneList').innerHTML='<div class="row">No OCR zones yet.</div>';
+ if(!zones.length)$('zoneList').innerHTML='<div class="row">No manual/auto OCR regions yet. Click Plan tiles to auto-detect tables.</div>';
  else $('zoneList').innerHTML=zones.map((z,i)=>`
   <div class="row" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
    <div><strong>Zone ${i+1} — page ${z.page}</strong><br>
@@ -485,6 +485,33 @@ function update(){
 });
 
 async function planTiles(){
+ if(!pdfDoc){
+  $('status').innerHTML='<span class="bad">Load a PDF first.</span>';
+  return;
+ }
+
+ // v0.9.0.1: manual zones are optional. When the user has not drawn a zone,
+ // Plan tiles first runs the same automatic table detector used by folder indexing.
+ if(!zones.length){
+  $('plan').disabled=true;
+  $('status').innerHTML='<span class="purple">Detecting tables automatically…</span>';
+  try{
+   zones=await df90DetectTablesInPdf(pdfDoc.numPages);
+   if(!zones.length){
+    $('status').innerHTML='<span class="bad">No table region detected and no enabled fallback is available.</span>';
+    update();return;
+   }
+   pageNum=1;
+   await renderPreview();
+   $('status').innerHTML=
+    `<span class="ok">${df90LastDetection.candidateCount} automatic table candidate(s) detected. Planning OCR tiles…</span>`;
+  }catch(e){
+   console.error(e);
+   $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
+   update();return;
+  }
+ }
+
  const dpi=Number($('dpi').value),scale=dpi/72,maxMP=Number($('maxMP').value);
  const maxDim=Number($('maxDim').value),op=Number($('overlapPct').value);
  tiles=[];resetResults();
@@ -510,7 +537,12 @@ async function planTiles(){
   }
  }
  drawOverlay();update();
- $('status').innerHTML=`<span class="ok">${zones.length} zone(s) → ${tiles.length} overlapping tile(s) planned.</span>`;
+ const autoCount=zones.filter(z=>z.autoTable).length;
+ const fallbackCount=zones.length-autoCount;
+ $('status').innerHTML=
+  `<span class="ok">${zones.length} OCR region(s) → ${tiles.length} overlapping tile(s) planned.</span>`+
+  (autoCount?` <span class="purple">${autoCount} auto-detected table region(s).</span>`:'')+
+  (fallbackCount?` <span class="warn">${fallbackCount} fallback/manual region(s).</span>`:'');
 }
 $('plan').onclick=planTiles;
 
