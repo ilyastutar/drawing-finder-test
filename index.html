@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.9.0.1 — Auto Table Plan Tiles Hotfix</title>
+<title>Drawing Finder v0.10.0 — Dradenau KKS / Contains Search</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -70,7 +70,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.9.0.1 — Auto Table Plan Tiles Hotfix</h1>
+<h1>Drawing Finder v0.10.0 — Dradenau KKS / Contains Search</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
@@ -349,6 +349,8 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </div>
 </main>
 
+<script src="kks-dictionary.js"></script>
+<script src="kks-validator.js"></script>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -4865,6 +4867,8 @@ function df70SerializableRecord(r,path,fileName){
     id:`${path}::${r.page||1}::${r.physicalRowId||''}::${r.tag}`,
     path,fileName,
     tag:r.tag||'',
+    kks:DradenauKKS.validate(r.tag),
+    pipelineKks:r.pipeline?DradenauKKS.validate(String(r.pipeline).split('-')[0]):null,
     status:r.status||'',
     rowNo:r.rowNo??'',
     rowStatus:r.rowStatus||'',
@@ -5868,6 +5872,24 @@ df610ApplySafeMetadata=function(){
     }
   });
 });
+</script>
+
+
+<script>
+// Additive post-processing only: extraction, row matching and pipeline logic are unchanged.
+const df010BaseRender=renderResults;
+renderResults=function(){
+  df010BaseRender();
+  for(const row of $('results').querySelectorAll('tr')){
+    const cell=row.cells[1],tag=cell?.querySelector('code')?.textContent;
+    if(!tag)continue;
+    const result=DradenauKKS.validate(tag),note=document.createElement('small');
+    note.textContent=`KKS: ${result.status} (${result.score}/100)`;
+    note.title=result.warnings.join('; ');
+    if(result.correction)note.textContent+=` · Öneri: ${result.correction.candidate}`;
+    cell.append(document.createElement('br'),note);
+  }
+};
 </script>
 
 </body>

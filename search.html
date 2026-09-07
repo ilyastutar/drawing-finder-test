@@ -100,7 +100,7 @@ tr.not-found-row{background:rgba(255,107,107,.035)}
 <p id="modeHint" class="hint">
 Arama modu: <strong>D</strong> + Tab = Drawing · <strong>R</strong> + Tab = Row ·
 <strong>P</strong> + Tab = Pipeline · <strong>T</strong> + Tab = Tag.
-Tag modunda Excel hücrelerini Ctrl+V ile toplu arayabilirsiniz.
+Tag, Drawing ve Pipeline içinde herhangi bir parçayı arayabilirsiniz (ör. UMA). Tag modunda Excel hücrelerini Ctrl+V ile toplu arayabilirsiniz.
 </p>
 
 <div class="toolbar">
@@ -159,6 +159,7 @@ let lastNotFound=[];
 
 function setMode(next,keepText=false){
   if(!MODES[next])return;
+  clearTimeout(timer); if(controller)controller.abort(); batchRun++;
   mode=next;
   commandMode=null;
   hideSuggestions();
@@ -385,7 +386,7 @@ $('q').addEventListener('input',()=>{
         :`${tokenOrder.length} unique tag seçildi.`;
       return;
     }
-    timer=setTimeout(runTagPrefix,230);
+    timer=setTimeout(runTagContains,230);
   }else if(mode==='drawing'){
     timer=setTimeout(runDrawingSuggest,180);
   }else{
@@ -407,21 +408,25 @@ $('copyNotFound').addEventListener('click',async()=>{
 
 async function getJson(url,options={}){
   const r=await fetch(url,options);
-  const j=await r.json();
-  if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
+  const text=await r.text();
+  let j;
+  try{j=JSON.parse(text)}catch{
+    throw new Error(`Sunucu JSON yerine geçersiz yanıt döndürdü (HTTP ${r.status}). API adresini ve backend sürümünü kontrol edin.`);
+  }
+  if(!r.ok||j?.ok!==true)throw new Error(typeof j?.error==='string'?j.error:`API hatası (HTTP ${r.status})`);
   return j;
 }
 
-async function runTagPrefix(){
+async function runTagContains(){
   const q=norm($('q').value);
-  if(q.length<2){resetResults();$('status').textContent='Tag yazmaya başlayın.';return}
+  if(!q.length){resetResults();$('status').textContent='Tag yazmaya başlayın.';return}
   controller=new AbortController();
   try{
     $('status').textContent='Tag aranıyor…';
     const j=await getJson(API+'/api/public/search?'+new URLSearchParams({q,limit:'150'}),{signal:controller.signal});
     const rows=j.results||[];
-    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.</span> Virgül / boşluk / Enter / Tab ile tag'i tutup yenisini ekleyebilirsiniz.`;
-    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Eşleşme bulunamadı.</td></tr>'; bindRelatedButtons(); bindRelatedButtons();
+    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.${j.truncated?" Sonuç sınırına ulaşıldı; aramayı daraltın.":""}</span> Virgül / boşluk / Enter / Tab ile tag'i tutup yenisini ekleyebilirsiniz.`;
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Eşleşme bulunamadı.</td></tr>'; bindRelatedButtons();
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
@@ -444,17 +449,17 @@ async function runDrawingSuggest(){
       <div class="suggest-label">Drawing önerileri · ↑ ↓ seç · Enter aç</div>
       ${rows.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}">
         <span class="suggest-main">
-          <span class="suggest-title">${highlightPrefix(x.file_name||x.path||'',q)}</span>
+          <span class="suggest-title">${highlightContains(x.file_name||x.path||'',q)}</span>
           <span class="suggest-sub">${esc(x.path||'')} · ${esc(x.record_count||0)} indexed tags</span>
         </span>
         <span class="key">Enter</span>
       </button>`).join('')}`;
     bindSuggestionRows();
-    $('status').textContent=`${rows.length} drawing önerisi.`;
+    $('status').textContent=`${rows.length} drawing önerisi.${j.truncated?" Daha fazla sonuç var; aramayı daraltın.":""}`;
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
-function highlightPrefix(text,q){
+function highlightContains(text,q){
   const s=String(text||''), n=String(q||'').length;
   if(!n)return esc(s);
   const idx=s.toUpperCase().indexOf(String(q).toUpperCase());
@@ -470,13 +475,13 @@ async function runDrawingRecords(id,label){
     $('summary').style.display='flex';
     $('summary').innerHTML=`<span class="stat"><strong>${esc(label)}</strong></span><span class="stat"><strong>${rows.length}</strong> indexed tags</span>`;
     $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Bu drawing için kayıt bulunamadı.</td></tr>'; bindRelatedButtons();
-    $('status').innerHTML=`<span class="ok">${rows.length} kayıt bulundu.</span>`;
+    $('status').innerHTML=`<span class="ok">${rows.length} kayıt bulundu.${j.truncated?" Daha fazla sonuç var.":""}</span>`;
   }catch(e){$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
 async function runModeSearch(){
   const q=$('q').value.trim();
-  if(mode==='tag'){runTagPrefix();return}
+  if(mode==='tag'){runTagContains();return}
   if(mode==='drawing'){runDrawingSuggest();return}
   if(!q){resetResults();$('status').textContent=`${MODES[mode].label} değeri yazın.`;return}
 
@@ -487,22 +492,21 @@ async function runModeSearch(){
     const rows=j.results||[];
     $('summary').style.display='none';
     $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Eşleşme bulunamadı.</td></tr>'; bindRelatedButtons();
-    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.</span>`;
+    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.${j.truncated?" Sonuç sınırına ulaşıldı; aramayı daraltın.":""}</span>`;
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
 async function fetchBatch(tags){
-  const r=await fetch(API+'/api/public/search-batch',{
+  const j=await getJson(API+'/api/public/search-batch',{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tags})
   });
-  const j=await r.json();
-  if(!r.ok||!j?.ok)throw new Error(j?.error||r.statusText);
   return j.items||[];
 }
 
 async function runBatchTagSearch(){
   const run=++batchRun, tags=[...tokenOrder];
   if(!tags.length)return;
+  clearTimeout(timer);if(controller)controller.abort();
   hideSuggestions();
   $('status').textContent=`${tags.length} unique tag aranıyor…`;
   try{
@@ -511,10 +515,10 @@ async function runBatchTagSearch(){
     const map=new Map(items.map(x=>[norm(x.query),x.results||[]]));
     let found=0,total=0;const missing=[],rows=[];
     for(const tag of tags){
-      const matches=(map.get(tag)||[]).filter(x=>norm(x.tag)===tag);
+      const matches=(map.get(tag)||[]).filter(x=>norm(x.tag).includes(tag));
       if(matches.length){
         found++;total+=matches.length;
-        for(const x of matches)rows.push(rowHtml(x,'FOUND',tag));
+        for(const x of matches)rows.push(rowHtml(x,'FOUND'));
       }else{
         missing.push(tag);
         rows.push(`<tr class="not-found-row"><td><code>${esc(tag)}</code></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="notfound">NOT FOUND</span></td></tr>`);
@@ -532,6 +536,7 @@ async function runBatchTagSearch(){
     $('status').innerHTML=missing.length
       ?`<span class="ok">Arama tamamlandı.</span> <span class="warn">${missing.length} tag bulunamadı.</span>`
       :'<span class="ok">Bütün tagler bulundu.</span>';
+    if(items.some(i=>i.truncated))$('status').textContent+=' Sonuç sınırına ulaşıldı; aramayı daraltın.';
   }catch(e){if(run===batchRun)$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
