@@ -1,14 +1,9 @@
 {
-  "version": "0.10.0",
-  "tests": {
-    "passed": 27,
-    "failed": 0,
-    "core": 22,
-    "api_routes": 5
-  },
-  "syntax": "All standalone JavaScript and inline classic scripts passed",
-  "core_preservation": "Verified against user frontend ZIP: extraction code unchanged; additive metadata and renderer only",
-  "live_cloud_test": false,
-  "source_frontend": "drawing-finder-v0.9.0.1-plan-tiles-hotfix-frontend.zip",
-  "source_backend": "drawing-finder-v0.8.2-multitag-backend.zip"
+  "version": "0.11.0",
+  "tests_passed": 29,
+  "tests_failed": 0,
+  "drawing_blank_examples": 6,
+  "drawing_typed_query": "no total cap",
+  "visual_review": "local browser with fixture data",
+  "live_deployed": false
 }

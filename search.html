@@ -40,6 +40,7 @@ h1{margin:0 0 5px;font-size:27px}.subtitle{color:var(--muted);margin:0 0 18px}
   position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;background:#131a22;
   border:1px solid var(--border);border-radius:11px;overflow:hidden;box-shadow:0 14px 30px rgba(0,0,0,.3)
 }
+.suggest{max-height:60vh;overflow-y:auto}
 .suggest[hidden]{display:none}
 .suggest-label{padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
 .suggest-row{
@@ -79,14 +80,59 @@ tr.not-found-row{background:rgba(255,107,107,.035)}
   th:nth-child(4),td:nth-child(4),th:nth-child(5),td:nth-child(5){display:none}
   table{font-size:12px}.suggest-row{padding:10px}.hint{line-height:1.45}
 }
+
+/* v0.11.0 daylight construction-site theme */
+:root{--bg:#eef1f2;--card:#ffffff;--card2:#f7f9fa;--text:#20313e;--muted:#627583;--border:#d6dfe4;--accent:#d99c12;--ok:#18794e;--bad:#ba3333;--warn:#8a6005;--chip:#fff3cc;--chipBorder:#e2c465}
+body{background:linear-gradient(140deg,#f6f7f4,#e9eff2);min-height:100vh}
+main{position:relative;max-width:1320px;padding-top:38px;z-index:1}
+.card{background:rgba(255,255,255,.95);border-radius:22px;border-top:5px solid #e8b22e;box-shadow:0 14px 50px #30434c12;padding:28px}
+.site-art{position:fixed;inset:auto 0 0;width:100%;height:80vh;opacity:.09;pointer-events:none;color:#405b6b;z-index:0}
+.project-header{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:20px}
+.eyebrow{font-size:10px;font-weight:800;letter-spacing:.17em;color:#7d641d;margin-bottom:10px}
+h1{font-size:30px;letter-spacing:-.7px}.subtitle{margin:5px 0 0;font-size:14px}.version{font-size:10px;color:#73848d;margin-left:7px}
+.site-badge{font-size:11px;font-weight:800;letter-spacing:.06em;background:#fff5d5;border:1px solid #e9d797;border-radius:8px;padding:10px 13px;color:#806015}
+.mode-tabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
+.mode-tabs button{border:1px solid #d5dfe4;border-radius:9px;background:#f5f7f8;color:#556a77;padding:9px 18px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.mode-tabs button.selected{background:#263d4c;color:white;border-color:#263d4c}
+.search-shell{background:#fff;border:1px solid #bdcbd3;min-height:60px;box-shadow:0 3px 9px #24394506}
+.search-shell:focus-within{border-color:#bc8e20;box-shadow:0 0 0 3px #e8b22e24}
+.mode-pill{background:#fff3cd;border-color:#e3cc88;color:#68501e}
+.suggest{position:relative;top:auto;left:auto;right:auto;margin-top:12px;background:#fff;border-color:#d6dfe4;box-shadow:none;max-height:48vh;border-radius:12px}
+.suggest-label{position:sticky;top:0;background:#eef3f5;color:#526875;border-bottom:1px solid #d6dfe4;z-index:1;padding:12px;font-size:10px;font-weight:800}
+.suggest-row{color:#253e4d;border-bottom:1px solid #e5ecef;padding:13px 15px}
+.suggest-row:nth-child(odd){background:#fbfcfc}.suggest-row.active,.suggest-row:hover{background:#fff6dc;box-shadow:inset 3px 0 #dbaa2b}
+.suggest-title{font-weight:600}.suggest-sub{display:block;margin-top:5px;color:#73828c;font-size:11px}
+.key{border-color:#cbd5db;color:#73838e;background:#fff}.mode-ghost span{color:#82929d}
+.hint{line-height:1.7;margin-top:12px}button.action{background:#fff;color:#405968;border-color:#d4dee4}
+button:focus-visible{outline:3px solid #cc971d;outline-offset:2px}
+.status{margin-top:15px;color:#5b7280}.wrap{background:#fff;margin-top:14px;border-color:#d9e2e7}
+th{background:#eef3f5;color:#627580;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:13px 10px}
+td{border-color:#e4ebef}.related-tag{background:#eaf2f5;border-color:#cbdde5;color:#34586b}.related-tag:hover{background:#dbeaf1;border-color:#92b6c8}
+.related-tag::before{color:#51758a}.stat{background:#f6f8f9}.empty{padding:24px}
+@media(max-width:800px){main{padding:12px}.card{padding:17px}.site-badge{display:none}.project-header{margin-bottom:18px}h1{font-size:26px}.mode-tabs button{padding:9px 14px}.suggest{max-height:45vh}.suggest-title{white-space:normal}.suggest-row{gap:7px}.key{display:none}}
+
 </style>
 </head>
 <body>
+
+<svg class="site-art" viewBox="0 0 1440 800" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+ <path d="M0 760H1440M950 760V100H978V760M950 100L970 40L990 100M690 100H1320V124H690ZM700 100L970 40L1300 100M950 124L978 180L950 240L978 300L950 360L978 420L950 480L978 540L950 600L978 660L950 720M1200 124V360M1182 360H1218V385H1182ZM1200 385V408Q1220 425 1210 435Q1195 445 1188 433"/>
+ <rect x="85" y="310" width="270" height="420" rx="12"/><rect x="110" y="340" width="220" height="130" rx="5"/>
+ <path d="M220 354L180 414H218L200 454L257 395H222ZM115 520H320M115 545H320M115 570H320M115 595H320M135 660H180M255 660H300M115 730V760M325 730V760"/>
+ <path d="M420 760V520H660V760M450 520V480H630V520M440 560H640M440 620H640M440 680H640M500 520V760M580 520V760"/>
+</svg>
+
 <main>
 <section class="card">
-<h1>Hamburg Project</h1>
-<p class="subtitle">Drawing Finder</p>
+<div class="project-header"><div><div class="eyebrow">DRADENAU · SAHA DOKÜMANLARI</div><h1>Hamburg Project</h1>
+<p class="subtitle">Drawing Finder <span class="version">v0.11.0</span></p></div><span class="site-badge">⚡ ENGINEERING / SITE</span></div>
 
+<div class="mode-tabs" aria-label="Arama türü">
+  <button type="button" data-mode="drawing">Drawing</button>
+  <button type="button" data-mode="tag">Tag</button>
+  <button type="button" data-mode="pipeline">Pipeline</button>
+  <button type="button" data-mode="row">Row</button>
+</div>
 <div class="search-wrap">
   <div id="searchShell" class="search-shell">
     <span id="modePill" class="mode-pill tag">Tag</span>
@@ -161,6 +207,7 @@ function setMode(next,keepText=false){
   if(!MODES[next])return;
   clearTimeout(timer); if(controller)controller.abort(); batchRun++;
   mode=next;
+  document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('selected',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});
   commandMode=null;
   hideSuggestions();
 
@@ -184,6 +231,7 @@ function setMode(next,keepText=false){
   $('results').innerHTML='<tr><td colspan="7" class="empty">Henüz arama yapılmadı.</td></tr>';
   $('status').textContent=mode==='tag'?'Tag yazmaya başlayın.':`${MODES[mode].label} araması aktif.`;
   $('q').focus();
+  if(mode==='drawing')runDrawingSuggest();else runExamples();
 }
 
 function showCommandSuggestion(m){
@@ -223,6 +271,7 @@ function setSuggestionActive(i){
   if(!suggestionItems.length)return;
   suggestionIndex=(i+suggestionItems.length)%suggestionItems.length;
   $('suggestions').querySelectorAll('.suggest-row').forEach((el,n)=>el.classList.toggle('active',n===suggestionIndex));
+  $('suggestions').querySelector('.suggest-row.active')?.scrollIntoView({block:'nearest'});
 }
 
 function chooseSuggestion(i=suggestionIndex){
@@ -231,6 +280,11 @@ function chooseSuggestion(i=suggestionIndex){
 
   if(item.type==='command'){
     setMode(item.mode);
+    return;
+  }
+  if(item.type==='example'){
+    $('q').value=item.value;hideSuggestions();
+    if(mode==='tag')runTagContains();else runModeSearch();
     return;
   }
   if(item.type==='drawing'){
@@ -396,7 +450,7 @@ $('q').addEventListener('input',()=>{
 
 $('clearAll').addEventListener('click',()=>{
   tokenOrder=[];tokenCounts.clear();lastNotFound=[];
-  renderChips();$('q').value='';hideSuggestions();setMode('tag');
+  renderChips();$('q').value='';hideSuggestions();setMode('drawing');
 });
 $('copyNotFound').addEventListener('click',async()=>{
   if(!lastNotFound.length)return;
@@ -419,7 +473,7 @@ async function getJson(url,options={}){
 
 async function runTagContains(){
   const q=norm($('q').value);
-  if(!q.length){resetResults();$('status').textContent='Tag yazmaya başlayın.';return}
+  if(!q.length){resetResults();runExamples();return}
   controller=new AbortController();
   try{
     $('status').textContent='Tag aranıyor…';
@@ -430,12 +484,31 @@ async function runTagContains(){
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
+async function runExamples(){
+  if(mode==='drawing'||$('q').value.trim()||(mode==='tag'&&tokenOrder.length))return;
+  if(controller)controller.abort();
+  const request=controller=new AbortController(),selectedMode=mode;
+  $('status').textContent='Örnekler yükleniyor…';
+  try{
+    const j=await getJson(API+'/api/public/examples?'+new URLSearchParams({mode:selectedMode}),{signal:request.signal});
+    if(request.signal.aborted||mode!==selectedMode||$('q').value.trim())return;
+    const rows=j.examples||[];
+    suggestionItems=rows.map(x=>({type:'example',...x}));suggestionIndex=0;
+    $('suggestions').hidden=!rows.length;
+    $('suggestions').innerHTML=`<div class="suggest-label">${esc(MODES[selectedMode].label)} örnekleri · Birini seçin veya kendiniz yazın</div>`+
+      rows.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}"><span class="suggest-main"><span class="suggest-title">${esc(x.value)}</span><span class="suggest-sub">${esc(x.drawing)}</span></span><span class="key">Ara ↗</span></button>`).join('');
+    bindSuggestionRows();
+    $('status').textContent=rows.length?'Örnekler mevcut proje kayıtlarından gösteriliyor.':'Bu mod için henüz örnek kayıt yok.';
+  }catch(e){if(e.name!=='AbortError')$('status').textContent=e.message;}
+}
+
 async function runDrawingSuggest(){
   const q=$('q').value.trim();
-  if(!q){hideSuggestions();resetResults();$('status').textContent='Drawing numarası / adı yazın.';return}
-  controller=new AbortController();
+  if(controller)controller.abort();
+  const request=controller=new AbortController();
   try{
-    const j=await getJson(API+'/api/public/drawing-suggest?'+new URLSearchParams({q,limit:'12'}),{signal:controller.signal});
+    const j=await getJson(API+'/api/public/drawing-suggest?'+new URLSearchParams({q}),{signal:request.signal});
+    if(request.signal.aborted||mode!=='drawing')return;
     const rows=j.drawings||[];
     suggestionItems=rows.map(x=>({type:'drawing',...x}));
     suggestionIndex=0;
@@ -446,7 +519,7 @@ async function runDrawingSuggest(){
     }
     $('suggestions').hidden=false;
     $('suggestions').innerHTML=`
-      <div class="suggest-label">Drawing önerileri · ↑ ↓ seç · Enter aç</div>
+      <div class="suggest-label">${q?rows.length+" drawing eşleşmesi":"Drawing örnekleri · Birini seçin veya arayın"}${j.truncated?" · Backend güncellemesi gerekli":""} · ↑ ↓ seç · Enter aç</div>
       ${rows.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}">
         <span class="suggest-main">
           <span class="suggest-title">${highlightContains(x.file_name||x.path||'',q)}</span>
@@ -455,7 +528,7 @@ async function runDrawingSuggest(){
         <span class="key">Enter</span>
       </button>`).join('')}`;
     bindSuggestionRows();
-    $('status').textContent=`${rows.length} drawing önerisi.${j.truncated?" Daha fazla sonuç var; aramayı daraltın.":""}`;
+    $('status').textContent=q?`${rows.length} drawing eşleşmesi.`:`Başlamak için ${rows.length} drawing örneği. Tüm eşleşmeler için yazmaya başlayın.`;
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
@@ -483,7 +556,7 @@ async function runModeSearch(){
   const q=$('q').value.trim();
   if(mode==='tag'){runTagContains();return}
   if(mode==='drawing'){runDrawingSuggest();return}
-  if(!q){resetResults();$('status').textContent=`${MODES[mode].label} değeri yazın.`;return}
+  if(!q){resetResults();runExamples();return}
 
   controller=new AbortController();
   try{
@@ -540,7 +613,8 @@ async function runBatchTagSearch(){
   }catch(e){if(run===batchRun)$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
-setMode('tag');
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+setMode('drawing');
 </script>
 </body>
 </html>

@@ -1,39 +1,27 @@
-# Drawing Finder v0.10.0
-
-Kaynaklar: kullanıcının gönderdiği frontend v0.9.0.1 ve backend v0.8.2.
+# Drawing Finder v0.11.0
 
 ## Kurulum
+Önce backend ZIP'ini Google Cloud Shell'e yükleyin:
 
-1. Backend ZIP'ini yeni bir klasöre çıkarın. Mevcut deploy.sh yapılandırmasını kontrol edin; Cloud Shell'de `unset DF_ACCESS_KEY` ardından `bash deploy.sh` çalıştırın. Mevcut Secret Manager anahtarı kullanılır.
-2. Frontend ZIP'indeki dört dosyayı birlikte yayınlayın: index.html, search.html, kks-dictionary.js, kks-validator.js. Aynı klasörde olmalılar.
-3. Tarayıcıda Ctrl+F5 yapın. Önce backend, sonra frontend güncellenmelidir.
+```bash
+cd ~
+unzip -o drawing-finder-v0.11.0-backend.zip -d drawing-finder-v0.11.0-backend
+cd drawing-finder-v0.11.0-backend
+unset DF_ACCESS_KEY
+bash deploy.sh
+```
 
-## Arama
+Ardından frontend ZIP'indeki index.html, search.html, kks-dictionary.js ve kks-validator.js dosyalarını aynı klasöre yayınlayın. Ctrl+F5 yapın. Yeniden OCR gerekmez.
 
-Tag, Drawing (dosya adı VE yol) ve Pipeline büyük/küçük harften bağımsız contains arar. D/R/P/T + Tab, Excel paste, chip'ler ve Related Tag korunur. Row tam sayı eşleşmesidir. Chip sonuçlarında gerçek bulunan tag gösterilir.
-Eski Firestore kayıtlarıyla çalışır: arama için yeniden OCR veya sync gerekmez. Yeni drawing-suggest, drawing-records ve search-mode uçları v0.8.2 backend'e eklendi. HTML/404/boş/geçersiz JSON yanıtları anlaşılır hata verir; HTML ekrana basılmaz. Bilinmeyen backend uçları JSON 404 döndürür.
-
-Arama mevcut kayıtları 500'lük sayfalarla tarar; yalnızca ilk sayfayı veya prefix adaylarını filtrelemez. Sonuç kesilirse arayüz bunu belirtir. 50.000 kayıt tarama tavanı aşılırsa eksik sonuç yerine açık hata döner. Büyük koleksiyonlarda Firestore okuma maliyeti/gecikmesi artar; ayrı bir contains arama indeksi önerilir. Batch en fazla 500 sorgu, sorgu başına 150 sonuç döndürür. Her batch koleksiyonu bir kez tarar.
-
-## KKS kapsamı
-
-Kaynak: kullanıcının yüklediği DE303-200-EG-GDL-00001, Rev.04, 09/08/2023.
-Sözlük girdilerinde PDF sayfası, kaynak metin satırı ve listed/free ayrımı tutulur. Annex 1 function/equipment/component anahtarları ayrı ad alanlarıdır. Kaynak açıklamaları satır bazında çıkarılmıştır; çok satırlı açıklamalar tam çeviri değildir.
-
-- Bölüm 5.6, s.33-34: G ve F0 ayrı rakamlar; proje prefix listesi. Başka prefix'ler (ör. I&C 40) silinmez, bağlamsal incelemeye bırakılır.
-- Bölüm 6, s.36-63: G/F0/F1-F3/FN/A1-A2/AN/opsiyonel A3/B1-B2/BN ayrıştırılır. Pump örneği 00NDC21 AP001 KP01 desteklenir.
-- Bölüm 7, s.64-69: C/D/F için proje A2 ölçüm büyüklükleri, 900-929 / 930-959 / 960-999 ölçüm bağlantı sınıfları. Ana doküman kuralı Appendix genel anahtarına önceliklidir.
-- Bölüm 8, s.70-72 ve Annex 1 PDF s.275-279: sistem/kabin düzeyi ve -M01/-U01 gibi electrical component anahtarları. Kurulum yeri nokta/ayraç biçimleri ve detay mühendislik kuralları tamamen doğrulanmış sayılmaz; REVIEW olarak korunur.
-- Annex 1 PDF s.105-266 function, 267-274 equipment, 275-279 component. Serbest alt bölümlere otomatik geçerlilik verilmez.
-
-Bu katman bir ekipmanın sahada gerçekten mevcut olduğunu veya tüm mühendislik kurallarına uygunluğunu kanıtlamaz. CONSISTENT = uygulanan yapı/sözlük kontrolleri uyumlu. Puan kural tabanlıdır, olasılık değildir. Bilinmeyen kodlar, kısmi/özel biçimler ve serbest alt gruplar REVIEW olur; hiçbir kayıt filtrelenmez.
-
-OCR correction: yalnızca rakam konumunda tek O→0, I/L→1 veya S→5 hatası ve sözlük/proje kontrolleri uyumluysa aday önerilir. Orijinal tag, pipeline, row ve related değerleri otomatik değiştirilmez. Harf-harf belirsizlikleri, birden çok hata ve eksik karakterler tahmin edilmez. Bu koruma mevcut OCR çekirdeğine müdahaleyi önler.
-
-KKS değerlendirmesi indexer sonuçlarında görünür, yeni yerel kayıtlarda ve cloud sync'te saklanır. Eski cloud tag'leri arama yanıtında anlık değerlendirilir. Eski kayıtlar için toplu veri migrasyonu yapılmaz. Pipeline değerlendirmesi yalnızca KKS başlangıcı içindir; DN/malzeme/drawing son eki mevcut çekirdeğe bırakılır. Mevcut CSV şeması korunur.
+## Davranış
+- Her moda geçildiğinde boş kutunun altında gerçek proje kayıtlarından en fazla 6 örnek görünür. Yeterli kayıt yoksa mevcut sayı gösterilir. Örnekler uydurulmaz.
+- Drawing örneği seçilince drawing kayıtları açılır. Tag/Pipeline/Row örneği seçilince o değer aranır.
+- Drawing'de yazmaya başlayınca bütün contains eşleşmeleri gelir: 12/50 gibi toplam sonuç sınırı yoktur. Veriler backend'de 500'lük sayfalarla okunur. Çok büyük drawing koleksiyonlarında yanıt süresi artabilir.
+- Açık gri/beyaz tema, sarı vurgular, silik vinç ve elektrik panosu çizimleri, görünür mod düğmeleri, kaydırılabilir öneri alanı.
+- Tag/Pipeline mevcut contains araması, Row tam sayı araması, Excel paste ve related tag korunur. Tag/Pipeline sonuç sınırları önceki sürümdeki gibidir; bu değişiklik Drawing öneri/arama sınırını kaldırır.
+- KKS validator ve mevcut OCR çekirdeği korunur. Indexer sürüm başlığı v0.10.0 kalır; search arayüzü ve backend v0.11.0'dır.
 
 ## Doğrulama
-
-Backend klasöründe Node.js 20+ ile `npm test` çalıştırın. Testler harici OCR/Firestore bağlantısı gerektirmez; API testleri Firestore yerine kontrollü örnek veri kullanır. JavaScript syntax, PDF örnekleri, düzeltme belirsizlikleri, sayfa 1 sonrasındaki contains sonucu, sonuç sınırı, batch, related tag, drawing/row/pipeline uçları ve HTML/JSON hata durumları kapsanır.
-
-Orijinal frontend OCR kaynak kodunun yalnızca başlık, modül yükleme, metadata serialization ve sonradan eklenen gösterim dışında birebir korunduğu doğrulandı. Gerçek Cloud Run/Firestore üzerinde deploy, canlı yük testi ve ücretli OCR çağrısı yapılmadı.
+29 test geçti: önceki 27 kontrol, boş Drawing için 6 örnek / yazılan sorgu için 80 sonucun tamamı, tüm diğer modlarda gerçek ve farklı örnekler.
+Inline script syntax ve backend syntax kontrolü geçti. Açık tema yerel tarayıcıda örnek verilerle görsel olarak incelendi. Canlı backend henüz deploy edilmedi; yerel önizlemede cloud CORS nedeniyle canlı veri kullanılmadı.
+Backend klasöründe `npm test` ile testleri tekrar çalıştırabilirsiniz. Test fixture'ları pakete dahildir; veritabanına bağlanmazlar.
