@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drawing Finder v0.10.0 — Dradenau KKS / Contains Search</title>
+<title>TOP Punch Closure v0.14.1 — Drawing Indexing</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -70,7 +70,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </head>
 <body>
 <main>
-<h1>Drawing Finder v0.10.0 — Dradenau KKS / Contains Search</h1>
+<h1>TOP Punch Closure v0.14.1 — Drawing Indexing</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
@@ -170,9 +170,9 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <div class="cloud-grid">
  <div>
   <label>Cloud target</label>
-  <div class="status"><strong>Hamburg Project</strong> <span class="cloud-badge">automatic</span></div>
+  <div class="status"><strong>CHP Dradenu - Hamburg</strong> <span class="cloud-badge">automatic</span></div>
   <input id="cloudProjectId" type="hidden" value="hamburg-project">
-  <input id="cloudProjectName" type="hidden" value="Hamburg Project">
+  <input id="cloudProjectName" type="hidden" value="CHP Dradenu - Hamburg">
   <datalist id="cloudProjectList"></datalist>
  </div>
  <div>
@@ -202,7 +202,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <div id="cloudSyncStatus" class="status">No cloud sync running.</div>
 <div class="progress-wrap"><div id="cloudSyncProgress" class="progress"></div></div>
 
-<h3 style="margin-top:16px">Remote tag search — Hamburg Project</h3>
+<h3 style="margin-top:16px">Remote tag search — CHP Dradenu - Hamburg</h3>
 <label>Search Firestore by tag prefix</label>
 <input id="cloudSearch" placeholder="e.g. 20NDB, 20NDA20CT054">
 <div id="cloudSearchStatus" class="status">Enter a tag or prefix.</div>
@@ -5456,9 +5456,9 @@ df80Init();
 
 
 <script>
-// ===== v0.8.1 Fixed Hamburg Project + one-time write-key UX =====
+// ===== v0.8.1 Fixed CHP Dradenu - Hamburg + one-time write-key UX =====
 const DF81_FIXED_PROJECT_ID='hamburg-project';
-const DF81_FIXED_PROJECT_NAME='Hamburg Project';
+const DF81_FIXED_PROJECT_NAME='CHP Dradenu - Hamburg';
 
 df80ProjectId=function(){return DF81_FIXED_PROJECT_ID};
 df80ProjectName=function(){return DF81_FIXED_PROJECT_NAME};
@@ -5886,7 +5886,7 @@ renderResults=function(){
     const result=DradenauKKS.validate(tag),note=document.createElement('small');
     note.textContent=`KKS: ${result.status} (${result.score}/100)`;
     note.title=result.warnings.join('; ');
-    if(result.correction)note.textContent+=` · Öneri: ${result.correction.candidate}`;
+    if(result.correction)note.textContent+=` · Suggestion: ${result.correction.candidate}`;
     cell.append(document.createElement('br'),note);
   }
 };

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hamburg Project — Drawing Finder</title>
+<title>CHP Dradenu - Hamburg — TOP Punch Closure</title>
 <style>
 :root{
   --bg:#0f141b;--card:#171d25;--card2:#11171e;--text:#eef2f7;--muted:#929dad;
@@ -25,6 +25,7 @@ h1{margin:0 0 5px;font-size:27px}.subtitle{color:var(--muted);margin:0 0 18px}
   display:inline-flex;align-items:center;gap:6px;padding:7px 9px;border-radius:8px;
   border:1px solid #4f6683;background:#1d2b3c;font-size:13px;font-weight:750;white-space:nowrap
 }
+.mode-pill[hidden]{display:none}
 .mode-pill.tag{opacity:.78}
 .mode-pill button{border:0;background:transparent;color:var(--muted);cursor:pointer;padding:0;font-size:15px}
 #chips{display:contents}
@@ -81,7 +82,7 @@ tr.not-found-row{background:rgba(255,107,107,.035)}
   table{font-size:12px}.suggest-row{padding:10px}.hint{line-height:1.45}
 }
 
-/* v0.11.0 daylight construction-site theme */
+/* v0.15.0 daylight construction-site theme */
 :root{--bg:#eef1f2;--card:#ffffff;--card2:#f7f9fa;--text:#20313e;--muted:#627583;--border:#d6dfe4;--accent:#d99c12;--ok:#18794e;--bad:#ba3333;--warn:#8a6005;--chip:#fff3cc;--chipBorder:#e2c465}
 body{background:linear-gradient(140deg,#f6f7f4,#e9eff2);min-height:100vh}
 main{position:relative;max-width:1320px;padding-top:38px;z-index:1}
@@ -111,50 +112,84 @@ td{border-color:#e4ebef}.related-tag{background:#eaf2f5;border-color:#cbdde5;col
 .related-tag::before{color:#51758a}.stat{background:#f6f8f9}.empty{padding:24px}
 @media(max-width:800px){main{padding:12px}.card{padding:17px}.site-badge{display:none}.project-header{margin-bottom:18px}h1{font-size:26px}.mode-tabs button{padding:9px 14px}.suggest{max-height:45vh}.suggest-title{white-space:normal}.suggest-row{gap:7px}.key{display:none}}
 
+
+#equipmentDetail{border:1px solid #d1dce2;border-radius:16px;max-width:1000px;width:92vw;max-height:85vh;padding:24px;color:#20313e}
+#equipmentDetail::backdrop{background:#243b4b70}#closeEquipment{float:right;padding:8px;border:1px solid #d1dce2;border-radius:6px;background:white;cursor:pointer}
+.wrap table{min-width:1180px}td:nth-child(6){min-width:160px;max-width:280px}td:nth-child(8){min-width:125px}
+
+/* v0.14: photo backdrop and focused interactions */
+body{background:#d9e2e5}
+.site-photo{position:fixed;inset:0;background-image:linear-gradient(120deg,rgba(13,31,40,.36),rgba(24,42,50,.13)),var(--site-photo);background-size:cover;background-position:center;pointer-events:none}
+main{padding-top:64px;padding-bottom:60px;max-width:1260px}
+.card{background:rgba(255,255,255,.96);backdrop-filter:blur(16px);border:1px solid #ffffffab;border-top:3px solid #dca936;box-shadow:0 24px 80px #10242d40;border-radius:20px;padding:32px}
+.project-header{padding-bottom:24px;border-bottom:1px solid #dee6e9;margin-bottom:24px}
+h1{font-size:28px}.subtitle{color:#526774;font-weight:600;letter-spacing:.04em}
+button,.related-tag,#results tr,.suggest-row{transition:background-color .2s ease,color .2s ease,opacity .2s ease,box-shadow .2s ease,transform .2s ease,border-color .2s ease}
+.mode-tabs{gap:10px;margin-bottom:18px}.mode-tabs button{border-radius:10px;padding:11px 22px}
+button.action:hover,.mode-tabs button:hover{background:#213f50;color:#fff;border-color:#213f50;box-shadow:0 5px 14px #213f5026;transform:translateY(-2px)}
+.mode-tabs button.selected{background:#213f50;border-color:#213f50;box-shadow:0 4px 12px #213f5020}
+.related-tag:hover{background:#213f50;color:#fff;border-color:#213f50;box-shadow:0 3px 10px #213f5026}
+#results tr:hover,#results tr:focus-within{background:#fff4d8;box-shadow:inset 4px 0 #d6a026}
+#results tr:hover code,#results tr:focus-within code{color:#15394e;font-weight:750}
+.suggest-row:hover,.suggest-row:focus-visible{background:#fff2ce;box-shadow:inset 4px 0 #d6a026}
+@media(hover:hover){
+ #results:has(tr:hover) tr:not(:hover),.suggest:has(.suggest-row:hover) .suggest-row:not(:hover){opacity:.46}
+ #results:has(tr:focus-within) tr:not(:focus-within){opacity:.6}
+}
+.photo-credit{display:block;width:max-content;max-width:100%;margin:18px auto 0;background:#142d3ddd;color:#edf3f6;border-radius:6px;padding:7px 12px;font-size:10px;text-decoration:none}
+@media(prefers-reduced-motion:reduce){button,.related-tag,#results tr,.suggest-row{transition:none!important;transform:none!important}}
+@media(max-width:800px){main{padding:18px 10px}.card{padding:20px 15px}h1{font-size:23px}.project-header{padding-bottom:18px}}
+
+/* Two complementary tones: muted blue and teal */
+.card{border-top-color:#4c789d}
+.project-header{border-bottom:2px solid #dce8ed}
+.eyebrow{color:#3d7281}.subtitle{color:#46668d}
+.mode-tabs button:nth-child(1){background:#e8eff8;color:#365882;border-color:#ccdbee}
+.mode-tabs button:nth-child(2){background:#e5f1ef;color:#326e68;border-color:#c5dfda}
+.mode-tabs button:nth-child(3){background:#e8eff8;color:#365882;border-color:#ccdbee}
+.mode-tabs button.selected,.mode-tabs button:hover{background:#355c7c;color:white}
+th{background:#e5edf7;color:#365a80;border-bottom:2px solid #c6d7eb;font-weight:750}
+th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
+.match-field{display:block;width:max-content;font:600 10px system-ui;color:#3b6887;background:#e6eff7;border:1px solid #cdddea;border-radius:5px;padding:3px 6px;margin-bottom:6px}
+#results tr:hover,#results tr:focus-within,.suggest-row:hover{background:#ecf4f7;box-shadow:inset 4px 0 #4e8797}
 </style>
 </head>
 <body>
 
-<svg class="site-art" viewBox="0 0 1440 800" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
- <path d="M0 760H1440M950 760V100H978V760M950 100L970 40L990 100M690 100H1320V124H690ZM700 100L970 40L1300 100M950 124L978 180L950 240L978 300L950 360L978 420L950 480L978 540L950 600L978 660L950 720M1200 124V360M1182 360H1218V385H1182ZM1200 385V408Q1220 425 1210 435Q1195 445 1188 433"/>
- <rect x="85" y="310" width="270" height="420" rx="12"/><rect x="110" y="340" width="220" height="130" rx="5"/>
- <path d="M220 354L180 414H218L200 454L257 395H222ZM115 520H320M115 545H320M115 570H320M115 595H320M135 660H180M255 660H300M115 730V760M325 730V760"/>
- <path d="M420 760V520H660V760M450 520V480H630V520M440 560H640M440 620H640M440 680H640M500 520V760M580 520V760"/>
-</svg>
+<div class="site-photo" aria-hidden="true"></div>
 
 <main>
 <section class="card">
-<div class="project-header"><div><div class="eyebrow">DRADENAU · SAHA DOKÜMANLARI</div><h1>Hamburg Project</h1>
-<p class="subtitle">Drawing Finder <span class="version">v0.11.0</span></p></div><span class="site-badge">⚡ ENGINEERING / SITE</span></div>
+<div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenu - Hamburg</h1>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.15.0</span></p></div></div>
 
-<div class="mode-tabs" aria-label="Arama türü">
-  <button type="button" data-mode="drawing">Drawing</button>
+<div class="mode-tabs" aria-label="Search type">
   <button type="button" data-mode="tag">Tag</button>
-  <button type="button" data-mode="pipeline">Pipeline</button>
-  <button type="button" data-mode="row">Row</button>
+  <button type="button" data-mode="drawing">Drawing</button>
+  <button type="button" data-mode="pipeline">Pipeline Number</button>
 </div>
 <div class="search-wrap">
   <div id="searchShell" class="search-shell">
-    <span id="modePill" class="mode-pill tag">Tag</span>
+    <span id="modePill" class="mode-pill tag" hidden>Tag</span>
     <div id="chips"></div>
     <input id="q" autocomplete="off" spellcheck="false"
-      placeholder="Tag yazın veya Excel'den tag hücrelerini yapıştırın…">
+      placeholder="Search a tag or paste tag cells from Excel…">
   </div>
   <div id="suggestions" class="suggest" hidden></div>
 </div>
 
 <p id="modeHint" class="hint">
-Arama modu: <strong>D</strong> + Tab = Drawing · <strong>R</strong> + Tab = Row ·
+Shortcuts: <strong>D</strong> + Tab = Drawing · <strong>R</strong> + Tab = Row ·
 <strong>P</strong> + Tab = Pipeline · <strong>T</strong> + Tab = Tag.
-Tag, Drawing ve Pipeline içinde herhangi bir parçayı arayabilirsiniz (ör. UMA). Tag modunda Excel hücrelerini Ctrl+V ile toplu arayabilirsiniz.
+Search any part of a tag, drawing or pipeline number (e.g. UMA). Paste Excel cells with Ctrl+V to search multiple tags.
 </p>
 
 <div class="toolbar">
-  <button id="clearAll" class="action">Temizle</button>
-  <button id="copyNotFound" class="action" style="display:none">Bulunamayanları kopyala</button>
+  <button id="clearAll" class="action">Clear</button>
+  <button id="copyNotFound" class="action" style="display:none">Copy missing tags</button>
 </div>
 
-<div id="status" class="status">Tag yazmaya başlayın.</div>
+<div id="status" class="status">Start typing a tag.</div>
 <div id="summary" class="summary" style="display:none"></div>
 
 <div class="wrap">
@@ -166,33 +201,51 @@ Tag, Drawing ve Pipeline içinde herhangi bir parçayı arayabilirsiniz (ör. UM
   <th>Drawing</th>
   <th>Page / Row</th>
   <th>Pipeline</th>
+  <th>Location / Room</th>
   <th>Elevation</th>
   <th>Status</th>
 </tr>
 </thead>
 <tbody id="results">
-<tr><td colspan="7" class="empty">Henüz arama yapılmadı.</td></tr>
+<tr><td colspan="8" class="empty">Your search results will appear here.</td></tr>
 </tbody>
 </table>
 </div>
 </section>
+
 </main>
 
+<dialog id="equipmentDetail"><button type="button" id="closeEquipment">Close ×</button><h2 id="equipmentTitle"></h2><div id="equipmentBody"></div></dialog>
 <script>
+const sitePhotos=[{"file": "chp.jpg"}, {"file": "chp2.jpg"}, {"file": "chp3.jpg"}];
+function choosePhotoIndex(previous,random=Math.random()){
+ const valid=Number.isInteger(previous)&&previous>=0&&previous<sitePhotos.length;
+ const choices=sitePhotos.map((_,i)=>i).filter(i=>!valid||i!==previous);
+ return choices[Math.min(choices.length-1,Math.floor(random*choices.length))];
+}
+let previousPhoto=-1;
+try{const stored=sessionStorage.getItem('top-photo');if(stored!==null)previousPhoto=Number(stored)}catch{}
+const photoIndex=choosePhotoIndex(previousPhoto);
+try{sessionStorage.setItem('top-photo',String(photoIndex))}catch{}
+const photo=sitePhotos[photoIndex];
+document.documentElement.style.setProperty('--site-photo',`url("assets/${photo.file}")`);
+
+
 const API='https://drawing-finder-ocr-api-639231007303.europe-west1.run.app';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s??'').trim().toUpperCase();
 
 const MODES={
-  tag:{label:'Tag',key:'T',rest:'ag',placeholder:"Tag yazın veya Excel'den tag hücrelerini yapıştırın…"},
-  drawing:{label:'Drawing',key:'D',rest:'rawing',placeholder:'Drawing numarası / adı yazın…'},
-  row:{label:'Row',key:'R',rest:'ow',placeholder:'Row numarası yazın…'},
-  pipeline:{label:'Pipeline',key:'P',rest:'ipeline',placeholder:'Pipeline yazın…'}
+  auto:{label:'All fields',placeholder:'Search tags, drawings, pipeline numbers or rows…'},
+  tag:{label:'Tag',key:'T',rest:'ag',placeholder:"Search a tag or paste tag cells from Excel…"},
+  drawing:{label:'Drawing',key:'D',rest:'rawing',placeholder:'Search a drawing number or name…'},
+  row:{label:'Row',key:'R',rest:'ow',placeholder:'Search a row number…'},
+  pipeline:{label:'Pipeline Number',key:'P',rest:'ipeline',placeholder:'Search a pipeline number…'}
 };
 const KEY_TO_MODE={T:'tag',D:'drawing',R:'row',P:'pipeline'};
 
-let mode='tag';
+let mode='auto';
 let tokenOrder=[];
 let tokenCounts=new Map();
 let timer=null;
@@ -202,6 +255,16 @@ let suggestionIndex=0;
 let commandMode=null;
 let batchRun=0;
 let lastNotFound=[];
+
+function syncModeIndicator(){
+  const visible=mode!=='auto';
+  $('modePill').hidden=!visible;
+  document.querySelectorAll('[data-mode]').forEach(b=>{
+    const selected=visible&&b.dataset.mode===mode;
+    b.classList.toggle('selected',selected);
+    b.setAttribute('aria-pressed',String(selected));
+  });
+}
 
 function setMode(next,keepText=false){
   if(!MODES[next])return;
@@ -221,15 +284,16 @@ function setMode(next,keepText=false){
   $('modePill').className='mode-pill'+(mode==='tag'?' tag':'');
   $('modePill').innerHTML=mode==='tag'
     ?'Tag'
-    :`${esc(MODES[mode].label)} <button type="button" title="Tag moduna dön" aria-label="Tag moduna dön">×</button>`;
+    :`${esc(MODES[mode].label)} <button type="button" title="Search all fields" aria-label="Search all fields">×</button>`;
   const close=$('modePill').querySelector('button');
-  if(close)close.addEventListener('click',()=>setMode('tag'));
+  if(close)close.addEventListener('click',()=>setMode('auto'));
 
+  syncModeIndicator();
   $('q').placeholder=MODES[mode].placeholder;
   $('summary').style.display='none';
   $('copyNotFound').style.display='none';
-  $('results').innerHTML='<tr><td colspan="7" class="empty">Henüz arama yapılmadı.</td></tr>';
-  $('status').textContent=mode==='tag'?'Tag yazmaya başlayın.':`${MODES[mode].label} araması aktif.`;
+  $('results').innerHTML='<tr><td colspan="8" class="empty">Your search results will appear here.</td></tr>';
+  $('status').textContent=mode==='tag'?'Start typing a tag.':`${MODES[mode].label} search selected.`;
   $('q').focus();
   if(mode==='drawing')runDrawingSuggest();else runExamples();
 }
@@ -241,11 +305,11 @@ function showCommandSuggestion(m){
   suggestionIndex=0;
   $('suggestions').hidden=false;
   $('suggestions').innerHTML=`
-    <div class="suggest-label">Arama modu</div>
+    <div class="suggest-label">Search type</div>
     <button type="button" class="suggest-row active" data-index="0">
       <span class="suggest-main">
         <span class="suggest-title mode-ghost"><strong>${esc(x.key)}</strong><span>${esc(x.rest)}</span></span>
-        <span class="suggest-sub">${esc(x.label)} içinde arama yap</span>
+        <span class="suggest-sub">${esc(x.label)} search</span>
       </span>
       <span class="key">Tab</span>
     </button>`;
@@ -310,11 +374,12 @@ function addManyTags(vals){
   if(tokenOrder.length)runBatchTagSearch();
 }
 function renderChips(){
+  syncModeIndicator();
   $('chips').innerHTML=tokenOrder.map(t=>{
     const n=tokenCounts.get(t)||1;
     return `<span class="chip">
       <span>${esc(t)}</span>${n>1?`<span class="count">×${n}</span>`:''}
-      <button type="button" data-remove="${esc(t)}" title="Sil">×</button>
+      <button type="button" data-remove="${esc(t)}" title="Remove">×</button>
     </span>`;
   }).join('');
   $('chips').querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>{
@@ -325,7 +390,7 @@ function renderChips(){
 }
 function resetResults(){
   $('summary').style.display='none'; $('copyNotFound').style.display='none';
-  $('results').innerHTML='<tr><td colspan="7" class="empty">Henüz arama yapılmadı.</td></tr>';
+  $('results').innerHTML='<tr><td colspan="8" class="empty">Your search results will appear here.</td></tr>';
 }
 function relatedHtml(x){
   const arr=Array.isArray(x.related_tag)
@@ -334,11 +399,12 @@ function relatedHtml(x){
   const clean=[...new Set(arr.map(norm).filter(Boolean))];
   if(!clean.length)return '—';
   return `<div class="related-list">${clean.map(t=>
-    `<button type="button" class="related-tag" data-related="${esc(t)}" title="Bu related tag'i aramaya ekle">${esc(t)}</button>`
+    `<button type="button" class="related-tag" data-related="${esc(t)}" title="Add this related tag to your search">${esc(t)}</button>`
   ).join('')}</div>`;
 }
 
 function bindRelatedButtons(){
+  document.querySelectorAll('[data-equipment]').forEach(b=>b.onclick=()=>showEquipment(b.dataset.equipment));
   document.querySelectorAll('[data-related]').forEach(btn=>{
     btn.onclick=()=>{
       const t=norm(btn.getAttribute('data-related'));
@@ -362,17 +428,27 @@ function bindRelatedButtons(){
   });
 }
 
-function rowHtml(x,status='FOUND',requested=''){
-  return `<tr>
-    <td><code>${esc(requested||x.tag||'')}</code></td>
-    <td>${relatedHtml(x)}</td>
-    <td><span class="path">${esc(x.drawing_path||x.file_name||'')}</span></td>
-    <td>p.${esc(x.page||1)}${x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):''}</td>
-    <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
-    <td>${esc(x.elevation||'—')}</td>
-    <td><span class="found">${esc(status)}</span></td>
-  </tr>`;
+function equipmentLocation(x){
+ const e=x.equipment;if(!e)return '<span class="hint">Cable listesinde yok</span>';
+ const locations=e.locations?.length?e.locations:e.areas||[];
+ return `<strong>${esc(locations.join(', ')||'Location not specified')}</strong><div class="hint">${esc((e.rooms||[]).join(' · '))}</div>${x.location_review?'<div class="warn">Drawing location differs; review required.</div>':''}<button class="related-tag" type="button" data-equipment="${esc(x.tag)}">Source / From–To</button>`;
 }
+function rowHtml(x,status='FOUND',requested=''){
+ const only=x.record_source==='cable_schedule';
+ const label=only?'Cable schedule only · Not in drawing index':x.comparison==='BOTH'?'Drawing + Cable schedule':x.comparison==='RETIRED_REFERENCE'?'Drawing · Deleted cable reference':'Drawing';
+ const scheduleEl=(x.equipment?.elevations||[]).map(v=>String(v)+' m').join(', ');
+ return `<tr>
+  <td>${x.matched_fields?'<div class="match-field">'+esc(x.matched_fields.join(' · '))+'</div>':''}<code>${esc(x.tag||requested||'')}</code>${x.equipment?.identifier_review?'<div class="warn">Special identifier; review required</div>':''}</td>
+  <td>${relatedHtml(x)}</td>
+  <td><span class="path">${only?'No match in drawing index':esc(x.drawing_path||x.file_name||'')}</span></td>
+  <td>${only?'—':'p.'+esc(x.page??1)+(x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):'')}</td>
+  <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
+  <td>${equipmentLocation(x)}</td>
+  <td>${x.elevation!==''&&x.elevation!=null?'Drawing: '+esc(x.elevation):'Drawing: —'}<div class="hint">Schedule EL: ${esc(scheduleEl||'Not specified')}</div>${x.elevation_review?'<div class="warn">Elevations differ; floor and equipment levels may differ.</div>':''}</td>
+  <td><span class="${only?'warn':'found'}">${label}</span></td>
+ </tr>`;
+}
+
 
 $('q').addEventListener('keydown',e=>{
   if(!$('suggestions').hidden && suggestionItems.length){
@@ -383,7 +459,7 @@ $('q').addEventListener('keydown',e=>{
   }
 
   if(e.key==='Escape'){
-    if(mode!=='tag'){e.preventDefault();setMode('tag');return}
+    if(mode!=='auto'){e.preventDefault();setMode('auto');return}
     hideSuggestions(); return;
   }
 
@@ -419,25 +495,27 @@ $('q').addEventListener('input',()=>{
   clearTimeout(timer);
   if(controller)controller.abort();
 
+  syncModeIndicator();
   const raw=$('q').value;
   const upper=norm(raw);
 
   // Mode command only when default Tag mode has no stored chips and the input
   // contains exactly one command letter.
-  if(mode==='tag' && !tokenOrder.length && upper.length===1 && KEY_TO_MODE[upper]){
+  if((mode==='tag'||mode==='auto') && !tokenOrder.length && upper.length===1 && KEY_TO_MODE[upper]){
     showCommandSuggestion(KEY_TO_MODE[upper]);
-    $('status').textContent=`Tab ile ${MODES[KEY_TO_MODE[upper]].label} moduna geçebilirsiniz.`;
+    $('status').textContent=`Press Tab to switch to ${MODES[KEY_TO_MODE[upper]].label}.`;
     return;
   }
 
   commandMode=null;
   hideSuggestions();
 
+  if(mode==='auto'){timer=setTimeout(runAllFields,230);return}
   if(mode==='tag'){
     if(tokenOrder.length){
       $('status').textContent=raw.trim()
-        ?'Yeni tag için Enter, Tab, virgül veya boşluk kullanın.'
-        :`${tokenOrder.length} unique tag seçildi.`;
+        ?'Use Enter, Tab, comma or space to add another tag.'
+        :`${tokenOrder.length} unique tags selected.`;
       return;
     }
     timer=setTimeout(runTagContains,230);
@@ -450,14 +528,14 @@ $('q').addEventListener('input',()=>{
 
 $('clearAll').addEventListener('click',()=>{
   tokenOrder=[];tokenCounts.clear();lastNotFound=[];
-  renderChips();$('q').value='';hideSuggestions();setMode('drawing');
+  renderChips();$('q').value='';hideSuggestions();setMode('auto');
 });
 $('copyNotFound').addEventListener('click',async()=>{
   if(!lastNotFound.length)return;
   try{
     await navigator.clipboard.writeText(lastNotFound.join('\n'));
-    $('status').innerHTML=`<span class="ok">${lastNotFound.length} tag kopyalandı.</span>`;
-  }catch(e){$('status').innerHTML='<span class="bad">Clipboard izni alınamadı.</span>'}
+    $('status').innerHTML=`<span class="ok">${lastNotFound.length} tags copied.</span>`;
+  }catch(e){$('status').innerHTML='<span class="bad">Clipboard access unavailable.</span>'}
 });
 
 async function getJson(url,options={}){
@@ -465,22 +543,33 @@ async function getJson(url,options={}){
   const text=await r.text();
   let j;
   try{j=JSON.parse(text)}catch{
-    throw new Error(`Sunucu JSON yerine geçersiz yanıt döndürdü (HTTP ${r.status}). API adresini ve backend sürümünü kontrol edin.`);
+    throw new Error(`The server returned an invalid response instead of JSON (HTTP ${r.status}). Check the API address and backend version.`);
   }
-  if(!r.ok||j?.ok!==true)throw new Error(typeof j?.error==='string'?j.error:`API hatası (HTTP ${r.status})`);
+  if(!r.ok||j?.ok!==true)throw new Error(typeof j?.error==='string'?j.error:`API error (HTTP ${r.status})`);
   return j;
 }
 
+async function showEquipment(tag){
+ const dialog=$('equipmentDetail');$('equipmentTitle').textContent=tag;$('equipmentBody').textContent='Loading source records…';dialog.showModal();
+ try{
+  const j=await getJson(API+'/api/public/equipment?'+new URLSearchParams({tag})),e=j.equipment;
+  const files=new Map((j.sources||[]).map(s=>[s.id,s.file]));
+  $('equipmentBody').innerHTML=`<p>${esc((e.titles||[]).join(' · '))}</p><p>${esc(e.occurrenceCount)} source records. Deleted cables are retained as historical references.</p><div class="wrap"><table><thead><tr><th>Source / Cell</th><th>End</th><th>Cable</th><th>Location</th><th>Room / EL</th><th>Status</th></tr></thead><tbody>`+e.observations.map(o=>`<tr><td>${esc(files.get(o.source)||o.source)}<br>${esc(o.sheet)}!${esc(o.cell)}</td><td>${esc(o.side)}</td><td>${esc(o.cable)}</td><td>${esc(o.area)}</td><td>${esc(o.room)}</td><td>${esc(o.status)}</td></tr>`).join('')+'</tbody></table></div>';
+ }catch(e){$('equipmentBody').textContent=e.message;}
+}
+$('closeEquipment').onclick=()=>$('equipmentDetail').close();
+
 async function runTagContains(){
+  syncModeIndicator();
   const q=norm($('q').value);
   if(!q.length){resetResults();runExamples();return}
   controller=new AbortController();
   try{
-    $('status').textContent='Tag aranıyor…';
+    $('status').textContent='Searching tags…';
     const j=await getJson(API+'/api/public/search?'+new URLSearchParams({q,limit:'150'}),{signal:controller.signal});
     const rows=j.results||[];
-    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.${j.truncated?" Sonuç sınırına ulaşıldı; aramayı daraltın.":""}</span> Virgül / boşluk / Enter / Tab ile tag'i tutup yenisini ekleyebilirsiniz.`;
-    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Eşleşme bulunamadı.</td></tr>'; bindRelatedButtons();
+    $('status').innerHTML=`<span class="ok">${rows.length} matches.${j.truncated?" Result limit reached; narrow your search.":""}</span> Use comma, space, Enter or Tab to keep this tag and add another.`;
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">No matches found.</td></tr>'; bindRelatedButtons();
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
@@ -488,17 +577,17 @@ async function runExamples(){
   if(mode==='drawing'||$('q').value.trim()||(mode==='tag'&&tokenOrder.length))return;
   if(controller)controller.abort();
   const request=controller=new AbortController(),selectedMode=mode;
-  $('status').textContent='Örnekler yükleniyor…';
+  $('status').textContent='Loading examples…';
   try{
-    const j=await getJson(API+'/api/public/examples?'+new URLSearchParams({mode:selectedMode}),{signal:request.signal});
+    const j=await getJson(API+'/api/public/examples?'+new URLSearchParams({mode:selectedMode==='auto'?'tag':selectedMode}),{signal:request.signal});
     if(request.signal.aborted||mode!==selectedMode||$('q').value.trim())return;
     const rows=j.examples||[];
     suggestionItems=rows.map(x=>({type:'example',...x}));suggestionIndex=0;
     $('suggestions').hidden=!rows.length;
-    $('suggestions').innerHTML=`<div class="suggest-label">${esc(MODES[selectedMode].label)} örnekleri · Birini seçin veya kendiniz yazın</div>`+
-      rows.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}"><span class="suggest-main"><span class="suggest-title">${esc(x.value)}</span><span class="suggest-sub">${esc(x.drawing)}</span></span><span class="key">Ara ↗</span></button>`).join('');
+    $('suggestions').innerHTML=`<div class="suggest-label">${esc(MODES[selectedMode].label)} examples · Select one or start typing</div>`+
+      rows.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}"><span class="suggest-main"><span class="suggest-title">${esc(x.value)}</span><span class="suggest-sub">${esc(x.drawing)}</span></span><span class="key">Search ↗</span></button>`).join('');
     bindSuggestionRows();
-    $('status').textContent=rows.length?'Örnekler mevcut proje kayıtlarından gösteriliyor.':'Bu mod için henüz örnek kayıt yok.';
+    $('status').textContent=rows.length?'Examples from current project records.':'No examples available for this search type.';
   }catch(e){if(e.name!=='AbortError')$('status').textContent=e.message;}
 }
 
@@ -514,12 +603,12 @@ async function runDrawingSuggest(){
     suggestionIndex=0;
     if(!rows.length){
       hideSuggestions();
-      $('status').textContent='Drawing bulunamadı.';
+      $('status').textContent='No drawings found.';
       return;
     }
     $('suggestions').hidden=false;
     $('suggestions').innerHTML=`
-      <div class="suggest-label">${q?rows.length+" drawing eşleşmesi":"Drawing örnekleri · Birini seçin veya arayın"}${j.truncated?" · Backend güncellemesi gerekli":""} · ↑ ↓ seç · Enter aç</div>
+      <div class="suggest-label">${q?rows.length+" drawing matches":"Drawing examples · Select one or search"}${j.truncated?" · Backend update required":""} · ↑ ↓ select · Enter open</div>
       ${rows.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}">
         <span class="suggest-main">
           <span class="suggest-title">${highlightContains(x.file_name||x.path||'',q)}</span>
@@ -528,7 +617,7 @@ async function runDrawingSuggest(){
         <span class="key">Enter</span>
       </button>`).join('')}`;
     bindSuggestionRows();
-    $('status').textContent=q?`${rows.length} drawing eşleşmesi.`:`Başlamak için ${rows.length} drawing örneği. Tüm eşleşmeler için yazmaya başlayın.`;
+    $('status').textContent=q?`${rows.length} drawing matches.`:`${rows.length} drawing examples. Start typing to see all matches.`;
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
@@ -542,17 +631,58 @@ function highlightContains(text,q){
 
 async function runDrawingRecords(id,label){
   try{
-    $('status').textContent=`${label} yükleniyor…`;
+    $('status').textContent=`${label} loading…`;
     const j=await getJson(API+'/api/public/drawing-records?'+new URLSearchParams({id,limit:'2000'}));
     const rows=j.results||[];
     $('summary').style.display='flex';
     $('summary').innerHTML=`<span class="stat"><strong>${esc(label)}</strong></span><span class="stat"><strong>${rows.length}</strong> indexed tags</span>`;
-    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Bu drawing için kayıt bulunamadı.</td></tr>'; bindRelatedButtons();
-    $('status').innerHTML=`<span class="ok">${rows.length} kayıt bulundu.${j.truncated?" Daha fazla sonuç var.":""}</span>`;
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">No records found for this drawing.</td></tr>'; bindRelatedButtons();
+    $('status').innerHTML=`<span class="ok">${rows.length} records found.${j.truncated?" More results available.":""}</span>`;
   }catch(e){$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
+
+async function runAllFields(){
+ const q=$('q').value.trim();
+ if(controller)controller.abort();
+ hideSuggestions();
+ if(!q){resetResults();runExamples();return}
+ const request=controller=new AbortController();
+ $('status').textContent='Searching all fields…';
+ const fields=['Tag','Drawing','Pipeline Number','Row'];
+ const urls=[
+  '/api/public/search?'+new URLSearchParams({q,limit:'250'}),
+  '/api/public/drawing-suggest?'+new URLSearchParams({q}),
+  '/api/public/search-mode?'+new URLSearchParams({mode:'pipeline',q,limit:'250'}),
+  '/api/public/search-mode?'+new URLSearchParams({mode:'row',q,limit:'250'})
+ ];
+ const responses=await Promise.allSettled(urls.map(url=>getJson(API+url,{signal:request.signal})));
+ if(request.signal.aborted||mode!=='auto'||$('q').value.trim()!==q)return;
+ const records=new Map(),counts=[],errors=[];let truncated=false;
+ responses.forEach((response,i)=>{
+  if(response.status!=='fulfilled'){errors.push(fields[i]+': '+response.reason.message);return}
+  const data=response.value;truncated=truncated||Boolean(data.truncated);
+  const rows=i===1?(data.drawings||[]):(data.results||[]);
+  if(rows.length)counts.push(fields[i]+': '+rows.length);
+  if(i===1){suggestionItems=rows.map(x=>({type:'drawing',...x}));return}
+  rows.forEach(row=>{
+   const key=JSON.stringify([row.id||'',row.tag,row.drawing_path||row.file_name||'',row.page,row.row_no,row.pipeline,row.record_source]);
+   if(!records.has(key))records.set(key,{...row,matched_fields:[]});
+   records.get(key).matched_fields.push(fields[i]);
+  });
+ });
+ if(suggestionItems.length){
+  $('suggestions').hidden=false;
+  $('suggestions').innerHTML='<div class="suggest-label">Drawing matches · Select to open</div>'+suggestionItems.map((x,i)=>`<button type="button" class="suggest-row ${i===0?'active':''}" data-index="${i}"><span class="suggest-main"><span class="match-field">Drawing</span><span class="suggest-title">${esc(x.file_name||x.path)}</span><span class="suggest-sub">${esc(x.path||'')}</span></span><span class="key">Open ↗</span></button>`).join('');
+  bindSuggestionRows();
+ }
+ $('results').innerHTML=records.size?[...records.values()].map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">'+(suggestionItems.length?'Select a drawing above to view its records.':errors.length?'Some fields could not be searched.':'No matches found in any field.')+'</td></tr>';
+ bindRelatedButtons();
+ $('status').textContent=(counts.join(' · ')||'No matches')+(truncated?' · Some results are limited; narrow your search.':'')+(errors.length?' · Incomplete search — '+errors.join(' | '):'');
+}
+
 async function runModeSearch(){
+  if(mode==='auto'){runAllFields();return}
   const q=$('q').value.trim();
   if(mode==='tag'){runTagContains();return}
   if(mode==='drawing'){runDrawingSuggest();return}
@@ -560,12 +690,12 @@ async function runModeSearch(){
 
   controller=new AbortController();
   try{
-    $('status').textContent=`${MODES[mode].label} aranıyor…`;
+    $('status').textContent=`${MODES[mode].label} searching…`;
     const j=await getJson(API+'/api/public/search-mode?'+new URLSearchParams({mode,q,limit:'250'}),{signal:controller.signal});
     const rows=j.results||[];
     $('summary').style.display='none';
-    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="7" class="empty">Eşleşme bulunamadı.</td></tr>'; bindRelatedButtons();
-    $('status').innerHTML=`<span class="ok">${rows.length} eşleşme.${j.truncated?" Sonuç sınırına ulaşıldı; aramayı daraltın.":""}</span>`;
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">No matches found.</td></tr>'; bindRelatedButtons();
+    $('status').innerHTML=`<span class="ok">${rows.length} matches.${j.truncated?" Result limit reached; narrow your search.":""}</span>`;
   }catch(e){if(e.name!=='AbortError')$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
@@ -581,7 +711,7 @@ async function runBatchTagSearch(){
   if(!tags.length)return;
   clearTimeout(timer);if(controller)controller.abort();
   hideSuggestions();
-  $('status').textContent=`${tags.length} unique tag aranıyor…`;
+  $('status').textContent=`${tags.length} unique tag searching…`;
   try{
     const items=await fetchBatch(tags);
     if(run!==batchRun)return;
@@ -594,7 +724,7 @@ async function runBatchTagSearch(){
         for(const x of matches)rows.push(rowHtml(x,'FOUND'));
       }else{
         missing.push(tag);
-        rows.push(`<tr class="not-found-row"><td><code>${esc(tag)}</code></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="notfound">NOT FOUND</span></td></tr>`);
+        rows.push(`<tr class="not-found-row"><td><code>${esc(tag)}</code></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="notfound">Not found in either source</span></td></tr>`);
       }
     }
     lastNotFound=missing;
@@ -604,17 +734,17 @@ async function runBatchTagSearch(){
       <span class="stat"><strong>${tags.length}</strong> unique tags</span>
       <span class="stat"><strong class="ok">${found}</strong> found</span>
       <span class="stat"><strong class="${missing.length?'bad':'ok'}">${missing.length}</strong> not found</span>
-      <span class="stat"><strong>${total}</strong> drawing matches</span>`;
+      <span class="stat"><strong>${total}</strong> matching records</span>`;
     $('results').innerHTML=rows.join(''); bindRelatedButtons();
     $('status').innerHTML=missing.length
-      ?`<span class="ok">Arama tamamlandı.</span> <span class="warn">${missing.length} tag bulunamadı.</span>`
-      :'<span class="ok">Bütün tagler bulundu.</span>';
-    if(items.some(i=>i.truncated))$('status').textContent+=' Sonuç sınırına ulaşıldı; aramayı daraltın.';
+      ?`<span class="ok">Search complete.</span> <span class="warn">${missing.length} tags not found.</span>`
+      :'<span class="ok">All tags found.</span>';
+    if(items.some(i=>i.truncated))$('status').textContent+=' Result limit reached; narrow your search.';
   }catch(e){if(run===batchRun)$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
 document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
-setMode('drawing');
+setMode('auto');
 </script>
 </body>
 </html>
