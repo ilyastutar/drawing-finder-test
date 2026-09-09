@@ -1,0 +1,1 @@
+Upload the HTML/JS files and assets folder. Refresh with Ctrl+F5. Backend v0.12.0 remains compatible. Default search checks Tag, Drawing, Pipeline Number and Row concurrently; explicit mode selection narrows the search. Partial API failures and result limits are shown. No live deployment performed.
