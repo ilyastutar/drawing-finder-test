@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CHP Dradenu - Hamburg — TOP Punch Closure</title>
+<title>CHP Dradenau - Hamburg — TOP Punch Closure</title>
 <style>
 :root{
   --bg:#0f141b;--card:#171d25;--card2:#11171e;--text:#eef2f7;--muted:#929dad;
@@ -82,7 +82,7 @@ tr.not-found-row{background:rgba(255,107,107,.035)}
   table{font-size:12px}.suggest-row{padding:10px}.hint{line-height:1.45}
 }
 
-/* v0.16.0 daylight construction-site theme */
+/* v0.17.1 daylight construction-site theme */
 :root{--bg:#eef1f2;--card:#ffffff;--card2:#f7f9fa;--text:#20313e;--muted:#627583;--border:#d6dfe4;--accent:#d99c12;--ok:#18794e;--bad:#ba3333;--warn:#8a6005;--chip:#fff3cc;--chipBorder:#e2c465}
 body{background:linear-gradient(140deg,#f6f7f4,#e9eff2);min-height:100vh}
 main{position:relative;max-width:1320px;padding-top:38px;z-index:1}
@@ -159,6 +159,13 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 
 /* Translucent panel; text remains fully opaque. */
 .card{background:rgba(255,255,255,.85);backdrop-filter:none}
+
+.column-filter{display:block;width:100%;min-width:85px;margin-top:8px;padding:7px;border:1px solid #bdd1dc;background:#ffffffd9;color:#254758;border-radius:5px;font:12px system-ui;text-transform:none}
+.column-filter:focus{outline:2px solid #5986a1;outline-offset:1px}
+.filter-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 6px;font-size:12px;color:#426574}
+#results tr[hidden]{display:none}
+
+#punchDetail{border:1px solid #ccdce5;border-radius:16px;width:94vw;max-width:1200px;max-height:85vh;padding:24px;color:#20313e}#punchDetail::backdrop{background:#243b4b70}#punchDetail>.action{float:right}#punchBody td:nth-child(2){min-width:300px;white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -167,8 +174,8 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 
 <main>
 <section class="card">
-<div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenu - Hamburg</h1>
-<p class="subtitle">TOP Punch Closure <span class="version">v0.16.0</span></p></div></div>
+<div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenau - Hamburg</h1>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.17.1</span></p></div></div>
 
 <div class="mode-tabs" aria-label="Search type">
   <button type="button" data-mode="tag">Tag</button>
@@ -199,18 +206,19 @@ Search any part of a tag, drawing or pipeline number (e.g. UMA). Paste Excel cel
 <div id="status" class="status">Start typing a tag.</div>
 <div id="summary" class="summary" style="display:none"></div>
 
+<div class="filter-tools"><span id="filterCount"></span><button type="button" class="action" id="clearFilters">Clear filters</button></div>
 <div class="wrap">
 <table>
 <thead>
 <tr>
-  <th>Tag</th>
-  <th>Related Tag</th>
-  <th>Drawing</th>
-  <th>Page / Row</th>
-  <th>Pipeline</th>
-  <th>Location / Room</th>
-  <th>Elevation</th>
-  <th>Status</th>
+  <th>Tag Number<input class="column-filter" data-column-filter="0" aria-label="Filter Tag Number" placeholder="Filter…"></th>
+  <th>Related Punch Items<input class="column-filter" data-column-filter="1" aria-label="Filter Related Punch Items" placeholder="Filter…"></th>
+  <th>Drawing<input class="column-filter" data-column-filter="2" aria-label="Filter Drawing" placeholder="Filter…"></th>
+  <th>Page / Row<input class="column-filter" data-column-filter="3" aria-label="Filter Page / Row" placeholder="Filter…"></th>
+  <th>Pipeline<input class="column-filter" data-column-filter="4" aria-label="Filter Pipeline" placeholder="Filter…"></th>
+  <th>Location / Room<input class="column-filter" data-column-filter="5" aria-label="Filter Location / Room" placeholder="Filter…"></th>
+  <th>Elevation<input class="column-filter" data-column-filter="6" aria-label="Filter Elevation" placeholder="Filter…"></th>
+  <th>Status<input class="column-filter" data-column-filter="7" aria-label="Filter Status" placeholder="Filter…"></th>
 </tr>
 </thead>
 <tbody id="results">
@@ -222,7 +230,9 @@ Search any part of a tag, drawing or pipeline number (e.g. UMA). Paste Excel cel
 
 </main>
 
+<dialog id="punchDetail"><button type="button" onclick="this.closest('dialog').close()" class="action">Close ×</button><h2 id="punchTitle"></h2><div id="punchBody"></div></dialog>
 <dialog id="equipmentDetail"><button type="button" id="closeEquipment">Close ×</button><h2 id="equipmentTitle"></h2><div id="equipmentBody"></div></dialog>
+<script src="punch-items.js"></script>
 <script src="equipment-service.js"></script>
 <script src="result-utils.js"></script>
 <script>
@@ -448,7 +458,7 @@ function rowHtml(x,status='FOUND',requested=''){
  const scheduleEl=(x.equipment?.elevations||[]).map(v=>String(v)+' m').join(', ');
  return `<tr>
   <td>${x.matched_fields?'<div class="match-field">'+esc(x.matched_fields.join(' · '))+'</div>':''}<code>${esc(x.tag||requested||'')}</code>${x.equipment?.identifier_review?'<div class="warn">Special identifier; review required</div>':''}</td>
-  <td>${relatedHtml(x)}</td>
+  <td>${PunchItems.cell(x.tag)}</td>
   <td><span class="path">${only?'No match in drawing index':esc(x.drawing_path||x.file_name||'')}</span></td>
   <td>${only?'—':'p.'+esc(x.page??1)+(x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):'')}</td>
   <td>${x.pipeline?'<code>'+esc(x.pipeline)+'</code>':'—'}</td>
@@ -769,6 +779,8 @@ async function runBatchTagSearch(){
 
 document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
 setMode('tag');
+getLookup().catch(()=>{});
 </script>
+<script src="column-filters.js"></script>
 </body>
 </html>
