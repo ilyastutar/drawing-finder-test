@@ -1,1 +1,11 @@
-v0.15.3: New high-resolution project photographs embedded in search.html. Full viewport cover with preserved aspect ratio; edges may crop. Main panel is 85% opaque, text is fully opaque. Exact duplicate images are deduplicated for rotation. Upload the four files and refresh with Ctrl+F5. Backend unchanged.
+TOP Punch Closure v0.16.0
+Upload all six HTML/JS files and the assets folder. Refresh with Ctrl+F5.
+Default search is Tag, with visible Tag pill. Drawing and Pipeline are explicit choices. The remote tag response is cached for 30 seconds (maximum 30 queries). Cable schedule lookup loads once per page and merges locally with drawing results. Source details load when requested. Backend v0.12.0 remains compatible; no new backend deployment required.
+
+Cable data originates from the two supplied IC and Power/Control schedules. The original complete register remains in the backend equipment-register.json; this frontend includes assets/equipment-lookup.json and equipment-details.json. Replace these assets with future schedule revisions. They are accessible to users who can access this site, like existing public search data.
+
+Duplicate folder/root drawing copies with the same filename, tag, row, pipeline, elevation and related tags are collapsed. Revisions and differing record details remain separate. Differently named merged PDFs cannot be safely collapsed without drawing identity metadata.
+
+20NDA34GH014: IC Sheet!AO6217 (TO), AH6620 (FROM); Power/Control Native!AN1386 (TO), AG4436 (FROM). Area UMA, explicit IC room elevation +17.30 m.
+
+Validation: 22 core checks passed plus focused controls for duplicate copies, distinct rows/revisions, actual reference tag, source cells and default Tag. No live deployment performed. Background design retained.
