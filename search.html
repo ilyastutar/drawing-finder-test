@@ -82,7 +82,7 @@ tr.not-found-row{background:rgba(255,107,107,.035)}
   table{font-size:12px}.suggest-row{padding:10px}.hint{line-height:1.45}
 }
 
-/* v0.17.1 daylight construction-site theme */
+/* v0.18.0 daylight construction-site theme */
 :root{--bg:#eef1f2;--card:#ffffff;--card2:#f7f9fa;--text:#20313e;--muted:#627583;--border:#d6dfe4;--accent:#d99c12;--ok:#18794e;--bad:#ba3333;--warn:#8a6005;--chip:#fff3cc;--chipBorder:#e2c465}
 body{background:linear-gradient(140deg,#f6f7f4,#e9eff2);min-height:100vh}
 main{position:relative;max-width:1320px;padding-top:38px;z-index:1}
@@ -175,7 +175,7 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 <main>
 <section class="card">
 <div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenau - Hamburg</h1>
-<p class="subtitle">TOP Punch Closure <span class="version">v0.17.1</span></p></div></div>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.18.0</span></p></div></div>
 
 <div class="mode-tabs" aria-label="Search type">
   <button type="button" data-mode="tag">Tag</button>
@@ -251,6 +251,7 @@ document.getElementById('sitePhoto').src=photo.src;
 
 
 const API='https://drawing-finder-ocr-api-639231007303.europe-west1.run.app';
+PunchItems.connect(API);
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s??'').trim().toUpperCase();
