@@ -1,9 +1,15 @@
 {
-  "version": "0.11.0",
-  "tests_passed": 29,
-  "tests_failed": 0,
-  "drawing_blank_examples": 6,
-  "drawing_typed_query": "no total cap",
-  "visual_review": "local browser with fixture data",
-  "live_deployed": false
+  "version": "0.19.0",
+  "scope": "Frontend punch item number search",
+  "checks": [
+    "JavaScript syntax",
+    "15,769-record public feed search",
+    "Exact matches first",
+    "Substring matches without a result cap",
+    "Six initial examples",
+    "No-match result",
+    "Existing G/H tag matching",
+    "Headless Chrome: mode switching, detail dialog, column filtering, restore Tag headers"
+  ],
+  "backend_changed_for_this_release": false
 }

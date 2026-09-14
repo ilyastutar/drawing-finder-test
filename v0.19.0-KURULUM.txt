@@ -1,0 +1,7 @@
+TOP Punch Closure v0.19.0
+
+Frontend ZIP dosyasini acip mevcut frontend dosyalarinin yerine yukleyin. search.html ve punch-items.js birlikte guncellenmelidir. Sayfayi Ctrl+F5 ile yenileyin.
+
+Siralama: Tag - Drawing - Punch Item - Pipeline Number. Punch Item secin, numara veya numaranin bir kismini yazin. Birden fazla numara virgulle ayrilabilir. Bos aramada 6 ornek gorunur. Sonuclara tiklayinca detay penceresi acilir.
+
+Mevcut /api/public/punch servisi kullanilir. Backend kurulumu gerekmez. Veriler tarayicida 5 dakikada bir yenilenir. Son basarili senkronizasyon tarihi ve stale uyarisi gosterilir.

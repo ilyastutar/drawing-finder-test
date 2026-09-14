@@ -82,7 +82,7 @@ tr.not-found-row{background:rgba(255,107,107,.035)}
   table{font-size:12px}.suggest-row{padding:10px}.hint{line-height:1.45}
 }
 
-/* v0.18.0 daylight construction-site theme */
+/* v0.19.0 daylight construction-site theme */
 :root{--bg:#eef1f2;--card:#ffffff;--card2:#f7f9fa;--text:#20313e;--muted:#627583;--border:#d6dfe4;--accent:#d99c12;--ok:#18794e;--bad:#ba3333;--warn:#8a6005;--chip:#fff3cc;--chipBorder:#e2c465}
 body{background:linear-gradient(140deg,#f6f7f4,#e9eff2);min-height:100vh}
 main{position:relative;max-width:1320px;padding-top:38px;z-index:1}
@@ -175,11 +175,12 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 <main>
 <section class="card">
 <div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenau - Hamburg</h1>
-<p class="subtitle">TOP Punch Closure <span class="version">v0.18.0</span></p></div></div>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.19.0</span></p></div></div>
 
 <div class="mode-tabs" aria-label="Search type">
   <button type="button" data-mode="tag">Tag</button>
   <button type="button" data-mode="drawing">Drawing</button>
+  <button type="button" data-mode="punch">Punch Item</button>
   <button type="button" data-mode="pipeline">Pipeline Number</button>
 </div>
 <div class="search-wrap">
@@ -208,7 +209,7 @@ Search any part of a tag, drawing or pipeline number (e.g. UMA). Paste Excel cel
 
 <div class="filter-tools"><span id="filterCount"></span><button type="button" class="action" id="clearFilters">Clear filters</button></div>
 <div class="wrap">
-<table>
+<table id="resultsTable">
 <thead>
 <tr>
   <th>Tag Number<input class="column-filter" data-column-filter="0" aria-label="Filter Tag Number" placeholder="Filter…"></th>
@@ -232,7 +233,7 @@ Search any part of a tag, drawing or pipeline number (e.g. UMA). Paste Excel cel
 
 <dialog id="punchDetail"><button type="button" onclick="this.closest('dialog').close()" class="action">Close ×</button><h2 id="punchTitle"></h2><div id="punchBody"></div></dialog>
 <dialog id="equipmentDetail"><button type="button" id="closeEquipment">Close ×</button><h2 id="equipmentTitle"></h2><div id="equipmentBody"></div></dialog>
-<script src="punch-items.js"></script>
+<script src="punch-items.js?v=0190"></script>
 <script src="equipment-service.js"></script>
 <script src="result-utils.js"></script>
 <script>
@@ -260,6 +261,7 @@ const MODES={
   auto:{label:'All fields',placeholder:'Search tags, drawings, pipeline numbers or rows…'},
   tag:{label:'Tag',key:'T',rest:'ag',placeholder:"Search a tag or paste tag cells from Excel…"},
   drawing:{label:'Drawing',key:'D',rest:'rawing',placeholder:'Search a drawing number or name…'},
+  punch:{label:'Punch Item',placeholder:'Search a punch item number (e.g. 13246)…'},
   row:{label:'Row',key:'R',rest:'ow',placeholder:'Search a row number…'},
   pipeline:{label:'Pipeline Number',key:'P',rest:'ipeline',placeholder:'Search a pipeline number…'}
 };
@@ -290,6 +292,7 @@ function setMode(next,keepText=false){
   if(!MODES[next])return;
   clearTimeout(timer); if(controller)controller.abort(); batchRun++;
   mode=next;
+  updatePunchHeaders();
   document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('selected',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});
   commandMode=null;
   hideSuggestions();
@@ -607,6 +610,7 @@ async function runTagContains(){
 }
 
 async function runExamples(){
+  if(mode==='punch'){runPunchSearch();return}
   if(mode==='drawing'||$('q').value.trim()||(mode==='tag'&&tokenOrder.length))return;
   if(controller)controller.abort();
   const request=controller=new AbortController(),selectedMode=mode;
@@ -715,6 +719,7 @@ async function runAllFields(){
 }
 
 async function runModeSearch(){
+  if(mode==='punch'){runPunchSearch();return}
   if(mode==='auto'){runAllFields();return}
   const q=$('q').value.trim();
   if(mode==='tag'){runTagContains();return}
@@ -778,6 +783,22 @@ async function runBatchTagSearch(){
   }catch(e){if(run===batchRun)$('status').innerHTML='<span class="bad">'+esc(e.message)+'</span>'}
 }
 
+const originalHeaders=[...document.querySelectorAll('#resultsTable thead th')].map(th=>th.firstChild.textContent);
+function updatePunchHeaders(){
+ const labels=mode==='punch'?['Punch Item No.','Description','Location / Room','Status','Closed Date','Source Sheet','Excel Row','Details']:originalHeaders;
+ document.querySelectorAll('#resultsTable thead th').forEach((th,i)=>{th.firstChild.textContent=labels[i];const input=th.querySelector('input');if(input){input.value='';input.setAttribute('aria-label','Filter '+labels[i])}});
+}
+function runPunchSearch(){
+ if(mode!=='punch')return;
+ hideSuggestions();$('summary').style.display='none';$('copyNotFound').style.display='none';
+ const data=PunchItems.getSnapshot(),q=$('q').value.trim();
+ if(!data){const message=PunchItems.getState()==='loading'?'Loading punch items…':'Punch data unavailable. Waiting for the next refresh.';$('status').textContent=message;$('results').innerHTML='<tr><td colspan="8" class="empty">'+esc(message)+'</td></tr>';return}
+ const rows=PunchItems.searchItems(data.rows,q),indices=new Map(data.rows.map((r,i)=>[r,i]));
+ $('results').innerHTML=rows.length?rows.map(r=>{const index=indices.get(r),state=['Open','Closed','Review'].includes(r.status)?r.status:'Not verified';return `<tr><td><button type="button" class="related-tag" data-punch-record="${index}">${esc(r.itemNumber)}</button></td><td style="white-space:pre-wrap;min-width:280px">${esc(r.description)}</td><td>${esc(r.locationRoom||'—')}</td><td><span class="${state==='Closed'?'found':'warn'}">${esc(state)}</span></td><td>${esc(r.closedDate||'—')}</td><td>${esc(r.sheet||'Punch')}</td><td>${esc(r.rowNumber||'—')}</td><td><button type="button" class="action" data-punch-record="${index}">View details ↗</button></td></tr>`}).join(''):'<tr><td colspan="8" class="empty">No matching punch items.</td></tr>';
+ $('status').textContent=(q?rows.length+' matching punch items.':'6 examples from '+data.rows.length+' punch items. Enter a number to search all items.')+' Last synchronized: '+(data.syncedAt||'Unknown')+(data.stale?' — Update unavailable; showing saved data.':'');
+}
+document.addEventListener('punch-updated',()=>{if(mode==='punch')runPunchSearch()});
+document.addEventListener('click',event=>{const button=event.target.closest('[data-punch-record]');if(button)PunchItems.openRecord(Number(button.dataset.punchRecord))});
 document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
 setMode('tag');
 getLookup().catch(()=>{});

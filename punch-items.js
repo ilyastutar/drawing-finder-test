@@ -11,13 +11,21 @@
    return matchedIn.length?[{...row,matchedIn}]:[];
   });
  }
- const api={findItems};
+ function searchItems(rows,query){
+  const q=normalize(query);if(!q)return rows.slice(0,6);
+  const terms=q.split(/[\s,;]+/).filter(Boolean),exact=[],partial=[];
+  for(const row of rows){const n=normalize(row.itemNumber);if(terms.includes(n))exact.push(row);else if(terms.some(t=>n.includes(t)))partial.push(row)}
+  return exact.concat(partial);
+ }
+ const api={findItems,searchItems};
  if(typeof module!=='undefined'){module.exports=api;return}
- let snapshot=null;
+ let snapshot=null,loadState='loading';
+ api.getSnapshot=()=>snapshot;
+ api.getState=()=>loadState;
  const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  api.setSnapshot=data=>{
   if(!data||!Array.isArray(data.rows)||!data.syncedAt)throw Error('A complete punch snapshot with sync timestamp is required');
-  snapshot=data;
+  snapshot=data;loadState='ready';
  };
  function cellContent(tag){
   if(!snapshot)return '<span class="hint">Not connected</span>';
@@ -34,22 +42,23 @@
     if(!response.ok)throw Error('Punch source unavailable');
     const data=await response.json();
     if(!data.ok)throw Error('Punch source unavailable');
-    snapshot=data.connected&&Array.isArray(data.rows)?data:null;
+    snapshot=data.connected&&Array.isArray(data.rows)?data:null;loadState=snapshot?'ready':'unavailable';
     document.querySelectorAll('[data-punch-cell]').forEach(el=>{el.innerHTML=cellContent(el.dataset.punchCell)});
-   }catch{if(snapshot)snapshot.stale=true;}finally{busy=false}
+   }catch{loadState=snapshot?'ready':'unavailable';if(snapshot)snapshot.stale=true;}finally{busy=false;document.dispatchEvent(new Event('punch-updated'))}
   }
   refresh();setInterval(refresh,300000);
  };
- api.open=tag=>{
+ function openDetails(title,items){
   const dialog=document.getElementById('punchDetail');
-  document.getElementById('punchTitle').textContent=tag+' — Related Punch Items';
-  const items=snapshot?findItems(snapshot.rows,tag):[];
-  document.getElementById('punchBody').innerHTML=!snapshot?'<p>Punch source not connected.</p>':`<p>Last synchronized: ${escape(snapshot.syncedAt)}${snapshot.stale?' � Update unavailable; showing last saved data.':''}</p><div class="wrap"><table><thead><tr><th>Punch Item No.</th><th>Description (H)</th><th>Location / Room (G)</th><th>Status</th><th>Closed Date</th><th>Source / Match</th></tr></thead><tbody>`+items.map(x=>{
+  document.getElementById('punchTitle').textContent=title;
+  document.getElementById('punchBody').innerHTML=!snapshot?'<p>Punch source not connected.</p>':`<p>Last synchronized: ${escape(snapshot.syncedAt)}${snapshot.stale?' — Update unavailable; showing last saved data.':''}</p><div class="wrap"><table><thead><tr><th>Punch Item No.</th><th>Description (H)</th><th>Location / Room (G)</th><th>Status</th><th>Closed Date</th><th>Source / Match</th></tr></thead><tbody>`+items.map(x=>{
    const status=['Open','Closed','Review'].includes(x.status)?x.status:'Not verified';
-   return `<tr><td>${escape(x.itemNumber||'Not mapped')}</td><td>${escape(x.description||'—')}</td><td>${escape(x.locationRoom||'—')}</td><td><span class="${status==='Closed'?'found':status==='Open'?'warn':''}">${escape(status)}</span></td><td>${escape(x.closedDate||'—')}</td><td>${escape(x.sheet||'')} · ${escape(x.rowNumber||'')} · ${x.matchedIn.join(' + ')}</td></tr>`;
+   return `<tr><td>${escape(x.itemNumber||'Not mapped')}</td><td>${escape(x.description||'—')}</td><td>${escape(x.locationRoom||'—')}</td><td><span class="${status==='Closed'?'found':status==='Open'?'warn':''}">${escape(status)}</span></td><td>${escape(x.closedDate||'—')}</td><td>${escape(x.sheet||'')} · ${escape(x.rowNumber||'')} · ${(x.matchedIn||[]).join(' + ')}</td></tr>`;
   }).join('')+'</tbody></table></div>';
   dialog.showModal();
  };
+ api.open=tag=>openDetails(tag+' — Related Punch Items',snapshot?findItems(snapshot.rows,tag):[]);
+ api.openRecord=index=>{const item=snapshot?.rows[index];if(item)openDetails('Punch Item '+item.itemNumber,[item])};
  document.addEventListener('click',event=>{const button=event.target.closest('[data-punch-tag]');if(button)api.open(button.dataset.punchTag)});
  root.PunchItems=api;
 })(typeof window!=='undefined'?window:globalThis);
