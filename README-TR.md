@@ -1,27 +1,34 @@
-# Drawing Finder v0.11.0
+TOP Punch Closure v0.19.5
 
-## Kurulum
-Önce backend ZIP'ini Google Cloud Shell'e yükleyin:
+Frontend: replace the deployed frontend files with this ZIP's contents and hard-refresh once.
+The current background photographs and existing Tag/Drawing/Pipeline functionality are preserved.
 
-```bash
-cd ~
-unzip -o drawing-finder-v0.11.0-backend.zip -d drawing-finder-v0.11.0-backend
-cd drawing-finder-v0.11.0-backend
-unset DF_ACCESS_KEY
-bash deploy.sh
-```
+Punch view:
+- All items available; virtual scrolling bounds the visible DOM.
+- Separate status and closed date. Dates display e.g. 01 June 2026.
+- Date filters accept 14-09-2026, 14/09/2026, 14 Sept 2026 and full month names.
+- Discipline filter and all business columns available with horizontal scrolling.
+- Punch details list the selected item and other rows sharing a KKS tag in Location/Description.
+  Shared-tag links use complete process/equipment KKS tags, not arbitrary word matches.
+- Source / Match column removed. Details can be filtered by discipline.
+- Browser IndexedDB holds the last successful snapshot (not cookies).
+- The first load downloads the full dataset. Refreshes happen every five minutes and on returning
+  to the tab. Backend v0.19.4 supports unchanged responses and changed/added/deleted rows only.
+- Backend v0.19.3 remains compatible but still downloads full snapshots.
 
-Ardından frontend ZIP'indeki index.html, search.html, kks-dictionary.js ve kks-validator.js dosyalarını aynı klasöre yayınlayın. Ctrl+F5 yapın. Yeniden OCR gerekmez.
+Install the accompanying backend delta ZIP to enable incremental transfer.
+No changes to the working Power Automate flow, its key, POST URL or binary Body are needed.
+Closed means date + green. Date without green: Row is not green. Green without date:
+There is no closed date. Neither: Open. Unverifiable colour: Row colour not verified.
+Unknown date input is preserved rather than invented.
 
-## Davranış
-- Her moda geçildiğinde boş kutunun altında gerçek proje kayıtlarından en fazla 6 örnek görünür. Yeterli kayıt yoksa mevcut sayı gösterilir. Örnekler uydurulmaz.
-- Drawing örneği seçilince drawing kayıtları açılır. Tag/Pipeline/Row örneği seçilince o değer aranır.
-- Drawing'de yazmaya başlayınca bütün contains eşleşmeleri gelir: 12/50 gibi toplam sonuç sınırı yoktur. Veriler backend'de 500'lük sayfalarla okunur. Çok büyük drawing koleksiyonlarında yanıt süresi artabilir.
-- Açık gri/beyaz tema, sarı vurgular, silik vinç ve elektrik panosu çizimleri, görünür mod düğmeleri, kaydırılabilir öneri alanı.
-- Tag/Pipeline mevcut contains araması, Row tam sayı araması, Excel paste ve related tag korunur. Tag/Pipeline sonuç sınırları önceki sürümdeki gibidir; bu değişiklik Drawing öneri/arama sınırını kaldırır.
-- KKS validator ve mevcut OCR çekirdeği korunur. Indexer sürüm başlığı v0.10.0 kalır; search arayüzü ve backend v0.11.0'dır.
-
-## Doğrulama
-29 test geçti: önceki 27 kontrol, boş Drawing için 6 örnek / yazılan sorgu için 80 sonucun tamamı, tüm diğer modlarda gerçek ve farklı örnekler.
-Inline script syntax ve backend syntax kontrolü geçti. Açık tema yerel tarayıcıda örnek verilerle görsel olarak incelendi. Canlı backend henüz deploy edilmedi; yerel önizlemede cloud CORS nedeniyle canlı veri kullanılmadı.
-Backend klasöründe `npm test` ile testleri tekrar çalıştırabilirsiniz. Test fixture'ları pakete dahildir; veritabanına bağlanmazlar.
+New in v0.19.5:
+Type a column filter and press Tab or Enter to keep it as a chip. Add another
+value to match either choice (A OR B). Different columns combine with AND.
+Remove a chip with its x button; Backspace in an empty field removes the last chip.
+An empty field + Tab moves focus normally. Date filters also support multiple chips.
+Category matching is exact and case-insensitive. Other text columns retain contains matching.
+The bottom summary counts all filtered rows: listed, Closed, Open, Require review.
+Review includes inconsistent date/colour and unverified colour, never silently counted as Open.
+This release needs no additional backend or Power Automate change. Backend v0.19.4
+from the previous release is still needed for incremental data transfer.
