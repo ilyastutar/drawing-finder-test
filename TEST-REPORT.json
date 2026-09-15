@@ -1,20 +1,21 @@
 {
-  "version": "0.19.1",
-  "base": "0.19.0; login excluded",
+  "version": "0.19.5",
   "verified": [
-    "Excel theme-based green fills",
-    "Four closed-date/green status rules",
-    "Unknown colour remains unverified",
-    "Subsystem/category/full business columns",
-    "All 15476 fixture records searchable",
-    "Visible DOM bounded to 70 records plus spacers",
-    "Bulk Excel paste/deduplication/missing numbers",
-    "Full-dataset column filters",
-    "Fullscreen/compact/Tag transitions",
-    "Automatic feed replacement",
-    "Scroll to last record",
-    "IndexedDB cache after failed network refresh",
-    "JavaScript syntax"
-  ],
-  "deployment": "Not deployed; current backend needs additional colour and column fields"
+    "15,974 real records plus 4 controlled fixtures",
+    "3 requested date-filter formats, invalid date rejection",
+    "4 status combinations and unknown colour",
+    "exact tag links across G/H; prefix collision excluded",
+    "discipline filters in main list and detail",
+    "horizontal access to business columns",
+    "bulk paste and full screen search",
+    "bounded DOM rendering",
+    "IndexedDB offline restoration",
+    "background delta/unchanged refresh",
+    "HTTP authorization and atomic import failure recovery",
+    "delta edit/add/delete and missing revision full fallback",
+    "A/B column chips with Tab/Enter and deduplication",
+    "OR in one column combined with AND across columns",
+    "Chip removal and reset",
+    "Filtered Closed/Open/Review counters including zero results"
+  ]
 }
