@@ -1,0 +1,23 @@
+TOP Punch Closure v0.19.1 — login olmadan v0.19 devamı
+
+1. Frontend ZIP içeriğini mevcut frontend dosyalarının yerine yükleyin; Ctrl+F5 yapın.
+2. Backend şu anda renk/subsystem/category alanlarını göndermiyorsa backend-schema ZIP dosyasını Cloud Shell ana klasörüne yükleyin ve çalıştırın:
+
+unzip -o ~/top-punch-closure-v0.19.1-backend-schema.zip -d ~/punch-schema-v0191
+python3 ~/punch-schema-v0191/punch-schema-install.py ~/top-punch-backend-v0180
+
+Başarı mesajından sonra:
+gcloud run deploy drawing-finder-ocr-api --source ~/top-punch-backend-v0180 --project=drawing-finder-ocr --region=europe-west1
+
+Bu ek yalnızca Excel satırlarını çıkaran bölümü günceller ve aynı eTag olsa bile yeni şemayla ilk okumayı zorlar. Mevcut Microsoft oturumu, token yenileme ve zamanlayıcı kodu değiştirilmez. Mevcut backend farklıysa kurulum dosyaları değiştirmeden durur; bu durumda güncel punch-connection.js ile entegrasyon gerekir.
+
+Görünüm:
+- Punch seçilince örnek yerine bütün kayıtlar listelenir. Ekranda yaklaşık 70 satır oluşturulur; kaydırdıkça değişir. Arama/filtreler bütün veri üzerinde çalışır, sonuç sayısı sınırı yoktur.
+- Excel'den sütun veya hücreler Ctrl+V ile yapıştırılır. Tekrar eden numaralar birleştirilir, bulunamayanlar ayrı gösterilir. Enter ile yeni numaralar eklenebilir.
+- Küçük görünüm: Item No, Closed Date, Status, Subsystem, Description, Location/Room, Category. Tam ekran ek iş alanlarını gösterir; uzun açıklamanın tamamı punch numarasına tıklanınca açılır.
+- Tarih+yeşil: Closed on DATE. Tarih var/yeşil yok: DATE — Cell is not green. Yeşil var/tarih yok: There is no closed date. İkisi de yok: Open.
+- Yeşil satır kontrolünde A (Item No) ve H (Description) dolgu renkleri birlikte kullanılır. Theme, RGB ve yaygın indexed yeşiller çözülür. Etkileyen koşullu biçimlendirme veya çözülemeyen renk varsa Row colour not verified gösterilir; yanlış Closed üretilmez. Güncel dosyada incelenen yeşil satırlar theme accent6 ile boyalıdır.
+- IndexedDB son veriyi saklar. Sayfa açıkken 5 dakikada bir servis kontrol edilir; sekmeye dönünce de kontrol yapılır. Manuel yenileme gerekmez. Browser/cihaz uykuya alınırsa kontroller gecikebilir.
+- Last update son başarılı veri senkronizasyonunu, Last check tarayıcının son başarılı servis kontrolünü yerel gün/ay/yıl saat:dakika ve saat dilimiyle gösterir. Servis eski/stale veri döndürüyorsa bu ayrıca belirtilir. Frontend'in kontrol etmesi backend'in Excel'i başarıyla okuduğu anlamına gelmez.
+
+Bu pakette login veya güvenlik modülü yoktur. Daha önce canlıya v0.20 login kurulmuşsa onu ayrıca geri almak gerekir; frontend güncellemesi backend erişim kontrolünü kaldırmaz.
