@@ -1,15 +1,20 @@
 {
-  "version": "0.19.0",
-  "scope": "Frontend punch item number search",
-  "checks": [
-    "JavaScript syntax",
-    "15,769-record public feed search",
-    "Exact matches first",
-    "Substring matches without a result cap",
-    "Six initial examples",
-    "No-match result",
-    "Existing G/H tag matching",
-    "Headless Chrome: mode switching, detail dialog, column filtering, restore Tag headers"
+  "version": "0.19.1",
+  "base": "0.19.0; login excluded",
+  "verified": [
+    "Excel theme-based green fills",
+    "Four closed-date/green status rules",
+    "Unknown colour remains unverified",
+    "Subsystem/category/full business columns",
+    "All 15476 fixture records searchable",
+    "Visible DOM bounded to 70 records plus spacers",
+    "Bulk Excel paste/deduplication/missing numbers",
+    "Full-dataset column filters",
+    "Fullscreen/compact/Tag transitions",
+    "Automatic feed replacement",
+    "Scroll to last record",
+    "IndexedDB cache after failed network refresh",
+    "JavaScript syntax"
   ],
-  "backend_changed_for_this_release": false
+  "deployment": "Not deployed; current backend needs additional colour and column fields"
 }
