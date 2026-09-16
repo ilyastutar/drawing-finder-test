@@ -1,4 +1,4 @@
-TOP Punch Closure v0.19.9
+TOP Punch Closure v0.19.11
 
 Frontend: replace the deployed frontend files with this ZIP's contents and hard-refresh once.
 The current background photographs and existing Tag/Drawing/Pipeline functionality are preserved.
@@ -58,3 +58,7 @@ New in v0.19.8: row colour alpha is 7%; punch number badge backgrounds are 15%.
 Text and borders remain clear; existing number animation is preserved.
 
 New in v0.19.9: neutral white table, blue-gray number badges and searched labels; no coloured row stripe. Only upper chip backgrounds pulse with 8% discipline colour. Text and borders stay neutral. No backend change.
+
+New in v0.19.10: Select cells, click the first cell then Shift-click the last in the same column. Copy selected or Ctrl+C copies only those values as one Excel column. Click Finish selecting to restore normal punch detail clicks. Filtering or refreshing data clears the selection.
+
+New in v0.19.11: only the Punch Item No. cell receives 3% discipline colour fill. Neutral text and borders remain; cell selection overrides the fill.
