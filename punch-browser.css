@@ -4,3 +4,39 @@
 .punch-scroll{scrollbar-gutter:stable}.punch-scroll table,.punch-expanded .punch-scroll table{table-layout:fixed;min-width:1700px}.punch-scroll th{width:155px}.punch-scroll th:nth-child(2){width:150px}.punch-scroll th:nth-child(3){width:175px}.punch-scroll th:nth-child(8){width:140px}.punch-scroll tbody tr:hover{background:#edf5fa}.punch-detail-scroll{max-height:65vh;overflow:auto;margin-top:15px}.punch-detail-scroll table{min-width:1200px}.punch-selected{background:#e7f2f5}.punch-detail-scroll th{position:sticky;top:0}#punchDetail{width:min(1500px,94vw);max-width:94vw}#punchDetailDiscipline{margin:0 0 8px 10px;padding:8px;border:1px solid #b9cedc;border-radius:6px;background:white}#punchDetailMore[hidden]{display:none}
 .punch-scroll th:nth-child(5),.punch-expanded .punch-scroll th:nth-child(5){width:140px;min-width:140px}.punch-scroll th:nth-child(6){width:350px}.punch-scroll th:nth-child(7){width:180px}
 .punch-filter-chips{display:flex;gap:4px;flex-wrap:wrap;max-height:80px;overflow:auto;margin-top:5px}.punch-filter-chips:empty{display:none}.punch-filter-chips button{display:inline-flex;align-items:center;gap:7px;border:1px solid #adc8d7;border-radius:6px;padding:4px 6px;background:#f5fafc;color:#244b61;font-size:11px;max-width:100%;overflow-wrap:anywhere;cursor:pointer}.punch-filter-chips button:hover{background:#dcecf4;border-color:#5685a0}.punch-totals{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:12px 14px;margin-top:10px;background:#f7fafcf0;border:1px solid #c7d8e2;border-radius:9px;font-size:13px}.punch-totals:empty{display:none}.punch-totals strong{margin-right:auto}.punch-totals span{padding:5px 9px;border-radius:6px}.total-closed{background:#e4f2e9;color:#24673f}.total-open{background:#e5edf8;color:#345579}.total-review{background:#fff0d6;color:#8c651d}
+#punchPanel .punch-scroll table{min-width:0;table-layout:fixed}
+#punchPanel .punch-scroll th{width:auto;min-width:0;overflow-wrap:anywhere}
+#punchPanel .punch-scroll input{min-width:0;box-sizing:border-box}
+.match-label{font-size:10px;color:#687e8e;font-weight:400;margin-top:3px;white-space:nowrap}
+#punchDetail .punch-detail-scroll table{table-layout:fixed;width:100%;min-width:1250px}
+#punchDetail .punch-detail-scroll th{width:auto;min-width:0}
+#punchDetail .punch-detail-scroll th:nth-child(1){width:100px}
+#punchDetail .punch-detail-scroll th:nth-child(2){width:330px}
+#punchDetail .punch-detail-scroll th:nth-child(3){width:95px}
+#punchDetail .punch-detail-scroll th:nth-child(4){width:145px}
+#punchDetail .punch-detail-scroll th:nth-child(5){width:135px}
+#punchDetail .punch-detail-scroll th:nth-child(6),#punchDetail .punch-detail-scroll th:nth-child(7){width:195px}
+#punchDetail .punch-detail-scroll td{overflow-wrap:anywhere}
+
+/* Row backgrounds: 7% colour; number badges: 15%. Text stays opaque. */
+.disc-electric{--match:#862020;--tint:rgba(220,38,38,.07);--badge:rgba(220,38,38,.15)}
+.disc-mechanical{--match:#174880;--tint:rgba(37,99,235,.07);--badge:rgba(37,99,235,.15)}
+.disc-civil{--match:#40454c;--tint:rgba(128,128,128,.07);--badge:rgba(128,128,128,.15)}
+.disc-other{--match:#385469;--tint:rgba(218,229,236,.07);--badge:rgba(218,229,236,.15)}
+.punch-heading{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.discipline-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:11px}
+.discipline-legend span{display:inline-flex;align-items:center;gap:5px;color:#263c4a}
+.discipline-legend span::before{content:"";width:12px;height:12px;border:1px solid var(--match);border-radius:3px;background:var(--tint)}
+
+.discipline-legend span::before{background:var(--badge)}
+/* Neutral table and stable text; only selected chip fill pulses softly. */
+#punchPanel .punch-scroll tr[class*="disc-"]{background:#fff}
+#punchPanel .punch-scroll tr[class*="disc-"]:hover{background:#f3f7fa}
+#punchPanel .punch-scroll .related-tag{background:#edf4f8;color:#31566d;border:1px solid #c9dbe5;font-weight:600}
+#punchPanel .punch-chips button{background:#f3f7fa;color:#31566d;border:1px solid #c4d5e0;font-weight:600;padding:7px 10px;border-radius:7px;animation:punch-chip-fill 2.8s ease-in-out infinite}
+.disc-electric{--pulse:rgba(220,38,38,.08)}
+.disc-mechanical{--pulse:rgba(37,99,235,.08)}
+.disc-civil{--pulse:rgba(128,128,128,.08)}
+.disc-other{--pulse:rgba(105,135,155,.08)}
+@keyframes punch-chip-fill{0%,100%{background-color:#f3f7fa}50%{background-color:var(--pulse)}}
+@media(prefers-reduced-motion:reduce){#punchPanel .punch-chips button{animation:none}}
