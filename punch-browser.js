@@ -10,7 +10,7 @@
 
  panel.innerHTML='<div class="punch-top"><div><div class="punch-heading"><strong>Punch Items</strong><div class="discipline-legend"><span class="disc-electric">Red: Electric and I&amp;C</span><span class="disc-mechanical">Blue: Mechanical</span><span class="disc-civil">Gray: Civil</span></div></div><input id="punchFullQuery" class="punch-full-query" aria-label="Search punch numbers" placeholder="Search or paste punch numbers…"><div id="punchCount" class="hint"></div></div><div id="punchClock" class="punch-clock"></div></div><div class="punch-chips" id="punchChips"></div><div id="punchMissing" class="punch-missing"></div><div class="punch-scroll"><table><thead><tr id="punchHead"></tr></thead><tbody id="punchRows"></tbody></table></div><div class="punch-footer"><button class="action" id="punchClear">Clear punch filters</button><span class="hint">Paste Excel cells · Enter to add numbers</span><button class="action" id="punchExpand">Full screen ⛶</button></div>';
 
- const $=id=>document.getElementById(id),compact=[['itemNumber','Punch Item No.'],['closedDate','Closed Date'],['statusText','Status'],['subsystem','Subsystem No.'],['discipline','Discipline'],['description','Description'],['locationRoom','Location / Room'],['category','Category'],['issuedDate','Issued Date'],['issuedObservedAt','Issued Time (First Seen)']];
+ const $=id=>document.getElementById(id),compact=[['itemNumber','Punch Item No.'],['closedDate','Closed Date'],['statusText','Status'],['subsystem','Subsystem No.'],['discipline','Discipline'],['description','Description'],['locationRoom','Location / Room'],['category','Category'],['issuedDate','Issued Date']];
 
  let active=false,expanded=false,tokens=[],query='',filters={},selectedFilters={},matches=[],source=null,lastSignature='',columns=compact,scheduled=false;
  panel.querySelector('.punch-footer').insertAdjacentHTML('beforebegin','<div id="punchTotals" class="punch-totals" role="status" aria-live="polite"></div>');
@@ -18,19 +18,24 @@
  function filterChips(key){return '<div class="punch-filter-chips">'+(selectedFilters[key]||[]).map((v,i)=>'<button type="button" data-filter-remove="'+esc(key)+'" data-filter-index="'+i+'" aria-label="Remove '+esc(v)+' filter">'+esc(v)+' <span aria-hidden="true">×</span></button>').join('')+'</div>'}
  function matchFilter(row,key,term){if(key==='issuedDate')return PunchItems.dateMatches(PunchItems.issuedDate(row),term);if(key.endsWith('ObservedAt'))return PunchItems.dateKey(term)?PunchItems.dateMatches(PunchItems.observedDate(row[key]),term):norm(value(row,key)).includes(norm(term));if(key==='closedDate')return PunchItems.dateMatches(row.closedDate,term);const actual=norm(value(row,key)),wanted=norm(term);return key==='category'||(key==='statusText'&&['CLOSED','OPEN'].includes(wanted))?actual===wanted:actual.includes(wanted)}
  function matchesFilters(row){return [...new Set([...Object.keys(filters),...Object.keys(selectedFilters)])].every(key=>{const terms=[...(selectedFilters[key]||[]),filters[key]||''].filter(v=>v.trim());return !terms.length||terms.some(term=>matchFilter(row,key,term))})}
- function totals(){const counts={Closed:0,Open:0,Review:0};for(const {row} of matches)counts[PunchItems.rowStatus(row).status]++;$('punchTotals').innerHTML='<strong>'+matches.length.toLocaleString('en-GB')+' punch items listed</strong><span class="total-closed">'+counts.Closed.toLocaleString('en-GB')+' Closed</span><span class="total-open">'+counts.Open.toLocaleString('en-GB')+' Open</span><span class="total-review">'+counts.Review.toLocaleString('en-GB')+' Require review</span>'}
+ function totals(){const counts={Closed:0,Open:0,Review:0},groups={A:{Closed:0,Open:0,Review:0},B:{Closed:0,Open:0,Review:0},C:{Closed:0,Open:0,Review:0}};for(const {row} of matches){const status=PunchItems.rowStatus(row).status;counts[status]++;const cat=norm(row.category)||'Other';(groups[cat]||(groups[cat]={Closed:0,Open:0,Review:0}))[status]++}
+ $('punchTotals').innerHTML='<strong>'+matches.length.toLocaleString('en-GB')+' punch items listed</strong><div class="category-counts">'+Object.entries(groups).map(([cat,c])=>'<span><b>'+esc(cat)+'</b> · '+c.Open+' Open · '+c.Closed+' Closed · '+c.Review+' Review</span>').join('')+'</div><div class="overall-counts"><span class="total-closed">'+counts.Closed+' Closed</span><span class="total-open">'+counts.Open+' Open</span><span class="total-review">'+counts.Review+' Require review</span></div>'}
+
 
  const scroll=panel.querySelector('.punch-scroll'),body=$('punchRows');
  let selecting=false,cellRange=null;
- scroll.insertAdjacentHTML('beforebegin','<div class="punch-copy-tools"><button class="action" id="punchSelectCells" aria-pressed="false">Select cells</button><button class="action" id="punchCopyCells" disabled>Copy selected</button><span id="punchCopyHint" class="hint" role="status">Copy one column: select the first cell, then Shift-click the last.</span></div>');
- function clearCells(){cellRange=null;$('punchCopyCells').disabled=true;$('punchCopyHint').textContent='Copy one column: select the first cell, then Shift-click the last.'}
- function cellSelected(position,key){return selecting&&cellRange&&key===cellRange.key&&position>=Math.min(cellRange.start,cellRange.end)&&position<=Math.max(cellRange.start,cellRange.end)}
- function selectedText(){if(!cellRange)return '';return matches.slice(Math.min(cellRange.start,cellRange.end),Math.max(cellRange.start,cellRange.end)+1).map(({row})=>String(value(row,cellRange.key)).replace(/[\t\r\n]+/g,' ')).join('\r\n')}
- $('punchSelectCells').onclick=()=>{selecting=!selecting;clearCells();panel.classList.toggle('punch-selecting',selecting);$('punchSelectCells').setAttribute('aria-pressed',String(selecting));$('punchSelectCells').textContent=selecting?'Finish selecting':'Select cells';window.getSelection()?.removeAllRanges();paint()};
- body.addEventListener('click',event=>{if(!selecting)return;const cell=event.target.closest('[data-copy-column]');if(!cell)return;event.preventDefault();event.stopImmediatePropagation();const key=cell.dataset.copyColumn,position=+cell.dataset.copyPosition;if(event.shiftKey&&cellRange&&cellRange.key===key)cellRange.end=position;else cellRange={key,start:position,end:position};$('punchCopyCells').disabled=false;$('punchCopyHint').textContent=(Math.abs(cellRange.end-cellRange.start)+1)+' cells selected · '+(columns.find(c=>c[0]===key)?.[1]||key);window.getSelection()?.removeAllRanges();paint()},true);
- document.addEventListener('copy',event=>{if(!active||!selecting||!cellRange||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,[contenteditable="true"]'))return;event.preventDefault();event.clipboardData.setData('text/plain',selectedText());$('punchCopyHint').textContent='Copied selected cells — one Excel column.'});
- $('punchCopyCells').onclick=async()=>{if(!cellRange)return;const text=selectedText();try{await navigator.clipboard.writeText(text);$('punchCopyHint').textContent='Copied selected cells — one Excel column.'}catch{$('punchCopyHint').textContent='Clipboard unavailable. Press Ctrl+C to copy the selection.'}};
-
+ scroll.insertAdjacentHTML('beforebegin','<div class="punch-copy-tools"><button class="action" id="punchSelectCells" aria-pressed="false">Select cells</button><label><input id="punchCopyHeaders" type="checkbox" checked> Include headers</label><button class="action" id="punchCopyCells" disabled>Copy selected</button><button class="action" id="punchExportSelected" disabled>Export selected punches (.xlsx)</button><button class="action" id="punchExportFiltered">Export filtered (.xlsx)</button><span id="punchCopyHint" class="hint" role="status">Click a cell, then Shift-click the opposite corner. Esc cancels selection.</span></div>');
+ function clearCells(){cellRange=null;$('punchCopyCells').disabled=true;$('punchExportSelected').disabled=true;$('punchCopyHint').textContent='Click a cell, then Shift-click the opposite corner. Esc cancels selection.'}
+ function bounds(){return cellRange?{r0:Math.min(cellRange.start,cellRange.end),r1:Math.max(cellRange.start,cellRange.end),c0:Math.min(cellRange.cStart,cellRange.cEnd),c1:Math.max(cellRange.cStart,cellRange.cEnd)}:null}
+ function cellSelected(position,key){const b=bounds(),c=columns.findIndex(x=>x[0]===key);return selecting&&b&&position>=b.r0&&position<=b.r1&&c>=b.c0&&c<=b.c1}
+ function selectedText(){const b=bounds();if(!b)return '';const cols=columns.slice(b.c0,b.c1+1),rows=matches.slice(b.r0,b.r1+1).map(({row})=>cols.map(([key])=>value(row,key)));if($('punchCopyHeaders').checked)rows.unshift(cols.map(c=>c[1]));return rows.map(r=>r.map(v=>String(v??'').replace(/[\t\r\n]+/g,' ')).join('\t')).join('\r\n')}
+ function setSelecting(on){selecting=on;clearCells();panel.classList.toggle('punch-selecting',on);$('punchSelectCells').setAttribute('aria-pressed',String(on));$('punchSelectCells').textContent=on?'Finish selecting':'Select cells';window.getSelection()?.removeAllRanges();paint()}
+ $('punchSelectCells').onclick=()=>setSelecting(!selecting);
+ body.addEventListener('click',event=>{if(!selecting)return;const cell=event.target.closest('[data-copy-column]');if(!cell)return;event.preventDefault();event.stopImmediatePropagation();const column=columns.findIndex(c=>c[0]===cell.dataset.copyColumn),position=+cell.dataset.copyPosition;if(event.shiftKey&&cellRange){cellRange.end=position;cellRange.cEnd=column}else cellRange={cStart:column,cEnd:column,start:position,end:position};$('punchCopyCells').disabled=false;$('punchExportSelected').disabled=false;const b=bounds();$('punchCopyHint').textContent=(b.r1-b.r0+1)+' rows × '+(b.c1-b.c0+1)+' columns selected';window.getSelection()?.removeAllRanges();paint()},true);
+ document.addEventListener('copy',event=>{if(!active||!selecting||!cellRange||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,[contenteditable="true"]'))return;event.preventDefault();event.clipboardData.setData('text/plain',selectedText());$('punchCopyHint').textContent='Copied selected cells.'});
+ $('punchCopyCells').onclick=async()=>{if(!cellRange)return;try{await navigator.clipboard.writeText(selectedText());$('punchCopyHint').textContent='Copied selected cells.'}catch{$('punchCopyHint').textContent='Press Ctrl+C to copy the selection.'}};
+ async function exportRows(selected){const b=bounds(),rows=(selected&&b?matches.slice(b.r0,b.r1+1):matches).map(x=>x.row);if(!rows.length)return;$('punchExportSelected').disabled=true;$('punchExportFiltered').disabled=true;$('punchCopyHint').textContent='Preparing Excel…';try{await PunchExport.download(columns,rows,value);$('punchCopyHint').textContent=rows.length+' punch items exported with all columns and headers.'}catch{$('punchCopyHint').textContent='Excel export failed. Please try again.'}finally{$('punchExportSelected').disabled=!cellRange;$('punchExportFiltered').disabled=false}}
+ $('punchExportSelected').onclick=()=>exportRows(true);$('punchExportFiltered').onclick=()=>exportRows(false);
 
  const date=v=>v?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(new Date(v)):'Not available';
 
@@ -42,8 +47,9 @@
 
   for(const l of labels)if(!used.has(l.toLowerCase().replace(/[^a-z]/g,'')))columns.push(['field:'+l,l]);
 
+  const notes=columns.findIndex(c=>/^comm(?:issioning)?notes$/i.test(c[1].replace(/[^a-z]/gi,'')));columns.splice(notes<0?columns.length:notes+1,0,['issuedObservedAt','Issued Time (First Seen)']);
   const focused=document.activeElement?.dataset?.punchFilter,caret=document.activeElement?.selectionStart;
-  $('punchHead').innerHTML=columns.map(([k,l])=>'<th>'+esc(l)+filterChips(k)+'<input placeholder="'+(k==='closedDate'?'e.g. 14 Sept 2026':'Type + Tab…')+'" aria-label="Filter '+esc(l)+'" data-punch-filter="'+esc(k)+'" value="'+esc(filters[k]||'')+'"></th>').join('');
+  $('punchHead').innerHTML=columns.map(([k,l])=>'<th><span class="punch-col-label">'+esc(l)+'</span><input placeholder="'+(k==='closedDate'?'e.g. 14 Sept 2026':'Type + Tab…')+'" aria-label="Filter '+esc(l)+'" data-punch-filter="'+esc(k)+'" value="'+esc(filters[k]||'')+'">'+filterChips(k)+'</th>').join('');
   if(focused){const input=[...$('punchHead').querySelectorAll('input')].find(el=>el.dataset.punchFilter===focused);input?.focus({preventScroll:true});if(input&&caret!=null)input.setSelectionRange(caret,caret)}
 
   fitColumns();
@@ -52,7 +58,7 @@
 
  function fitColumns(){
   const widths=columns.map(([key,label])=>{
-   if(key==='description')return 350;
+   if(key==='statusText')return 82;if(key==='description')return 350;
    if(!['statusText','discipline','closedDate','issuedDate','closedObservedAt','issuedObservedAt','itemNumber','category','subsystem'].includes(key))return 155;
    const min=key.endsWith('ObservedAt')?110:key==='itemNumber'?95:key==='category'?85:90;
    let length=0;for(const {row} of matches)length=Math.max(length,String(value(row,key)).length);
@@ -107,13 +113,11 @@
 
  $('punchClear').onclick=()=>{tokens=[];filters={};selectedFilters={};query='';$('q').value='';chips();makeColumns();scroll.scrollTop=0;render('',true)};
 
- async function toggle(){expanded=!expanded;punchFullQuery.value=q.value;panel.classList.toggle('punch-expanded',expanded);$('punchExpand').textContent=expanded?'Exit full screen ⤡':'Full screen ⛶';makeColumns();render(query,true);if(expanded){try{await panel.requestFullscreen()}catch{}}else if(document.fullscreenElement===panel){try{await document.exitFullscreen()}catch{}}}
+ function toggle(){expanded=!expanded;$('punchFullQuery').value=$('q').value;panel.classList.toggle('punch-expanded',expanded);$('punchExpand').textContent=expanded?'Exit full screen ⤡':'Full screen ⛶';makeColumns();render(query,true)}
+ $('punchExpand').onclick=toggle;
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&active&&selecting&&!document.querySelector('dialog[open]')){event.preventDefault();event.stopImmediatePropagation();setSelecting(false)}},true);
 
- $('punchExpand').onclick=toggle;document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&expanded){expanded=false;panel.classList.remove('punch-expanded');$('punchExpand').textContent='Full screen ⛶';makeColumns();render(query,true)}});
-
- document.addEventListener('keydown',event=>{if(event.key==='Escape'&&expanded){event.stopImmediatePropagation();if(!document.fullscreenElement)toggle()}},true);
-
- window.PunchBrowser={render,activate(on){active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){clearCells();tokens=[];filters={};selectedFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
+ window.PunchBrowser={render,activate(on){active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){setSelecting(false);tokens=[];filters={};selectedFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
 
 })();
 
