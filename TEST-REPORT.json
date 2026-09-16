@@ -1,5 +1,5 @@
 {
-  "version": "0.19.5",
+  "version": "0.19.9",
   "verified": [
     "15,974 real records plus 4 controlled fixtures",
     "3 requested date-filter formats, invalid date rejection",
@@ -16,6 +16,17 @@
     "A/B column chips with Tab/Enter and deduplication",
     "OR in one column combined with AND across columns",
     "Chip removal and reset",
-    "Filtered Closed/Open/Review counters including zero results"
+    "Filtered Closed/Open/Review counters including zero results",
+    "Default Punch Item tab and first navigation position",
+    "Four searched item colours and compact measured column widths",
+    "Detail Discipline order and Issued Date column",
+    "Europe/Berlin observed timestamps and separate source dates",
+    "Backend baseline migration, closure history and unchanged preservation",
+    "Discipline colours including I&C and neutral fallback",
+    "50% alpha backgrounds, animation on upper number text only",
+    "Removed main observed column and combined detail date/time",
+    "Computed browser colours: row alpha 0.07, chip and row badge alpha 0.15",
+    "Neutral rows, badges and searched labels; removed coloured stripe",
+    "Only chip background animation; stable text"
   ]
 }
