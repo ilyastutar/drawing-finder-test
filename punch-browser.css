@@ -18,11 +18,11 @@
 #punchDetail .punch-detail-scroll th:nth-child(6),#punchDetail .punch-detail-scroll th:nth-child(7){width:195px}
 #punchDetail .punch-detail-scroll td{overflow-wrap:anywhere}
 
-/* Row backgrounds: 7% colour; number badges: 15%. Text stays opaque. */
-.disc-electric{--match:#862020;--tint:rgba(220,38,38,.07);--badge:rgba(220,38,38,.15)}
-.disc-mechanical{--match:#174880;--tint:rgba(37,99,235,.07);--badge:rgba(37,99,235,.15)}
-.disc-civil{--match:#40454c;--tint:rgba(128,128,128,.07);--badge:rgba(128,128,128,.15)}
-.disc-other{--match:#385469;--tint:rgba(218,229,236,.07);--badge:rgba(218,229,236,.15)}
+/* Row backgrounds: 11% colour; number badges: 23%. Text stays opaque. */
+.disc-electric{--match:#862020;--tint:rgba(220,38,38,.11);--badge:rgba(220,38,38,.23)}
+.disc-mechanical{--match:#174880;--tint:rgba(37,99,235,.11);--badge:rgba(37,99,235,.23)}
+.disc-civil{--match:#40454c;--tint:rgba(128,128,128,.11);--badge:rgba(128,128,128,.23)}
+.disc-other{--match:#385469;--tint:rgba(218,229,236,.11);--badge:rgba(218,229,236,.23)}
 .punch-heading{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
 .discipline-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:11px}
 .discipline-legend span{display:inline-flex;align-items:center;gap:5px;color:#263c4a}
@@ -32,12 +32,12 @@
 /* Neutral table and stable text; only selected chip fill pulses softly. */
 #punchPanel .punch-scroll tr[class*="disc-"]{background:#fff}
 #punchPanel .punch-scroll tr[class*="disc-"]:hover{background:#f3f7fa}
-#punchPanel .punch-scroll .related-tag{background:#edf4f8;color:#31566d;border:1px solid #c9dbe5;font-weight:600}
+#punchPanel .punch-scroll .related-tag{background:var(--badge, #edf4f8);color:var(--match, #31566d);border:1px solid var(--match, #c9dbe5);font-weight:600}
 #punchPanel .punch-chips button{background:#f3f7fa;color:#31566d;border:1px solid #c4d5e0;font-weight:600;padding:7px 10px;border-radius:7px;animation:punch-chip-fill 2.8s ease-in-out infinite}
-.disc-electric{--pulse:rgba(220,38,38,.08)}
-.disc-mechanical{--pulse:rgba(37,99,235,.08)}
-.disc-civil{--pulse:rgba(128,128,128,.08)}
-.disc-other{--pulse:rgba(105,135,155,.08)}
+.disc-electric{--pulse:rgba(220,38,38,.12)}
+.disc-mechanical{--pulse:rgba(37,99,235,.12)}
+.disc-civil{--pulse:rgba(128,128,128,.12)}
+.disc-other{--pulse:rgba(105,135,155,.12)}
 @keyframes punch-chip-fill{0%,100%{background-color:#f3f7fa}50%{background-color:var(--pulse)}}
 @media(prefers-reduced-motion:reduce){#punchPanel .punch-chips button{animation:none}}
 
@@ -48,7 +48,7 @@
 #punchPanel.punch-selecting .punch-scroll td.punch-cell-selected{background:#dfedf8;box-shadow:inset 0 0 0 2px #7199b5}
 
 /* Subtle discipline fill on the number cell only. Selection stays visible. */
-.disc-electric{--number-fill:rgba(220,38,38,.03)}
-.disc-mechanical{--number-fill:rgba(37,99,235,.03)}
-.disc-civil{--number-fill:rgba(128,128,128,.03)}
+.disc-electric{--number-fill:rgba(220,38,38,.05)}
+.disc-mechanical{--number-fill:rgba(37,99,235,.05)}
+.disc-civil{--number-fill:rgba(128,128,128,.05)}
 #punchPanel .punch-scroll td[data-copy-column="itemNumber"]:not(.punch-cell-selected){background:var(--number-fill,transparent)}
