@@ -1,5 +1,5 @@
 {
-  "version": "0.19.9",
+  "version": "0.19.11",
   "verified": [
     "15,974 real records plus 4 controlled fixtures",
     "3 requested date-filter formats, invalid date rejection",
@@ -27,6 +27,8 @@
     "Removed main observed column and combined detail date/time",
     "Computed browser colours: row alpha 0.07, chip and row badge alpha 0.15",
     "Neutral rows, badges and searched labels; removed coloured stripe",
-    "Only chip background animation; stable text"
+    "Only chip background animation; stable text",
+    "Three-cell single-column selection and exact clipboard output",
+    "Filter changes clear cell selection"
   ]
 }

@@ -21,6 +21,16 @@
  function totals(){const counts={Closed:0,Open:0,Review:0};for(const {row} of matches)counts[PunchItems.rowStatus(row).status]++;$('punchTotals').innerHTML='<strong>'+matches.length.toLocaleString('en-GB')+' punch items listed</strong><span class="total-closed">'+counts.Closed.toLocaleString('en-GB')+' Closed</span><span class="total-open">'+counts.Open.toLocaleString('en-GB')+' Open</span><span class="total-review">'+counts.Review.toLocaleString('en-GB')+' Require review</span>'}
 
  const scroll=panel.querySelector('.punch-scroll'),body=$('punchRows');
+ let selecting=false,cellRange=null;
+ scroll.insertAdjacentHTML('beforebegin','<div class="punch-copy-tools"><button class="action" id="punchSelectCells" aria-pressed="false">Select cells</button><button class="action" id="punchCopyCells" disabled>Copy selected</button><span id="punchCopyHint" class="hint" role="status">Copy one column: select the first cell, then Shift-click the last.</span></div>');
+ function clearCells(){cellRange=null;$('punchCopyCells').disabled=true;$('punchCopyHint').textContent='Copy one column: select the first cell, then Shift-click the last.'}
+ function cellSelected(position,key){return selecting&&cellRange&&key===cellRange.key&&position>=Math.min(cellRange.start,cellRange.end)&&position<=Math.max(cellRange.start,cellRange.end)}
+ function selectedText(){if(!cellRange)return '';return matches.slice(Math.min(cellRange.start,cellRange.end),Math.max(cellRange.start,cellRange.end)+1).map(({row})=>String(value(row,cellRange.key)).replace(/[\t\r\n]+/g,' ')).join('\r\n')}
+ $('punchSelectCells').onclick=()=>{selecting=!selecting;clearCells();panel.classList.toggle('punch-selecting',selecting);$('punchSelectCells').setAttribute('aria-pressed',String(selecting));$('punchSelectCells').textContent=selecting?'Finish selecting':'Select cells';window.getSelection()?.removeAllRanges();paint()};
+ body.addEventListener('click',event=>{if(!selecting)return;const cell=event.target.closest('[data-copy-column]');if(!cell)return;event.preventDefault();event.stopImmediatePropagation();const key=cell.dataset.copyColumn,position=+cell.dataset.copyPosition;if(event.shiftKey&&cellRange&&cellRange.key===key)cellRange.end=position;else cellRange={key,start:position,end:position};$('punchCopyCells').disabled=false;$('punchCopyHint').textContent=(Math.abs(cellRange.end-cellRange.start)+1)+' cells selected · '+(columns.find(c=>c[0]===key)?.[1]||key);window.getSelection()?.removeAllRanges();paint()},true);
+ document.addEventListener('copy',event=>{if(!active||!selecting||!cellRange||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,[contenteditable="true"]'))return;event.preventDefault();event.clipboardData.setData('text/plain',selectedText());$('punchCopyHint').textContent='Copied selected cells — one Excel column.'});
+ $('punchCopyCells').onclick=async()=>{if(!cellRange)return;const text=selectedText();try{await navigator.clipboard.writeText(text);$('punchCopyHint').textContent='Copied selected cells — one Excel column.'}catch{$('punchCopyHint').textContent='Clipboard unavailable. Press Ctrl+C to copy the selection.'}};
+
 
  const date=v=>v?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(new Date(v)):'Not available';
 
@@ -54,7 +64,7 @@
  function rowClass(row){return ' class="'+PunchItems.disciplineTone(row)+(tone(row)>=0?' punch-match':'')+'"'}
  function paint(){scheduled=false;if(!active)return;const start=Math.max(0,Math.floor(scroll.scrollTop/66)-8),end=Math.min(matches.length,start+70),height=n=>'<tr aria-hidden="true"><td colspan="'+columns.length+'" style="height:'+n+'px;padding:0;border:0"></td></tr>';
 
-  body.innerHTML=height(start*66)+matches.slice(start,end).map(({row,index})=>'<tr'+rowClass(row)+' style="height:66px">'+columns.map(([key])=>'<td>'+(key==='itemNumber'?'<button class="related-tag" data-punch-record="'+index+'">'+esc(row.itemNumber)+'</button>'+(tone(row)>=0?'<div class="match-label">Searched '+(tokens.length?'#'+(tone(row)+1):'match')+'</div>':''):'<div class="punch-clip" title="'+esc(value(row,key))+'">'+(key==='statusText'?'<span class="'+(PunchItems.rowStatus(row).status==='Closed'?'found':'warn')+'">'+esc(value(row,key))+'</span>':esc(value(row,key)))+'</div>')+'</td>').join('')+'</tr>').join('')+height((matches.length-end)*66);
+  body.innerHTML=height(start*66)+matches.slice(start,end).map(({row,index},offset)=>'<tr'+rowClass(row)+' style="height:66px">'+columns.map(([key])=>'<td data-copy-column="'+esc(key)+'" data-copy-position="'+(start+offset)+'"'+(cellSelected(start+offset,key)?' class="punch-cell-selected"':'')+'>'+(key==='itemNumber'?'<button class="related-tag" data-punch-record="'+index+'">'+esc(row.itemNumber)+'</button>'+(tone(row)>=0?'<div class="match-label">Searched '+(tokens.length?'#'+(tone(row)+1):'match')+'</div>':''):'<div class="punch-clip" title="'+esc(value(row,key))+'">'+(key==='statusText'?'<span class="'+(PunchItems.rowStatus(row).status==='Closed'?'found':'warn')+'">'+esc(value(row,key))+'</span>':esc(value(row,key)))+'</div>')+'</td>').join('')+'</tr>').join('')+height((matches.length-end)*66);
 
  }
 
@@ -62,7 +72,7 @@
 
  function render(q=query,force=false){query=q;if(!active)return;const data=PunchItems.getSnapshot();$('punchClock').innerHTML='Last update: <strong>'+esc(date(data?.syncedAt))+'</strong><br>Last check: '+esc(date(PunchItems.getLastChecked()))+(data?.stale?'<br><span class="punch-stage">Update unavailable — displaying saved data</span>':'');
 
-  const signature=JSON.stringify([query,tokens,filters,selectedFilters,expanded]);if(!force&&source===data?.rows&&lastSignature===signature)return;const changed=source!==data?.rows;source=data?.rows;lastSignature=signature;if(changed)makeColumns();
+  const signature=JSON.stringify([query,tokens,filters,selectedFilters,expanded]);if(!force&&source===data?.rows&&lastSignature===signature)return;clearCells();const changed=source!==data?.rows;source=data?.rows;lastSignature=signature;if(changed)makeColumns();
 
   if(!data){matches=[];body.innerHTML='<tr><td colspan="'+columns.length+'">'+(PunchItems.getState()==='loading'?'Loading punch data…':'Punch data unavailable.')+'</td></tr>';$('punchCount').textContent='';$('punchTotals').textContent='';return}
 
@@ -103,7 +113,7 @@
 
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&expanded){event.stopImmediatePropagation();if(!document.fullscreenElement)toggle()}},true);
 
- window.PunchBrowser={render,activate(on){active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){tokens=[];filters={};selectedFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
+ window.PunchBrowser={render,activate(on){active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){clearCells();tokens=[];filters={};selectedFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
 
 })();
 

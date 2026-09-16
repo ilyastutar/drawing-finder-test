@@ -40,3 +40,15 @@
 .disc-other{--pulse:rgba(105,135,155,.08)}
 @keyframes punch-chip-fill{0%,100%{background-color:#f3f7fa}50%{background-color:var(--pulse)}}
 @media(prefers-reduced-motion:reduce){#punchPanel .punch-chips button{animation:none}}
+
+.punch-copy-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.punch-copy-tools .hint{margin:0}.punch-copy-tools button:disabled{opacity:.45;cursor:default}
+#punchSelectCells[aria-pressed="true"]{background:#dfeef7;border-color:#638eab}
+#punchPanel.punch-selecting .punch-scroll tbody{user-select:none;cursor:cell}
+#punchPanel.punch-selecting .punch-scroll td.punch-cell-selected{background:#dfedf8;box-shadow:inset 0 0 0 2px #7199b5}
+
+/* Subtle discipline fill on the number cell only. Selection stays visible. */
+.disc-electric{--number-fill:rgba(220,38,38,.03)}
+.disc-mechanical{--number-fill:rgba(37,99,235,.03)}
+.disc-civil{--number-fill:rgba(128,128,128,.03)}
+#punchPanel .punch-scroll td[data-copy-column="itemNumber"]:not(.punch-cell-selected){background:var(--number-fill,transparent)}
