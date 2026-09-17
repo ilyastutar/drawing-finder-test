@@ -66,12 +66,10 @@
  function disciplineTone(row){const d=discipline(row).toLowerCase().replace(/\s+/g,'');return /electric|i&c|instrument|^ic$/.test(d)?'disc-electric':/mechan/.test(d)?'disc-mechanical':/civil/.test(d)?'disc-civil':'disc-other'}
  function discipline(row){return row.discipline||row.fields?.find(f=>/^(discipline|dicipline)$/i.test(f.label.trim()))?.value||''}
 
- function rowStatus(row){const d=String(row.closedDate||'').trim(),g=row.rowGreen;
-
-  if(typeof g!=='boolean')return {status:'Review',text:'Row colour not verified'};
-
-  return d&&g?{status:'Closed',text:'Closed'}:d?{status:'Review',text:'Row is not green'}:g?{status:'Review',text:'There is no closed date'}:{status:'Open',text:'Open'};
-
+ function rowStatus(row){const raw=String(row.closedDate||'').trim(),closed=!!dateKey(raw),g=row.closedDateGreen;
+  if(raw&&!closed)return {status:'Review',text:'Invalid closed date'};
+  const colour=typeof g!=='boolean'?'Cell colour not verified':g?'Cell is green':'Cell is not green';
+  return closed?{status:'Closed',text:g===true?'Closed':'Closed · '+colour}:g===true?{status:'Open',text:'Open · There is no closed date'}:g===false?{status:'Open',text:'Open'}:{status:'Open',text:'Open · '+colour};
  }
 
  function extractTags(row){return [...new Set([row.locationRoom,row.description].flatMap(v=>[...normalize(v).matchAll(/(?:^|[^A-Z0-9])(\d{2}[A-Z]{3}\d{2}\s*[A-Z]{2}\d{3}[A-Z]?)(?=$|[^A-Z0-9])/g)].map(m=>m[1].replace(/\s/g,''))))]}

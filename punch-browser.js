@@ -12,12 +12,14 @@
 
  const $=id=>document.getElementById(id),compact=[['itemNumber','Punch Item No.'],['closedDate','Closed Date'],['statusText','Status'],['subsystem','Subsystem No.'],['discipline','Discipline'],['description','Description'],['locationRoom','Location / Room'],['category','Category'],['issuedDate','Issued Date']];
 
- let active=false,expanded=false,tokens=[],query='',filters={},selectedFilters={},matches=[],source=null,lastSignature='',columns=compact,scheduled=false;
+ let active=false,expanded=false,tokens=[],query='',filters={},selectedFilters={},exactFilters={},matches=[],source=null,lastSignature='',columns=compact,scheduled=false;
  panel.querySelector('.punch-footer').insertAdjacentHTML('beforebegin','<div id="punchTotals" class="punch-totals" role="status" aria-live="polite"></div>');
- panel.querySelector('.punch-footer .hint').textContent='Column filters: type a value, then Tab or Enter to add another';
+ panel.querySelector('.punch-footer .hint').textContent='Column filters: type to search, or use Select to choose exact values';
  function filterChips(key){return '<div class="punch-filter-chips">'+(selectedFilters[key]||[]).map((v,i)=>'<button type="button" data-filter-remove="'+esc(key)+'" data-filter-index="'+i+'" aria-label="Remove '+esc(v)+' filter">'+esc(v)+' <span aria-hidden="true">×</span></button>').join('')+'</div>'}
- function matchFilter(row,key,term){if(key==='issuedDate')return PunchItems.dateMatches(PunchItems.issuedDate(row),term);if(key.endsWith('ObservedAt'))return PunchItems.dateKey(term)?PunchItems.dateMatches(PunchItems.observedDate(row[key]),term):norm(value(row,key)).includes(norm(term));if(key==='closedDate')return PunchItems.dateMatches(row.closedDate,term);const actual=norm(value(row,key)),wanted=norm(term);return key==='category'||(key==='statusText'&&['CLOSED','OPEN'].includes(wanted))?actual===wanted:actual.includes(wanted)}
- function matchesFilters(row){return [...new Set([...Object.keys(filters),...Object.keys(selectedFilters)])].every(key=>{const terms=[...(selectedFilters[key]||[]),filters[key]||''].filter(v=>v.trim());return !terms.length||terms.some(term=>matchFilter(row,key,term))})}
+ function matchFilter(row,key,term){if(key==='issuedDate')return PunchItems.dateMatches(PunchItems.issuedDate(row),term);if(key.endsWith('ObservedAt'))return PunchItems.dateKey(term)?PunchItems.dateMatches(PunchItems.observedDate(row[key]),term):norm(value(row,key)).includes(norm(term));if(key==='closedDate')return PunchItems.dateMatches(row.closedDate,term);const wanted=norm(term),actual=key==='statusText'&&['CLOSED','OPEN'].includes(wanted)?norm(PunchItems.rowStatus(row).status):norm(value(row,key));return key==='category'||(key==='statusText'&&['CLOSED','OPEN'].includes(wanted))?actual===wanted:actual.includes(wanted)}
+ const exactSets=new WeakMap();
+ function exactMatch(values,text){let set=exactSets.get(values);if(!set){set=new Set(values);exactSets.set(values,set)}return set.has(text)}
+ function matchesFilters(row,except){return Object.entries(exactFilters).every(([key,values])=>key===except||exactMatch(values,String(value(row,key))))&& [...new Set([...Object.keys(filters),...Object.keys(selectedFilters)])].every(key=>{if(key===except)return true;const terms=[...(selectedFilters[key]||[]),filters[key]||''].filter(v=>v.trim());return !terms.length||terms.some(term=>matchFilter(row,key,term))})}
  function totals(){const counts={Closed:0,Open:0,Review:0},groups={A:{Closed:0,Open:0,Review:0},B:{Closed:0,Open:0,Review:0},C:{Closed:0,Open:0,Review:0}};for(const {row} of matches){const status=PunchItems.rowStatus(row).status;counts[status]++;const cat=norm(row.category)||'Other';(groups[cat]||(groups[cat]={Closed:0,Open:0,Review:0}))[status]++}
  $('punchTotals').innerHTML='<strong>'+matches.length.toLocaleString('en-GB')+' punch items listed</strong><div class="category-counts">'+Object.entries(groups).map(([cat,c])=>'<span><b>'+esc(cat)+'</b> · '+c.Open+' Open · '+c.Closed+' Closed · '+c.Review+' Review</span>').join('')+'</div><div class="overall-counts"><span class="total-closed">'+counts.Closed+' Closed</span><span class="total-open">'+counts.Open+' Open</span><span class="total-review">'+counts.Review+' Require review</span></div>'}
 
@@ -49,7 +51,7 @@
 
   const notes=columns.findIndex(c=>/^comm(?:issioning)?notes$/i.test(c[1].replace(/[^a-z]/gi,'')));columns.splice(notes<0?columns.length:notes+1,0,['issuedObservedAt','Issued Time (First Seen)']);
   const focused=document.activeElement?.dataset?.punchFilter,caret=document.activeElement?.selectionStart;
-  $('punchHead').innerHTML=columns.map(([k,l])=>'<th><span class="punch-col-label">'+esc(l)+'</span><input placeholder="'+(k==='closedDate'?'e.g. 14 Sept 2026':'Type + Tab…')+'" aria-label="Filter '+esc(l)+'" data-punch-filter="'+esc(k)+'" value="'+esc(filters[k]||'')+'">'+filterChips(k)+'</th>').join('');
+  $('punchHead').innerHTML=columns.map(([k,l])=>'<th><span class="punch-col-label">'+esc(l)+'</span><input placeholder="'+(k==='closedDate'?'e.g. 14 Sept 2026':'Type + Tab…')+'" aria-label="Filter '+esc(l)+'" data-punch-filter="'+esc(k)+'" value="'+esc(filters[k]||'')+'">'+'<button type="button" class="punch-filter-menu" data-filter-menu="'+esc(k)+'" aria-label="Choose '+esc(l)+' values">'+(Object.hasOwn(exactFilters,k)?'Selected ('+exactFilters[k].length+') ▾':'Select ▾')+'</button>'+filterChips(k)+'</th>').join('');
   if(focused){const input=[...$('punchHead').querySelectorAll('input')].find(el=>el.dataset.punchFilter===focused);input?.focus({preventScroll:true});if(input&&caret!=null)input.setSelectionRange(caret,caret)}
 
   fitColumns();
@@ -78,7 +80,7 @@
 
  function render(q=query,force=false){query=q;if(!active)return;const data=PunchItems.getSnapshot();$('punchClock').innerHTML='Last update: <strong>'+esc(date(data?.syncedAt))+'</strong><br>Last check: '+esc(date(PunchItems.getLastChecked()))+(data?.stale?'<br><span class="punch-stage">Update unavailable — displaying saved data</span>':'');
 
-  const signature=JSON.stringify([query,tokens,filters,selectedFilters,expanded]);if(!force&&source===data?.rows&&lastSignature===signature)return;clearCells();const changed=source!==data?.rows;source=data?.rows;lastSignature=signature;if(changed)makeColumns();
+  const signature=JSON.stringify([query,tokens,filters,selectedFilters,exactFilters,expanded]);if(!force&&source===data?.rows&&lastSignature===signature)return;clearCells();const changed=source!==data?.rows;source=data?.rows;lastSignature=signature;if(changed)makeColumns();
 
   if(!data){matches=[];body.innerHTML='<tr><td colspan="'+columns.length+'">'+(PunchItems.getState()==='loading'?'Loading punch data…':'Punch data unavailable.')+'</td></tr>';$('punchCount').textContent='';$('punchTotals').textContent='';return}
 
@@ -111,13 +113,35 @@
 
  panel.addEventListener('click',event=>{const button=event.target.closest('[data-punch-remove]');if(button){tokens.splice(+button.dataset.punchRemove,1);chips();render(query,true)}});
 
- $('punchClear').onclick=()=>{tokens=[];filters={};selectedFilters={};query='';$('q').value='';chips();makeColumns();scroll.scrollTop=0;render('',true)};
+ $('punchClear').onclick=()=>{tokens=[];filters={};selectedFilters={};exactFilters={};query='';$('q').value='';chips();makeColumns();scroll.scrollTop=0;render('',true)};
 
  function toggle(){expanded=!expanded;$('punchFullQuery').value=$('q').value;panel.classList.toggle('punch-expanded',expanded);$('punchExpand').textContent=expanded?'Exit full screen ⤡':'Full screen ⛶';makeColumns();render(query,true)}
  $('punchExpand').onclick=toggle;
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&active&&selecting&&!document.querySelector('dialog[open]')){event.preventDefault();event.stopImmediatePropagation();setSelecting(false)}},true);
 
- window.PunchBrowser={render,activate(on){active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){setSelecting(false);tokens=[];filters={};selectedFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
+ const picker=document.createElement('dialog');picker.className='punch-value-picker';picker.setAttribute('aria-label','Choose column values');
+ picker.innerHTML='<div class="value-picker-heading"><strong id="valuePickerTitle"></strong><button type="button" data-picker-close aria-label="Close filter">×</button></div><div class="value-picker-search"><input id="valuePickerSearch" aria-label="Search values" placeholder="Search values…"><select id="valuePickerMode" aria-label="Match mode"><option value="contains">Contains</option><option value="prefix">Starts with</option></select></div><div class="value-picker-actions"><button type="button" id="valuePickerAll">Select all results</button><button type="button" id="valuePickerNone">Clear selection</button></div><div id="valuePickerCount" role="status"></div><div id="valuePickerList" class="value-picker-list"></div><div class="value-picker-actions"><button type="button" id="valuePickerReset">Remove column filter</button><button type="button" id="valuePickerApply">Apply</button></div>';
+ document.body.append(picker);
+ let pickerKey=null,pickerValues=[],pickerResults=[],pickerSelected=new Set(),pickerAnchor=null;
+ const collator=new Intl.Collator('en',{numeric:true,sensitivity:'base'});
+ function closePicker(){if(picker.open)picker.close();pickerKey=null}
+ function pickerSearch(){const term=norm($('valuePickerSearch').value),prefix=$('valuePickerMode').value==='prefix';pickerResults=pickerValues.filter(v=>!term||(prefix?norm(v).startsWith(term):norm(v).includes(term))||(!prefix&&['closedDate','issuedDate'].includes(pickerKey)&&PunchItems.dateMatches(v,term)));$('valuePickerList').scrollTop=0;paintPicker()}
+ function paintPicker(){const list=$('valuePickerList'),start=Math.max(0,Math.floor(list.scrollTop/36)-3),end=Math.min(start+24,pickerResults.length);list.innerHTML='<div style="height:'+start*36+'px"></div>'+pickerResults.slice(start,end).map((v,i)=>'<label class="value-picker-option" title="'+esc(v||'(Blanks)')+'"><input type="checkbox" data-value-index="'+(start+i)+'" '+(pickerSelected.has(v)?'checked':'')+'><span>'+esc(v||'(Blanks)')+'</span></label>').join('')+'<div style="height:'+Math.max(0,(pickerResults.length-end)*36)+'px"></div>';$('valuePickerCount').textContent=pickerResults.length.toLocaleString('en-GB')+' values · '+pickerSelected.size.toLocaleString('en-GB')+' selected'}
+ function openPicker(key,anchor){pickerKey=key;pickerAnchor=anchor;const values=new Set(),wanted=new Set(tokens);for(const row of PunchItems.getSnapshot()?.rows||[]){const number=norm(row.itemNumber);if(wanted.size&&!wanted.has(number)||query&&!number.includes(norm(query))||!matchesFilters(row,key))continue;values.add(String(value(row,key)))}pickerValues=[...values].sort((a,b)=>collator.compare(a,b));pickerSelected=new Set(exactFilters[key]||[]);$('valuePickerTitle').textContent=columns.find(c=>c[0]===key)?.[1]||key;$('valuePickerSearch').value=filters[key]||'';$('valuePickerMode').value='contains';pickerSearch();picker.showModal();$('valuePickerSearch').focus()}
+ panel.addEventListener('click',event=>{const button=event.target.closest('[data-filter-menu]');if(button)openPicker(button.dataset.filterMenu,button)});
+ // Typing retains the quick text filter; ArrowDown opens exact checkbox choices.
+ panel.addEventListener('keydown',event=>{if(event.key==='ArrowDown'&&event.target.dataset.punchFilter){event.preventDefault();openPicker(event.target.dataset.punchFilter,event.target)}});
+ $('valuePickerSearch').addEventListener('input',pickerSearch);$('valuePickerMode').addEventListener('change',pickerSearch);
+ $('valuePickerList').addEventListener('scroll',paintPicker);
+ $('valuePickerList').addEventListener('change',event=>{const i=event.target.dataset.valueIndex;if(i==null)return;const v=pickerResults[+i];if(event.target.checked)pickerSelected.add(v);else pickerSelected.delete(v);$('valuePickerCount').textContent=pickerResults.length.toLocaleString('en-GB')+' values · '+pickerSelected.size.toLocaleString('en-GB')+' selected'});
+ $('valuePickerAll').onclick=()=>{pickerResults.forEach(v=>pickerSelected.add(v));paintPicker()};
+ $('valuePickerNone').onclick=()=>{pickerSelected.clear();paintPicker()};
+ function applyPicker(reset){const key=pickerKey;if(!key)return;if(reset)delete exactFilters[key];else exactFilters[key]=[...pickerSelected];delete filters[key];delete selectedFilters[key];closePicker();makeColumns();scroll.scrollTop=0;render(query,true);[...panel.querySelectorAll('[data-filter-menu]')].find(b=>b.dataset.filterMenu===key)?.focus({preventScroll:true})}
+ $('valuePickerApply').onclick=()=>applyPicker(false);$('valuePickerReset').onclick=()=>applyPicker(true);
+ picker.querySelector('[data-picker-close]').onclick=closePicker;
+ picker.addEventListener('cancel',()=>{pickerKey=null});
+
+ window.PunchBrowser={render,activate(on){closePicker();active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){setSelecting(false);tokens=[];filters={};selectedFilters={};exactFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
 
 })();
 
