@@ -1,6 +1,6 @@
 (function(root){
 
- const normalize=v=>String(v??'').trim().toUpperCase();
+ const normalize=v=>String(v??'').trim().toUpperCase().replace(/[•·]/g,':');
 
  function findItems(rows,tag){
 
@@ -72,11 +72,16 @@
   return closed?{status:'Closed',text:g===true?'Closed':'Closed · '+colour}:g===true?{status:'Open',text:'Open · There is no closed date'}:g===false?{status:'Open',text:'Open'}:{status:'Open',text:'Open · '+colour};
  }
 
- function extractTags(row){return [...new Set([row.locationRoom,row.description].flatMap(v=>[...normalize(v).matchAll(/(?:^|[^A-Z0-9])(\d{2}[A-Z]{3}\d{2}\s*[A-Z]{2}\d{3}[A-Z]?)(?=$|[^A-Z0-9])/g)].map(m=>m[1].replace(/\s/g,''))))]}
+ let knownIdentifiers=new Set();
+ function extractTags(row){const result=new Set();for(const v of [row.locationRoom,row.description]){const text=normalize(v);for(const m of text.matchAll(/(?:^|[^A-Z0-9])(\d{2}[A-Z]{3}\d{2}(?:\s*[A-Z]{2}\d{3}[A-Z]?)?(?:[:\-]\d{3,6}[A-Z]?)?)(?=$|[^A-Z0-9])/g))result.add(m[1].replace(/\s/g,''));for(const m of text.matchAll(/[A-Z0-9]+(?:[:._/-][A-Z0-9]+)*/g))if(knownIdentifiers.has(m[0]))result.add(m[0])}return [...result]}
+ function setIdentifiers(values){knownIdentifiers=new Set(values.map(v=>normalize(v).replace(/\s/g,'')));tagSource=null;relatedCounts=new WeakMap()}
 
- let tagSource=null,tagIndex;
 
- function relatedItems(rows,item){if(tagSource!==rows){tagSource=rows;tagIndex=new Map();for(const r of rows)for(const tag of extractTags(r)){if(!tagIndex.has(tag))tagIndex.set(tag,[]);tagIndex.get(tag).push(r)}}const result=new Set();for(const tag of extractTags(item))for(const r of tagIndex.get(tag)||[])if(r!==item)result.add(r);return [...result]}
+ let tagSource=null,tagIndex,relatedCounts=new WeakMap();
+
+ function relatedItems(rows,item){if(tagSource!==rows){tagSource=rows;tagIndex=new Map();relatedCounts=new WeakMap();for(const r of rows)for(const tag of extractTags(r)){if(!tagIndex.has(tag))tagIndex.set(tag,[]);tagIndex.get(tag).push(r)}}const result=new Set();for(const tag of extractTags(item))for(const r of tagIndex.get(tag)||[])if(r!==item)result.add(r);return [...result]}
+
+ function relatedCount(rows,item){if(tagSource!==rows)relatedItems(rows,item);if(!relatedCounts.has(item))relatedCounts.set(item,relatedItems(rows,item).length);return relatedCounts.get(item)}
 
  function mergeSnapshot(previous,data){
 
@@ -88,7 +93,7 @@
 
  }
 
- const api={issuedDate,formatObserved,observedDate,findItems,searchItems,rowStatus,dateKey,formatDate,dateMatches,discipline,disciplineTone,extractTags,relatedItems,mergeSnapshot};
+ const api={issuedDate,formatObserved,observedDate,findItems,searchItems,rowStatus,dateKey,formatDate,dateMatches,discipline,disciplineTone,extractTags,setIdentifiers,relatedItems,relatedCount,mergeSnapshot};
 
  if(typeof module!=='undefined'){module.exports=api;return}
 
@@ -122,13 +127,13 @@
 
  api.cell=tag=>`<span data-punch-cell="${escape(tag)}">${cellContent(tag)}</span>`;
 
- function cache(action,key,value){return new Promise(resolve=>{try{const request=indexedDB.open('punch-snapshot-v2',1);request.onupgradeneeded=()=>request.result.createObjectStore('snapshots');request.onerror=()=>resolve(null);request.onblocked=()=>resolve(null);request.onsuccess=()=>{const db=request.result,tx=db.transaction('snapshots',action==='put'?'readwrite':'readonly');const job=action==='put'?tx.objectStore('snapshots').put(value,key):tx.objectStore('snapshots').get(key);job.onsuccess=()=>resolve(job.result||null);job.onerror=()=>resolve(null);tx.oncomplete=()=>db.close();tx.onerror=()=>{db.close();resolve(null)}}}catch{resolve(null)}})}
+ function cache(){return Promise.resolve(null)}
 
  api.connect=base=>{
 
   let busy=false;
 
-  const restored=cache('get',base).then(data=>{if(!snapshot&&data?.rows?.length&&data.syncedAt){snapshot={...data,stale:true};lastChecked=data.checkedAt||null;loadState='ready';document.dispatchEvent(new Event('punch-updated'))}});
+  const restored=ProjectAccess.ready.then(()=>cache('get',base)).then(data=>{if(!snapshot&&data?.rows?.length&&data.syncedAt){snapshot={...data,stale:true};lastChecked=data.checkedAt||null;loadState='ready';document.dispatchEvent(new Event('punch-updated'))}});
 
   async function refresh(){
 
@@ -184,13 +189,14 @@
 
   function paint(){const choice=document.getElementById('punchDetailDiscipline').value,found=items.filter(r=>!choice||discipline(r)===choice);
 
-   document.getElementById('punchDetailRows').innerHTML=found.slice(0,limit).map(x=>{const state=rowStatus(x);return '<tr'+(x===selected?' class="punch-selected"':'')+'><td>'+escape(x.itemNumber)+(x===selected?'<div class="hint">Selected item</div>':'')+'</td><td>'+escape(x.description||'—')+'<p><strong>Subsystem:</strong> '+escape(x.subsystem||'—')+' · <strong>Category:</strong> '+escape(x.category||'—')+'</p></td><td>'+escape(discipline(x)||'—')+'</td><td>'+escape(x.locationRoom||'—')+'</td><td>'+escape(state.text)+'</td><td>'+escape(formatObserved(x.closedObservedAt)||formatDate(x.closedDate)||'—')+(x.closedObservedAt?'<div class="hint">Observed closure</div>':x.closedDate?'<div class="hint">Time unavailable</div>':'')+'</td><td>'+escape(formatDate(issuedDate(x))||'—')+(x.issuedObservedAt?'<div class="hint">First seen: '+escape(formatObserved(x.issuedObservedAt))+'</div>':'')+'</td></tr>'}).join('');
+   document.getElementById('punchDetailRows').innerHTML=found.slice(0,limit).map(x=>{const state=rowStatus(x);return '<tr'+(x===selected?' class="punch-selected"':'')+'><td>'+escape(x.itemNumber)+(x===selected?'<div class="hint">Selected item</div>':'')+'</td><td>'+(window.PunchCollaboration?PunchCollaboration.linkText(x.description):escape(x.description||'—'))+'<p><strong>Subsystem:</strong> '+escape(x.subsystem||'—')+' · <strong>Category:</strong> '+escape(x.category||'—')+'</p></td><td>'+escape(discipline(x)||'—')+'</td><td>'+(window.PunchCollaboration?PunchCollaboration.linkText(x.locationRoom):escape(x.locationRoom||'—'))+'</td><td>'+escape(state.text)+'</td><td>'+escape(formatObserved(x.closedObservedAt)||formatDate(x.closedDate)||'—')+(x.closedObservedAt?'<div class="hint">Observed closure</div>':x.closedDate?'<div class="hint">Time unavailable</div>':'')+'</td><td>'+escape(formatDate(issuedDate(x))||'—')+(x.issuedObservedAt?'<div class="hint">First seen: '+escape(formatObserved(x.issuedObservedAt))+'</div>':'')+'</td></tr>'}).join('');
 
    document.getElementById('punchDetailMore').hidden=limit>=found.length;document.getElementById('punchDetailCount').textContent=Math.min(limit,found.length)+' of '+found.length+' shown';
 
   }
 
-  document.getElementById('punchDetailDiscipline').onchange=()=>{limit=80;paint()};document.getElementById('punchDetailMore').onclick=()=>{limit+=80;paint()};paint();dialog.showModal();
+  const updateLinks=()=>paint();document.addEventListener('cable-identifiers-updated',updateLinks);dialog.addEventListener('close',()=>document.removeEventListener('cable-identifiers-updated',updateLinks),{once:true});
+  document.getElementById('punchDetailDiscipline').onchange=()=>{limit=80;paint()};document.getElementById('punchDetailMore').onclick=()=>{limit+=80;paint()};paint();if(selected&&window.PunchCollaboration)PunchCollaboration.comments(target,selected);dialog.showModal();
 
  }
 
