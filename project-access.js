@@ -3,7 +3,7 @@
 const API='https://drawing-finder-ocr-api-639231007303.europe-west1.run.app',nativeFetch=window.fetch.bind(window);let token='',refreshToken='',config=null,user=null,resolveReady;const ready=new Promise(r=>resolveReady=r);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 document.documentElement.classList.add('access-locked');
-const gate=document.createElement('section');gate.id='accessGate';gate.innerHTML='<div class="access-card"><h1>TOP Punch Closure</h1><p>Sign in to access project data.</p><form id="accessForm"><label>Email<input id="accessEmail" type="email" autocomplete="username" required></label><label id="accessNameLabel" hidden>Name<input id="accessName" autocomplete="name" maxlength="80"></label><label>Password<input id="accessPassword" type="password" autocomplete="current-password" required></label><button id="accessSubmit" type="submit">Sign in</button></form><div class="access-actions"><button id="accessRegister">Create account</button><button id="accessReset">Forgot password</button><button id="accessVerify" hidden>Send verification email</button><button id="accessCheck" hidden>Check access again</button></div><p id="accessMessage" role="status">Connecting…</p></div>';document.body.append(gate);
+const gate=document.createElement('section');gate.id='accessGate';gate.innerHTML='<div class="access-card"><h1>TOP Punch Closure</h1><p>Sign in to access project data.</p><div class="access-social"><button type="button" id="accessGoogle" disabled>Continue with Google</button><button type="button" id="accessMicrosoft" disabled>Continue with Microsoft</button></div><p class="access-divider">or use your email</p><form id="accessForm"><label>Email<input id="accessEmail" type="email" autocomplete="username" required></label><label id="accessNameLabel" hidden>Name<input id="accessName" autocomplete="name" maxlength="80"></label><label>Password<input id="accessPassword" type="password" autocomplete="current-password" required></label><button id="accessSubmit" type="submit">Sign in</button></form><div class="access-actions"><button id="accessRegister">Create account</button><button id="accessReset">Forgot password</button><button id="accessVerify" hidden>Send verification email</button><button id="accessCheck" hidden>Check access again</button></div><p id="accessMessage" role="status">Connecting…</p></div>';document.body.append(gate);
 const $=id=>document.getElementById(id);let registering=false;
 // Remove legacy unauthenticated snapshots. Private data now stays in memory only.
 try{indexedDB.deleteDatabase('punch-snapshot-v2')}catch{}
@@ -11,7 +11,7 @@ async function parse(response){let d;try{d=await response.json()}catch{throw Err
 async function identity(action,data){if(!config)throw Error('Sign-in configuration is unavailable.');return parse(await nativeFetch('https://identitytoolkit.googleapis.com/v1/accounts:'+action+'?key='+encodeURIComponent(config.apiKey),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}))}
 let refreshBusy=null;
 async function renew(){if(!refreshToken)throw Error('Please sign in again.');if(refreshBusy)return refreshBusy;refreshBusy=(async()=>{const d=await parse(await nativeFetch('https://securetoken.googleapis.com/v1/token?key='+encodeURIComponent(config.apiKey),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken})}));token=d.id_token;refreshToken=d.refresh_token})().finally(()=>refreshBusy=null);return refreshBusy}
-function logout(){token='';refreshToken='';user=null;location.reload()}
+function logout(){if(socialAuth)socialAuth.signOut().catch(()=>{});token='';refreshToken='';user=null;location.reload()}
 window.fetch=async(input,options={})=>{const url=new URL(typeof input==='string'?input:input.url,location.href);if(url.origin!==new URL(API).origin)return nativeFetch(input,options);await ready;const headers=new Headers(options.headers||(input instanceof Request?input.headers:undefined));headers.set('Authorization','Bearer '+token);const run=()=>nativeFetch(input,{...options,headers,cache:'no-store'});let response=await run();if(response.status===401){try{await renew();headers.set('Authorization','Bearer '+token);response=await run()}catch{logout();throw Error('Session expired')}}if(response.status===401||response.status===403){logout();throw Error('Access has changed. Please sign in again.')}return response};
 async function check(){await renew();const r=await nativeFetch(API+'/api/session',{headers:{Authorization:'Bearer '+token},cache:'no-store'});const d=await parse(r);user=d.user;window.ProjectAccess.user=user;if(!['reader','writer','admin'].includes(user.role)){ $('accessMessage').textContent='Your account is awaiting administrator approval.';$('accessCheck').hidden=false;return}if(document.body.dataset.adminOnly&&user.role!=='admin'){location.replace('search.html');return}gate.hidden=true;document.documentElement.classList.remove('access-locked');const bar=document.createElement('div');bar.className='access-bar';bar.innerHTML='<span>'+esc(user.name)+' · '+esc(user.role)+'</span>'+(user.role==='admin'?'<button id="accessUsers">Manage users</button>':'')+'<button id="accessLogout">Sign out</button>';document.body.prepend(bar);$('accessLogout').onclick=logout;if($('accessUsers'))$('accessUsers').onclick=manageUsers;resolveReady(user);setInterval(()=>renew().catch(logout),50*60000)}
 $('accessForm').onsubmit=async e=>{e.preventDefault();$('accessSubmit').disabled=true;try{const email=$('accessEmail').value.trim(),password=$('accessPassword').value;if(registering&&password.length<12)throw Error('Use a password with at least 12 characters.');const d=await identity(registering?'signUp':'signInWithPassword',{email,password,returnSecureToken:true});token=d.idToken;refreshToken=d.refreshToken;$('accessPassword').value='';$('accessCheck').hidden=false;$('accessVerify').hidden=false;if(registering){await identity('update',{idToken:token,displayName:$('accessName').value.trim()||email.split('@')[0],returnSecureToken:false});await identity('sendOobCode',{requestType:'VERIFY_EMAIL',idToken:token});$('accessMessage').textContent='Verification email sent. Verify your email, then click Check access again.'}else await check()}catch(e){$('accessMessage').textContent=/INVALID_LOGIN|INVALID_PASSWORD|EMAIL_NOT_FOUND/.test(e.message)?'Email or password is incorrect.':e.message}finally{$('accessSubmit').disabled=false}};
@@ -19,8 +19,44 @@ $('accessRegister').onclick=()=>{registering=!registering;$('accessNameLabel').h
 $('accessVerify').onclick=()=>identity('sendOobCode',{requestType:'VERIFY_EMAIL',idToken:token}).then(()=>$('accessMessage').textContent='Verification email sent.').catch(e=>$('accessMessage').textContent=e.message);
 $('accessCheck').onclick=()=>check().catch(e=>$('accessMessage').textContent=e.message);
 $('accessReset').onclick=async()=>{const email=$('accessEmail').value.trim();if(!email){$('accessMessage').textContent='Enter your email address first.';return}try{await identity('sendOobCode',{requestType:'PASSWORD_RESET',email})}catch{}$('accessMessage').textContent='If this account exists, a password reset email will be sent.'};
+
+let socialAuth=null,socialBusy=false;
+function loadFirebaseScript(name){return new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://www.gstatic.com/firebasejs/12.19.0/'+name;script.onload=resolve;script.onerror=()=>reject(Error('Google/Microsoft sign-in could not load. Refresh the page or use email sign-in.'));document.head.append(script)})}
+async function prepareSocial(){
+ await loadFirebaseScript('firebase-app-compat.js');await loadFirebaseScript('firebase-auth-compat.js');
+ const app=firebase.initializeApp({apiKey:config.apiKey,projectId:config.projectId,authDomain:config.projectId+'.firebaseapp.com'},'top-punch-access');
+ socialAuth=app.auth();await socialAuth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+ $('accessGoogle').disabled=false;$('accessMicrosoft').disabled=false;
+}
+function socialError(e){return ({
+ 'auth/popup-blocked':'Allow pop-ups for this site, then try again.',
+ 'auth/popup-closed-by-user':'Sign-in was cancelled. You can try again.',
+ 'auth/cancelled-popup-request':'A sign-in window is already open.',
+ 'auth/unauthorized-domain':'Add this website domain to Firebase Authentication > Settings > Authorized domains.',
+ 'auth/operation-not-allowed':'Enable this sign-in provider in Firebase Authentication.',
+ 'auth/account-exists-with-different-credential':'This email already has an account. Sign in using its original method (email/password, Google or Microsoft). Your existing account and permissions are unchanged.',
+ 'auth/network-request-failed':'Could not connect. Check your connection and try again.'
+ })[e.code]||e.message||'Sign-in failed. Please try again.'}
+function socialSignIn(kind){
+ if(!socialAuth||socialBusy)return;
+ socialBusy=true;for(const id of ['accessGoogle','accessMicrosoft','accessSubmit','accessRegister'])$(id).disabled=true;
+ $('accessMessage').textContent='Complete sign-in in the window that opens.';
+ const provider=kind==='google'?new firebase.auth.GoogleAuthProvider():new firebase.auth.OAuthProvider('microsoft.com');
+ provider.setCustomParameters({prompt:'select_account'});
+ // Invoke directly in the click handler so browsers retain the user gesture.
+ socialAuth.signInWithPopup(provider).then(async result=>{
+  token=await result.user.getIdToken();refreshToken=result.user.refreshToken;
+  $('accessEmail').value=result.user.email||'';$('accessPassword').value='';
+  $('accessCheck').hidden=false;$('accessVerify').hidden=!!result.user.emailVerified;
+  await check();
+ }).catch(e=>{$('accessMessage').textContent=socialError(e)}).finally(()=>{
+  socialBusy=false;for(const id of ['accessGoogle','accessMicrosoft','accessSubmit','accessRegister'])$(id).disabled=false;
+ });
+}
+ $('accessGoogle').onclick=()=>socialSignIn('google');$('accessMicrosoft').onclick=()=>socialSignIn('microsoft');
+
 async function api(path,options){return parse(await window.fetch(API+path,options))}
 async function manageUsers(){let dialog=document.getElementById('accessUserDialog');if(!dialog){dialog=document.createElement('dialog');dialog.id='accessUserDialog';dialog.className='access-user-dialog';document.body.append(dialog)}dialog.innerHTML='<button class="access-close">Close ×</button><h2>User access</h2><p>New registrations are Pending. Reader can view; Writer can also comment; Admin can approve users and import data.</p><div class="access-user-list"></div><button class="access-more">Show more</button><p class="access-admin-status" role="status"></p>';dialog.querySelector('.access-close').onclick=()=>dialog.close();dialog.showModal();let cursor='';const more=dialog.querySelector('.access-more');async function load(){more.disabled=true;try{const d=await api('/api/admin/users'+(cursor?'?after='+encodeURIComponent(cursor):''));for(const u of d.users){const row=document.createElement('div');row.className='access-user-row';row.innerHTML='<span>'+esc(u.name)+'<small>'+esc(u.email)+'</small></span><select aria-label="Role for '+esc(u.name)+'" '+(u.uid===user.uid?'disabled':'')+'>'+['pending','reader','writer','admin','disabled'].map(r=>'<option '+(r===u.role?'selected':'')+'>'+r+'</option>').join('')+'</select><button '+(u.uid===user.uid?'disabled':'')+'>Save</button>';row.querySelector('button').onclick=async()=>{const b=row.querySelector('button');b.disabled=true;try{await api('/api/admin/users/role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:u.uid,role:row.querySelector('select').value})});dialog.querySelector('.access-admin-status').textContent='Access updated for '+u.name}catch(e){dialog.querySelector('.access-admin-status').textContent=e.message}finally{b.disabled=false}};dialog.querySelector('.access-user-list').append(row)}cursor=d.next;more.hidden=!cursor}catch(e){dialog.querySelector('.access-admin-status').textContent=e.message}finally{more.disabled=false}}more.onclick=load;await load()}
 window.ProjectAccess={ready,user:null,api,logout};
-nativeFetch(API+'/api/auth/config',{cache:'no-store'}).then(parse).then(d=>{config=d;$('accessMessage').textContent=''}).catch(e=>{$('accessMessage').textContent=e.message;$('accessSubmit').disabled=true});
+nativeFetch(API+'/api/auth/config',{cache:'no-store'}).then(parse).then(d=>{config=d;$('accessMessage').textContent='';prepareSocial().catch(e=>{$('accessMessage').textContent=e.message})}).catch(e=>{$('accessMessage').textContent=e.message;$('accessSubmit').disabled=true});
 })();
