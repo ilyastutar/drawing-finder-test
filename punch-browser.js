@@ -26,13 +26,21 @@
 
 
  const scroll=panel.querySelector('.punch-scroll'),body=$('punchRows');
+ let mobilePage=0;
+ scroll.insertAdjacentHTML('beforebegin','<div class="punch-mobile-filters"><label>Filter by<select id="punchMobileColumn"></select></label><input id="punchMobileFilter" aria-label="Search selected column" placeholder="Type a value…"><button class="action" id="punchMobileSelect">Select values</button><div id="punchMobileChips"></div><button class="action" id="punchMobileTable">Table view</button></div><div id="punchMobileCards" class="punch-mobile-cards"></div>');
+ $('punchMobileColumn').onchange=()=>{const key=$('punchMobileColumn').value;$('punchMobileFilter').dataset.punchFilter=key;$('punchMobileFilter').value=filters[key]||'';$('punchMobileChips').innerHTML=filterChips(key);$('punchMobileFilter').focus()};
+ $('punchMobileSelect').onclick=()=>openPicker($('punchMobileColumn').value,$('punchMobileSelect'));
+ $('punchMobileTable').onclick=()=>{panel.classList.toggle('mobile-table');$('punchMobileTable').textContent=panel.classList.contains('mobile-table')?'Card view':'Table view'};
+ function paintMobile(){const start=mobilePage*30,rows=matches.slice(start,start+30);$('punchMobileCards').innerHTML=rows.map(({row,index})=>{const state=PunchItems.rowStatus(row),related=PunchItems.relatedCount(source||[],row);return '<article class="punch-mobile-card '+PunchItems.disciplineTone(row)+'"><div class="mobile-card-top"><button class="related-tag" data-punch-record="'+index+'">Punch '+esc(row.itemNumber)+' ↗</button><span class="'+(state.status==='Closed'?'found':'warn')+'">'+esc(state.status)+'</span></div>'+(related?'<small class="punch-related-count">'+related+' related punches</small>':'')+'<p>'+esc(row.description||'No description')+'</p><dl><div><dt>Discipline</dt><dd>'+esc(PunchItems.discipline(row)||'—')+'</dd></div><div><dt>Category</dt><dd>'+esc(row.category||'—')+'</dd></div><div><dt>Subsystem</dt><dd>'+esc(row.subsystem||'—')+'</dd></div><div><dt>Location</dt><dd>'+esc(row.locationRoom||'—')+'</dd></div><div><dt>Closed date</dt><dd>'+esc(PunchItems.formatDate(row.closedDate)||'—')+'</dd></div></dl></article>'}).join('')+(matches.length?'<div class="mobile-pagination"><button class="action" data-mobile-page="-1" '+(mobilePage===0?'disabled':'')+'>Previous</button><span>'+(start+1)+'–'+Math.min(start+30,matches.length)+' / '+matches.length+'</span><button class="action" data-mobile-page="1" '+(start+30>=matches.length?'disabled':'')+'>Next</button></div>':'<p>No matching punch items.</p>')}
+ $('punchMobileCards').onclick=event=>{const b=event.target.closest('[data-mobile-page]');if(b){mobilePage+=+b.dataset.mobilePage;paintMobile();$('punchMobileCards').scrollIntoView({block:'start'})}};
+
  let selecting=false,cellRange=null;
  scroll.insertAdjacentHTML('beforebegin','<div class="punch-copy-tools"><button class="action" id="punchSelectCells" aria-pressed="false">Select cells</button><label><input id="punchCopyHeaders" type="checkbox" checked> Include headers</label><button class="action" id="punchCopyCells" disabled>Copy selected</button><button class="action" id="punchExportSelected" disabled>Export selected punches (.xlsx)</button><button class="action" id="punchExportFiltered">Export filtered (.xlsx)</button><span id="punchCopyHint" class="hint" role="status">Click a cell, then Shift-click the opposite corner. Esc cancels selection.</span></div>');
  function clearCells(){cellRange=null;$('punchCopyCells').disabled=true;$('punchExportSelected').disabled=true;$('punchCopyHint').textContent='Click a cell, then Shift-click the opposite corner. Esc cancels selection.'}
  function bounds(){return cellRange?{r0:Math.min(cellRange.start,cellRange.end),r1:Math.max(cellRange.start,cellRange.end),c0:Math.min(cellRange.cStart,cellRange.cEnd),c1:Math.max(cellRange.cStart,cellRange.cEnd)}:null}
  function cellSelected(position,key){const b=bounds(),c=columns.findIndex(x=>x[0]===key);return selecting&&b&&position>=b.r0&&position<=b.r1&&c>=b.c0&&c<=b.c1}
  function selectedText(){const b=bounds();if(!b)return '';const cols=columns.slice(b.c0,b.c1+1),rows=matches.slice(b.r0,b.r1+1).map(({row})=>cols.map(([key])=>value(row,key)));if($('punchCopyHeaders').checked)rows.unshift(cols.map(c=>c[1]));return rows.map(r=>r.map(v=>String(v??'').replace(/[\t\r\n]+/g,' ')).join('\t')).join('\r\n')}
- function setSelecting(on){selecting=on;clearCells();panel.classList.toggle('punch-selecting',on);$('punchSelectCells').setAttribute('aria-pressed',String(on));$('punchSelectCells').textContent=on?'Finish selecting':'Select cells';window.getSelection()?.removeAllRanges();paint()}
+ function setSelecting(on){selecting=on;clearCells();panel.classList.toggle('punch-selecting',on);if(on&&matchMedia('(max-width: 700px)').matches){panel.classList.add('mobile-table');$('punchMobileTable').textContent='Card view'}$('punchSelectCells').setAttribute('aria-pressed',String(on));$('punchSelectCells').textContent=on?'Finish selecting':'Select cells';window.getSelection()?.removeAllRanges();paint()}
  $('punchSelectCells').onclick=()=>setSelecting(!selecting);
  body.addEventListener('click',event=>{if(!selecting)return;const cell=event.target.closest('[data-copy-column]');if(!cell)return;event.preventDefault();event.stopImmediatePropagation();const column=columns.findIndex(c=>c[0]===cell.dataset.copyColumn),position=+cell.dataset.copyPosition;if(event.shiftKey&&cellRange){cellRange.end=position;cellRange.cEnd=column}else cellRange={cStart:column,cEnd:column,start:position,end:position};$('punchCopyCells').disabled=false;$('punchExportSelected').disabled=false;const b=bounds();$('punchCopyHint').textContent=(b.r1-b.r0+1)+' rows × '+(b.c1-b.c0+1)+' columns selected';window.getSelection()?.removeAllRanges();paint()},true);
  document.addEventListener('copy',event=>{if(!active||!selecting||!cellRange||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,[contenteditable="true"]'))return;event.preventDefault();event.clipboardData.setData('text/plain',selectedText());$('punchCopyHint').textContent='Copied selected cells.'});
@@ -55,6 +63,7 @@
   $('punchHead').innerHTML=columns.map(([k,l])=>'<th><span class="punch-col-label">'+esc(l)+'</span><input placeholder="'+(k==='closedDate'?'e.g. 14 Sept 2026':'Type + Tab…')+'" aria-label="Filter '+esc(l)+'" data-punch-filter="'+esc(k)+'" value="'+esc(filters[k]||'')+'">'+'<button type="button" class="punch-filter-menu" data-filter-menu="'+esc(k)+'" aria-label="Choose '+esc(l)+' values">'+(Object.hasOwn(exactFilters,k)?'Selected ('+exactFilters[k].length+') ▾':'Select ▾')+'</button>'+filterChips(k)+'</th>').join('');
   if(focused){const input=[...$('punchHead').querySelectorAll('input')].find(el=>el.dataset.punchFilter===focused);input?.focus({preventScroll:true});if(input&&caret!=null)input.setSelectionRange(caret,caret)}
 
+  const mobileKey=$('punchMobileColumn').value||'itemNumber';$('punchMobileColumn').innerHTML=columns.map(([k,l])=>'<option value="'+esc(k)+'">'+esc(l)+'</option>').join('');$('punchMobileColumn').value=mobileKey;$('punchMobileFilter').dataset.punchFilter=mobileKey;$('punchMobileFilter').value=filters[mobileKey]||'';$('punchMobileChips').innerHTML=filterChips(mobileKey);
   fitColumns();
 
  }
@@ -73,19 +82,19 @@
  function rowClass(row){return ' class="'+PunchItems.disciplineTone(row)+(tone(row)>=0?' punch-match':'')+'"'}
  function paint(){scheduled=false;if(!active)return;const start=Math.max(0,Math.floor(scroll.scrollTop/66)-8),end=Math.min(matches.length,start+70),height=n=>'<tr aria-hidden="true"><td colspan="'+columns.length+'" style="height:'+n+'px;padding:0;border:0"></td></tr>';
 
-  body.innerHTML=height(start*66)+matches.slice(start,end).map(({row,index},offset)=>'<tr'+rowClass(row)+' style="height:66px">'+columns.map(([key])=>'<td data-copy-column="'+esc(key)+'" data-copy-position="'+(start+offset)+'"'+(cellSelected(start+offset,key)?' class="punch-cell-selected"':'')+'>'+(key==='itemNumber'?'<button class="related-tag" data-punch-record="'+index+'">'+esc(row.itemNumber)+'</button>'+(tone(row)>=0?'<div class="match-label">Searched '+(tokens.length?'#'+(tone(row)+1):'match')+'</div>':''):'<div class="punch-clip" title="'+esc(value(row,key))+'">'+(key==='statusText'?'<span class="'+(PunchItems.rowStatus(row).status==='Closed'?'found':'warn')+'">'+esc(value(row,key))+'</span>':esc(value(row,key)))+'</div>')+'</td>').join('')+'</tr>').join('')+height((matches.length-end)*66);
+  body.innerHTML=height(start*66)+matches.slice(start,end).map(({row,index},offset)=>'<tr'+rowClass(row)+' style="height:66px">'+columns.map(([key])=>'<td data-copy-column="'+esc(key)+'" data-copy-position="'+(start+offset)+'"'+(cellSelected(start+offset,key)?' class="punch-cell-selected"':'')+'>'+(key==='itemNumber'?'<button class="related-tag" data-punch-record="'+index+'">'+esc(row.itemNumber)+'</button>'+(PunchItems.relatedCount(source||[],row)?'<div class="punch-related-count">'+PunchItems.relatedCount(source||[],row)+' related</div>':'')+(tone(row)>=0?'<div class="match-label">Searched '+(tokens.length?'#'+(tone(row)+1):'match')+'</div>':''):'<div class="punch-clip" title="'+esc(value(row,key))+'">'+(key==='statusText'?'<span class="'+(PunchItems.rowStatus(row).status==='Closed'?'found':'warn')+'">'+esc(value(row,key))+'</span>':esc(value(row,key)))+'</div>')+'</td>').join('')+'</tr>').join('')+height((matches.length-end)*66);
 
  }
 
  scroll.addEventListener('scroll',()=>{if(!scheduled){scheduled=true;requestAnimationFrame(paint)}});
 
- function render(q=query,force=false){query=q;if(!active)return;const data=PunchItems.getSnapshot();$('punchClock').innerHTML='Last update: <strong>'+esc(date(data?.syncedAt))+'</strong><br>Last check: '+esc(date(PunchItems.getLastChecked()))+(data?.stale?'<br><span class="punch-stage">Update unavailable — displaying saved data</span>':'');
+ function render(q=query,force=false){if(/[\s,;]/.test(q)&&q.trim()){tokens=[...new Set([...tokens,...split(q)])];q='';$('q').value='';$('punchFullQuery').value='';chips()}query=q;if(!active)return;const data=PunchItems.getSnapshot();$('punchClock').innerHTML='Last update: <strong>'+esc(date(data?.syncedAt))+'</strong><br>Last check: '+esc(date(PunchItems.getLastChecked()))+(data?.stale?'<br><span class="punch-stage">Update unavailable — displaying saved data</span>':'');
 
-  const signature=JSON.stringify([query,tokens,filters,selectedFilters,exactFilters,expanded]);if(!force&&source===data?.rows&&lastSignature===signature)return;clearCells();const changed=source!==data?.rows;source=data?.rows;lastSignature=signature;if(changed)makeColumns();
+  const signature=JSON.stringify([query,tokens,filters,selectedFilters,exactFilters,expanded]);if(!force&&source===data?.rows&&lastSignature===signature)return;clearCells();mobilePage=0;const changed=source!==data?.rows;source=data?.rows;lastSignature=signature;if(changed)makeColumns();
 
   if(!data){matches=[];body.innerHTML='<tr><td colspan="'+columns.length+'">'+(PunchItems.getState()==='loading'?'Loading punch data…':'Punch data unavailable.')+'</td></tr>';$('punchCount').textContent='';$('punchTotals').textContent='';return}
 
-  const wanted=new Set(tokens),found=new Set();matches=[];for(let index=0;index<data.rows.length;index++){const row=data.rows[index],number=norm(row.itemNumber);if(wanted.has(number))found.add(number);if(wanted.size&&!wanted.has(number))continue;if(query&&!number.includes(norm(query)))continue;if(!matchesFilters(row))continue;matches.push({row,index})}
+  const wanted=new Set(tokens),found=new Set();matches=[];for(let index=0;index<data.rows.length;index++){const row=data.rows[index],number=norm(row.itemNumber);if(wanted.has(number))found.add(number);if(wanted.size?(!wanted.has(number)&&!(query&&number.includes(norm(query)))):(query&&!number.includes(norm(query))))continue;if(!matchesFilters(row))continue;matches.push({row,index})}
 
   $('punchMissing').textContent=tokens.filter(n=>!found.has(n)).length?'Not found: '+tokens.filter(n=>!found.has(n)).join(', '):'';
 
@@ -94,7 +103,7 @@
 
   if(scroll.scrollTop>matches.length*66)scroll.scrollTop=0;
 
-  paint();if(!matches.length)body.innerHTML='<tr><td colspan="'+columns.length+'">No matching punch items.</td></tr>';
+  paintMobile();paint();if(!matches.length)body.innerHTML='<tr><td colspan="'+columns.length+'">No matching punch items.</td></tr>';
 
  }
 
@@ -105,7 +114,8 @@
 
  $('q').addEventListener('paste',event=>{if(!active)return;event.preventDefault();add(event.clipboardData.getData('text'))});
 
- $('q').addEventListener('keydown',event=>{if(!active)return;if(['Enter','Tab',',',';'].includes(event.key)&&$('q').value.trim()){event.preventDefault();add($('q').value)}else if(event.key==='Backspace'&&!$('q').value&&tokens.length){tokens.pop();chips();render('',true)}});
+ $('q').addEventListener('keydown',event=>{if(!active)return;if(['Enter','Tab',' ',',',';'].includes(event.key)&&$('q').value.trim()){event.preventDefault();add($('q').value)}else if(event.key==='Backspace'&&!$('q').value&&tokens.length){tokens.pop();chips();render('',true)}});
+ $('punchFullQuery').addEventListener('keydown',event=>{if(['Enter','Tab',' ',',',';'].includes(event.key)&&event.target.value.trim()){event.preventDefault();add(event.target.value);event.target.value=''}});
  $('punchFullQuery').addEventListener('input',event=>{$('q').value=event.target.value;scroll.scrollTop=0;render(event.target.value,true)});
  $('punchFullQuery').addEventListener('paste',event=>{event.preventDefault();add(event.clipboardData.getData('text'));event.target.value=''});
  panel.addEventListener('input',event=>{const key=event.target.dataset.punchFilter;if(key){filters[key]=event.target.value;scroll.scrollTop=0;render(query,true);showSuggestions(event.target)}});
@@ -153,6 +163,7 @@
  document.addEventListener('pointerdown',event=>{if(!suggestions.contains(event.target)&&event.target!==suggestionInput)hideSuggestions()});
  window.addEventListener('resize',hideSuggestions);document.addEventListener('scroll',event=>{if(!suggestions.contains(event.target))hideSuggestions()},true);
 
+ document.addEventListener('cable-identifiers-updated',()=>render(query,true));
  window.PunchBrowser={render,activate(on){hideSuggestions();closePicker();active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){setSelecting(false);tokens=[];filters={};selectedFilters={};exactFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
 
 })();

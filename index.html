@@ -68,7 +68,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 
 </style>
 </head>
-<body>
+<body data-admin-only="true"><link rel="stylesheet" href="project-access.css?v=0200"><script src="project-access.js?v=0200"></script>
 <main>
 <h1>TOP Punch Closure v0.14.1 — Drawing Indexing</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
@@ -5178,11 +5178,11 @@ function df80Slug(s){
   return v.replace(/-+$/,'');
 }
 function df80Endpoint(){return endpoint()}
-function df80Key(){return $('cloudAccessKey').value.trim()}
+function df80Key(){return window.ProjectAccess?.user?.role==='admin'?'authenticated-session':''}
 function df80ProjectId(){return df80Slug($('cloudProjectId').value)}
 function df80ProjectName(){return $('cloudProjectName').value.trim()||df70ProjectName||df80ProjectId()}
 function df80Headers(json=true){
-  const h={'X-DF-Key':df80Key()};
+  const h={};
   if(json)h['Content-Type']='application/json';
   return h;
 }
@@ -5209,22 +5209,13 @@ function df80SaveSettings(){
   $('cloudProjectId').value=df80ProjectId();
   localStorage.setItem(DF80_PROJECT_KEY,$('cloudProjectId').value);
   localStorage.setItem(DF80_PROJECT_NAME_KEY,$('cloudProjectName').value.trim());
-  localStorage.setItem(DF80_ACCESS_KEY,df80Key());
+  localStorage.removeItem(DF80_ACCESS_KEY);
   localStorage.setItem(DF80_AUTO_SYNC,$('cloudAutoSync').checked?'1':'0');
   $('cloudStatus').innerHTML='<span class="ok">Cloud settings saved in this browser.</span>';
 }
 $('saveCloudSettings').onclick=df80SaveSettings;
 
-$('generateCloudKey').onclick=()=>{
-  const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);
-  const key=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
-  $('cloudAccessKey').value=key;
-  localStorage.setItem(DF80_ACCESS_KEY,key);
-  $('cloudStatus').innerHTML=
-    '<span class="warn">New key generated. Copy this exact key into Cloud Run environment variable <code>DF_ACCESS_KEY</code>, then redeploy/update the service.</span>';
-  $('cloudAccessKey').type='text';
-  setTimeout(()=>$('cloudAccessKey').type='password',12000);
-};
+$('generateCloudKey').hidden=true;$('cloudAccessKey').disabled=true;$('cloudAccessKey').placeholder='Uses your administrator sign-in';
 
 async function df80Fetch(path,opts={}){
   if(!df80Endpoint())throw new Error('Cloud Run endpoint is empty.');
@@ -5442,7 +5433,7 @@ df70SetProjectHandle=async function(handle,fromRestore=false){
 function df80Init(){
   $('cloudProjectId').value=localStorage.getItem(DF80_PROJECT_KEY)||'';
   $('cloudProjectName').value=localStorage.getItem(DF80_PROJECT_NAME_KEY)||'';
-  $('cloudAccessKey').value=localStorage.getItem(DF80_ACCESS_KEY)||'';
+  $('cloudAccessKey').value='';localStorage.removeItem(DF80_ACCESS_KEY);
   $('cloudAutoSync').checked=localStorage.getItem(DF80_AUTO_SYNC)!=='0';
 
   $('cloudProjectId').addEventListener('change',()=>{
@@ -5472,7 +5463,7 @@ df80SaveSettings=function(){
 };
 
 function df81RenderWriteKeyState(){
-  const saved=!!localStorage.getItem(DF80_ACCESS_KEY);
+  const saved=!!window.ProjectAccess?.user;
   const el=$('writeKeyState');
   if(!el)return;
   el.innerHTML=saved
