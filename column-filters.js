@@ -3,7 +3,7 @@
  const inputs=[...document.querySelectorAll('[data-column-filter]')];
  const normalize=s=>String(s||'').trim().toLocaleUpperCase('en');
  function apply(){
-  const rows=[...body.rows].filter(r=>r.cells.length===8);
+  const rows=[...body.rows].filter(r=>r.cells.length===inputs.length);
   let shown=0;
   for(const row of rows){
    row.hidden=!inputs.every(input=>normalize(row.cells[Number(input.dataset.columnFilter)].textContent).includes(normalize(input.value)));

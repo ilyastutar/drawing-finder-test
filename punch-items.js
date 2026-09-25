@@ -196,7 +196,7 @@
   }
 
   const updateLinks=()=>paint();document.addEventListener('cable-identifiers-updated',updateLinks);dialog.addEventListener('close',()=>document.removeEventListener('cable-identifiers-updated',updateLinks),{once:true});
-  document.getElementById('punchDetailDiscipline').onchange=()=>{limit=80;paint()};document.getElementById('punchDetailMore').onclick=()=>{limit+=80;paint()};paint();if(selected&&window.PunchCollaboration)PunchCollaboration.comments(target,selected);dialog.showModal();
+  document.getElementById('punchDetailDiscipline').onchange=()=>{limit=80;paint()};document.getElementById('punchDetailMore').onclick=()=>{limit+=80;paint()};paint();if(selected&&window.PunchCollaboration)PunchCollaboration.comments(target,selected);if(selected&&window.PunchExtras)PunchExtras.photoSection(target,selected);dialog.showModal();
 
  }
 
