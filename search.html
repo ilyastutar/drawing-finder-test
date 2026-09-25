@@ -336,6 +336,7 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 
 </style>
 
+
 </head>
 
 <body>
@@ -352,7 +353,7 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 
 <div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenau - Hamburg</h1>
 
-<p class="subtitle">TOP Punch Closure <span class="version">v0.20.0</span></p></div></div>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.22.0</span></p></div></div>
 
 
 
@@ -429,28 +430,23 @@ Search any part of a tag, drawing or pipeline number (e.g. UMA). Paste Excel cel
 <tr>
 
   <th>Tag Number<input class="column-filter" data-column-filter="0" aria-label="Filter Tag Number" placeholder="Filter…"></th>
-
-  <th>Related Punch Items<input class="column-filter" data-column-filter="1" aria-label="Filter Related Punch Items" placeholder="Filter…"></th>
-
-  <th>Drawing<input class="column-filter" data-column-filter="2" aria-label="Filter Drawing" placeholder="Filter…"></th>
-
-  <th>Page / Row<input class="column-filter" data-column-filter="3" aria-label="Filter Page / Row" placeholder="Filter…"></th>
-
-  <th>Pipeline<input class="column-filter" data-column-filter="4" aria-label="Filter Pipeline" placeholder="Filter…"></th>
-
-  <th>Location / Room<input class="column-filter" data-column-filter="5" aria-label="Filter Location / Room" placeholder="Filter…"></th>
-
-  <th>Elevation<input class="column-filter" data-column-filter="6" aria-label="Filter Elevation" placeholder="Filter…"></th>
-
-  <th>Status<input class="column-filter" data-column-filter="7" aria-label="Filter Status" placeholder="Filter…"></th>
-
+  <th>Drawing Number<input class="column-filter" data-column-filter="1" aria-label="Filter Drawing Number" placeholder="Filter…"></th>
+  <th>DCC No<input class="column-filter" data-column-filter="2" aria-label="Filter DCC No" placeholder="Filter…"></th>
+  <th>Revision<input class="column-filter" data-column-filter="3" aria-label="Filter Revision" placeholder="Filter…"></th>
+  <th>Description<input class="column-filter" data-column-filter="4" aria-label="Filter Description" placeholder="Filter…"></th>
+  <th>Related Punch Items<input class="column-filter" data-column-filter="5" aria-label="Filter Related Punch Items" placeholder="Filter…"></th>
+  <th>Page / Row<input class="column-filter" data-column-filter="6" aria-label="Filter Page / Row" placeholder="Filter…"></th>
+  <th>Pipeline<input class="column-filter" data-column-filter="7" aria-label="Filter Pipeline" placeholder="Filter…"></th>
+  <th>Location / Room<input class="column-filter" data-column-filter="8" aria-label="Filter Location / Room" placeholder="Filter…"></th>
+  <th>Elevation<input class="column-filter" data-column-filter="9" aria-label="Filter Elevation" placeholder="Filter…"></th>
+  <th>Status<input class="column-filter" data-column-filter="10" aria-label="Filter Status" placeholder="Filter…"></th>
 </tr>
 
 </thead>
 
 <tbody id="results">
 
-<tr><td colspan="8" class="empty">Your search results will appear here.</td></tr>
+<tr><td colspan="11" class="empty">Your search results will appear here.</td></tr>
 
 </tbody>
 
@@ -470,7 +466,7 @@ Search any part of a tag, drawing or pipeline number (e.g. UMA). Paste Excel cel
 
 <dialog id="equipmentDetail"><button type="button" id="closeEquipment">Close ×</button><h2 id="equipmentTitle"></h2><div id="equipmentBody"></div></dialog>
 
-<link rel="stylesheet" href="punch-browser.css?v=01911"><link rel="stylesheet" href="project-access.css?v=0.20.1"><script src="project-access.js?v=0.20.1"></script><script src="punch-collaboration.js?v=0200"></script><script src="punch-items.js?v=0200"></script><script src="punch-export.js?v=0200"></script><script src="punch-browser.js?v=0200"></script><link rel="stylesheet" href="punch-enhancements.css?v=0200"><script src="punch-dashboard.js?v=0200"></script>
+<link rel="stylesheet" href="punch-browser.css?v=0.22.0"><link rel="stylesheet" href="project-access.css?v=0.22.0"><script src="project-access.js?v=0.22.0"></script><script src="punch-collaboration.js?v=0.22.0"></script><script src="punch-items.js?v=0.22.0"></script><script src="punch-export.js?v=0.22.0"></script><script src="photo-matching.js?v=0.22.0"></script><script src="punch-extras.js?v=0.22.0"></script><script src="punch-browser.js?v=0.22.0"></script><link rel="stylesheet" href="punch-enhancements.css?v=0.22.0"><script src="punch-dashboard.js?v=0.22.0"></script>
 
 <script src="equipment-service.js"></script>
 
@@ -642,7 +638,7 @@ function setMode(next,keepText=false){
 
   $('copyNotFound').style.display='none';
 
-  $('results').innerHTML='<tr><td colspan="8" class="empty">Your search results will appear here.</td></tr>';
+  $('results').innerHTML='<tr><td colspan="11" class="empty">Your search results will appear here.</td></tr>';
 
   $('status').textContent=mode==='tag'?'Start typing a tag.':`${MODES[mode].label} search selected.`;
 
@@ -838,7 +834,7 @@ function resetResults(){
 
   $('summary').style.display='none'; $('copyNotFound').style.display='none';
 
-  $('results').innerHTML='<tr><td colspan="8" class="empty">Your search results will appear here.</td></tr>';
+  $('results').innerHTML='<tr><td colspan="11" class="empty">Your search results will appear here.</td></tr>';
 
 }
 
@@ -936,9 +932,9 @@ function rowHtml(x,status='FOUND',requested=''){
 
   <td>${x.matched_fields?'<div class="match-field">'+esc(x.matched_fields.join(' · '))+'</div>':''}<code>${esc(x.tag||requested||'')}</code>${x.equipment?.identifier_review?'<div class="warn">Special identifier; review required</div>':''}</td>
 
+  <td><span class="path">${only?'No match in drawing index':esc(x.drawing_number||x.drawing_path||x.file_name||'')}</span></td>
+  <td>${esc(x.dcc_no||'—')}${x.metadata_status&&x.metadata_status!=='Detected'?'<div class="hint">'+esc(x.metadata_status)+'</div>':''}</td><td>${esc(x.revision||'—')}</td><td>${esc(x.drawing_description||'—')}</td>
   <td>${PunchItems.cell(x.tag)}</td>
-
-  <td><span class="path">${only?'No match in drawing index':esc(x.drawing_path||x.file_name||'')}</span></td>
 
   <td>${only?'—':'p.'+esc(x.page??1)+(x.row_no!==''&&x.row_no!=null?' / row '+esc(x.row_no):'')}</td>
 
@@ -1222,7 +1218,7 @@ async function runTagContains(){
 
   $('status').textContent=rows.length+' matches.'+(j.truncated?' Drawing results limited; narrow your search.':'');
 
-  $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">No matches found.</td></tr>';bindRelatedButtons();
+  $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="11" class="empty">No matches found.</td></tr>';bindRelatedButtons();
 
  }catch(e){if(!request.signal.aborted)$('status').textContent=e.message}
 
@@ -1358,7 +1354,7 @@ async function runDrawingRecords(id,label){
 
     $('summary').innerHTML=`<span class="stat"><strong>${esc(label)}</strong></span><span class="stat"><strong>${rows.length}</strong> indexed tags</span>`;
 
-    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">No records found for this drawing.</td></tr>'; bindRelatedButtons();
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="11" class="empty">No records found for this drawing.</td></tr>'; bindRelatedButtons();
 
     $('status').innerHTML=`<span class="ok">${rows.length} records found.${j.truncated?" More results available.":""}</span>`;
 
@@ -1438,7 +1434,7 @@ async function runAllFields(){
 
  }
 
- $('results').innerHTML=records.size?[...records.values()].map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">'+(suggestionItems.length?'Select a drawing above to view its records.':errors.length?'Some fields could not be searched.':'No matches found in any field.')+'</td></tr>';
+ $('results').innerHTML=records.size?[...records.values()].map(x=>rowHtml(x)).join(''):'<tr><td colspan="11" class="empty">'+(suggestionItems.length?'Select a drawing above to view its records.':errors.length?'Some fields could not be searched.':'No matches found in any field.')+'</td></tr>';
 
  bindRelatedButtons();
 
@@ -1476,7 +1472,7 @@ async function runModeSearch(){
 
     $('summary').style.display='none';
 
-    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="8" class="empty">No matches found.</td></tr>'; bindRelatedButtons();
+    $('results').innerHTML=rows.length?rows.map(x=>rowHtml(x)).join(''):'<tr><td colspan="11" class="empty">No matches found.</td></tr>'; bindRelatedButtons();
 
     $('status').innerHTML=`<span class="ok">${rows.length} matches.${j.truncated?" Result limit reached; narrow your search.":""}</span>`;
 
@@ -1584,7 +1580,7 @@ function updatePunchHeaders(){
 
  const labels=mode==='punch'?['Punch Item No.','Description','Location / Room','Status','Closed Date','Source Sheet','Excel Row','Details']:originalHeaders;
 
- document.querySelectorAll('#resultsTable thead th').forEach((th,i)=>{th.firstChild.textContent=labels[i];const input=th.querySelector('input');if(input){input.value='';input.setAttribute('aria-label','Filter '+labels[i])}});
+ document.querySelectorAll('#resultsTable thead th').forEach((th,i)=>{th.firstChild.textContent=labels[i]||originalHeaders[i]||originalHeaders[i];const input=th.querySelector('input');if(input){input.value='';input.setAttribute('aria-label','Filter '+(labels[i]||originalHeaders[i]))}});
 
 }
 
@@ -1606,8 +1602,9 @@ getLookup().catch(()=>{});
 
 </script>
 
-<script src="column-filters.js"></script>
+<script src="column-filters.js?v=0.21.0"></script>
 
+<link rel="stylesheet" href="punch-extras.css?v=0.22.0">
 </body>
 
 </html>

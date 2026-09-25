@@ -1,0 +1,16 @@
+LibreDWG Web 0.7.14 — GPL-3.0
+Unmodified runtime files distributed in this update:
+vendor/dwg/libredwg-web.js (npm dist/libredwg-web.js)
+vendor/dwg/libredwg-web.wasm (npm wasm/libredwg-web.wasm)
+vendor/wasm/libredwg-web.js (npm wasm/libredwg-web.js)
+
+Package: https://registry.npmjs.org/@mlightcad/libredwg-web/-/libredwg-web-0.7.14.tgz
+Project and source: https://github.com/mlightcad/libredwg-web
+Build instructions: https://github.com/mlightcad/libredwg-web/blob/master/bindings/javascript/README.md
+The package includes JS/TypeScript wrapper sources and the WASM build commands in package.json.
+Retain the accompanying GPL-3.0 license and source/build information when redistributing.
+
+fflate 0.8.2 — MIT
+Source: https://github.com/101arrowz/fflate/tree/v0.8.2
+Runtime: https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js
+License: vendor/FFLATE-LICENSE

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TOP Punch Closure v0.14.1 — Drawing Indexing</title>
+<title>TOP Punch Closure v0.21.0 — Drawing Indexing</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
@@ -67,10 +67,12 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 @media(max-width:950px){.cloud-grid{grid-template-columns:1fr}.secret-row{grid-template-columns:1fr}}
 
 </style>
+<link rel="stylesheet" href="drawing-import.css?v=0.21.0">
+
 </head>
-<body data-admin-only="true"><link rel="stylesheet" href="project-access.css?v=0.20.1"><script src="project-access.js?v=0.20.1"></script>
+<body data-admin-only="true"><link rel="stylesheet" href="project-access.css?v=0.22.0"><script src="project-access.js?v=0.22.0"></script>
 <main>
-<h1>TOP Punch Closure v0.14.1 — Drawing Indexing</h1>
+<h1>TOP Punch Closure v0.21.0 — Drawing Indexing</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
 
 <div class="note">
@@ -146,9 +148,9 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <div class="result-scroll project-results">
 <table>
 <thead><tr>
- <th>Tag</th><th>Drawing</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th><th>Status</th>
+ <th>Tag Number</th><th>Drawing Number</th><th>DCC No</th><th>Revision</th><th>Description</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th><th>Status</th>
 </tr></thead>
-<tbody id="projectResults"><tr><td colspan="6" class="small">No project records yet.</td></tr></tbody>
+<tbody id="projectResults"><tr><td colspan="9" class="small">No project records yet.</td></tr></tbody>
 </table>
 </div>
 
@@ -164,7 +166,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
  <strong>Purpose:</strong> IndexedDB remains the local checkpoint. Firestore is the central index.
  After each PDF is indexed locally, this page can sync its tag records to Cloud Run → Firestore.
  Then <code>search.html</code> can search the same project from another computer or phone.
- <br><strong>Security:</strong> the access key is not embedded in GitHub Pages. Enter it here once; it is stored only in this browser's local storage.
+ <br><strong>Security:</strong> cloud publishing uses your administrator sign-in. No shared access key is stored in the browser.
 </div>
 
 <div class="cloud-grid">
@@ -209,7 +211,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <div class="result-scroll cloud-search-results">
 <table>
 <thead><tr>
- <th>Tag</th><th>Drawing</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th><th>Status</th>
+ <th>Tag Number</th><th>Drawing Number</th><th>DCC No</th><th>Revision</th><th>Description</th><th>Page / Row</th><th>Pipeline</th><th>Elevation</th><th>Status</th>
 </tr></thead>
 <tbody id="cloudResults"><tr><td colspan="6" class="small">No remote search yet.</td></tr></tbody>
 </table>
@@ -5063,7 +5065,7 @@ function df70RenderSearch(){
       String(r.tag||'').toUpperCase().includes(q) ||
       String(r.pipeline||'').toUpperCase().includes(q) ||
       String(r.path||'').toUpperCase().includes(q) ||
-      String(r.fileName||'').toUpperCase().includes(q)
+      String(r.fileName||'').toUpperCase().includes(q) || String(r.dccNo||'').toUpperCase().includes(q) || String(r.drawingNumber||'').toUpperCase().includes(q)
     );
   }
   matches=[...matches].sort((a,b)=>
@@ -5080,19 +5082,20 @@ function df70RenderSearch(){
 
   $('projectResults').innerHTML=shown.length?shown.map(r=>`<tr>
     <td><code>${escapeHtml(r.tag)}</code></td>
-    <td><span class="project-file">${escapeHtml(r.path)}</span></td>
+    <td><span class="project-file">${escapeHtml(r.drawingNumber||r.path)}</span></td>
+    <td>${escapeHtml(r.dccNo||"—")}</td><td>${escapeHtml(r.revision||"—")}</td><td>${escapeHtml(r.drawingDescription||"—")}</td>
     <td>p.${escapeHtml(r.page||1)}${r.rowNo!==''?` / row ${escapeHtml(r.rowNo)}`:''}</td>
     <td>${r.pipeline?`<code>${escapeHtml(r.pipeline)}</code>`:'—'}</td>
     <td>${escapeHtml(r.elevation||'—')}</td>
     <td>${escapeHtml(r.status||'')}</td>
-  </tr>`).join(''):'<tr><td colspan="6" class="small">No matching project records.</td></tr>';
+  </tr>`).join(''):'<tr><td colspan="9" class="small">No matching project records.</td></tr>';
 }
 $('projectSearch').addEventListener('input',df70RenderSearch);
 
 $('exportProjectCsv').onclick=()=>{
   if(!df70ProjectRecords.length)return;
   const head=[
-    'tag','drawing_path','file_name','page','row_no','status','row_status','row_integrity',
+    'Tag Number','Drawing Number','DCC No','Revision','Drawing Description','drawing_path','file_name','page','row_no','status','row_status','row_integrity',
     'pipeline','pipeline_engine','pipeline_verification_status','elevation','floor_elevation',
     'profile','column_type','related_tag','description',
     'google_confidence','paddle_confidence','physical_row_id','zone','block_id'
@@ -5104,7 +5107,7 @@ $('exportProjectCsv').onclick=()=>{
     Number(a.rowNo||0)-Number(b.rowNo||0)
   )){
     rows.push([
-      r.tag,r.path,r.fileName,r.page,r.rowNo,r.status,r.rowStatus,r.rowIntegrity,
+      r.tag,r.drawingNumber,r.dccNo,r.revision,r.drawingDescription,r.path,r.fileName,r.page,r.rowNo,r.status,r.rowStatus,r.rowIntegrity,
       r.pipeline,r.pipelineEngine,r.pipelineVerificationStatus,r.elevation,r.floorElevation,
       r.profile,r.column,(r.related||[]).join(';'),r.description,
       r.googleConfidence,r.paddleConfidence,r.physicalRowId,r.zone,r.blockId
@@ -5883,5 +5886,8 @@ renderResults=function(){
 };
 </script>
 
+<script src="drawing-metadata.js?v=0.21.0"></script>
+<script src="drawing-import.js?v=0.21.0"></script>
+<link rel="stylesheet" href="punch-extras.css?v=0.22.0">
 </body>
 </html>
