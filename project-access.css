@@ -10,3 +10,5 @@
 @media(max-width:700px){.site-photo{display:none!important}}
 
 .access-social{display:grid;gap:10px;margin:20px 0 12px}.access-social button{width:100%;min-height:44px;background:white;font-weight:600}.access-social button:hover{background:#f0f5f8}.access-card button:disabled{opacity:.55;cursor:wait}.access-divider{text-align:center;color:#718697;font-size:12px}.access-card input{font-size:16px}
+
+.access-profile{padding:8px 12px;border:1px solid #b9ccd9;border-radius:7px;background:#eaf2f7;color:#22495f;font-weight:600}
