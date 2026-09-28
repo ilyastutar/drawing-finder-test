@@ -13,3 +13,11 @@
 #punchPanel[data-hidden-columns~="discipline"] .punch-mobile-card dl>div:nth-child(1),#punchPanel[data-hidden-columns~="category"] .punch-mobile-card dl>div:nth-child(2),#punchPanel[data-hidden-columns~="subsystem"] .punch-mobile-card dl>div:nth-child(3),#punchPanel[data-hidden-columns~="locationRoom"] .punch-mobile-card dl>div:nth-child(4),#punchPanel[data-hidden-columns~="closedDate"] .punch-mobile-card dl>div:nth-child(5){display:none}
 #punchPanel[data-hidden-columns~="latestComment"] .mobile-extras .punch-comment-preview,#punchPanel[data-hidden-columns~="photoCount"] .mobile-extras .punch-photo-trigger,#punchPanel[data-hidden-columns~="cableCompletion"] .mobile-extras .cable-completion{display:none}
 @media(max-width:700px){.access-bar{font-size:11px}.access-profile{padding:6px 8px;max-width:50vw;overflow:hidden;text-overflow:ellipsis}.punch-is-expanded .access-bar{height:auto;min-height:44px;background:#eff5f9}.punch-is-expanded #punchPanel.punch-expanded{top:calc(var(--access-bar-height,80px) + 8px)!important}.column-options{grid-template-columns:1fr}.gallery-tools{flex-wrap:wrap}.gallery-tools h3{flex-basis:100%;font-size:14px}.gallery-stage img{height:55dvh}.workspace-dialog,.columns-dialog{padding:16px}.gallery-nav{gap:10px}.gallery-tools button,.gallery-nav button{min-height:40px}}
+
+#punchPanel .punch-col-label{gap:4px;justify-content:space-between;align-items:flex-start}
+.punch-col-label>span{min-width:0;overflow-wrap:anywhere}
+#punchPanel .punch-hide-column{flex:none;width:22px;height:24px;padding:3px;margin:0;border:0;border-radius:4px;background:transparent;color:#668393;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+#punchPanel .punch-hide-column:hover{background:#d4e4ef;color:#214e69}
+#punchPanel .punch-hide-column:focus-visible{outline:2px solid #32688c;outline-offset:1px}
+#punchPanel .punch-hide-column:disabled{opacity:.3;cursor:default}
+.punch-hide-column svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
