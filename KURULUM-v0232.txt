@@ -1,0 +1,11 @@
+v0.23.2 — Toplu fotoğraf kuyruğu
+
+v0.23.0 veya v0.23.1 üzerine yükleyin. v0.23.1 oturum ve kolon gizleme değişiklikleri dahildir.
+ZIP içindeki altı kod dosyasını GitHub reposunun ana dizinine yükleyip mevcut dosyaları değiştirin. Vendor değişmez. Commit açıklaması: Add background photo upload queue.
+GitHub Pages yayını tamamlandığında Ctrl+F5 yapın.
+Backend değişmedi; Cloud Shell komutu gerekmez.
+
+Import photos: 100 dosya sınırı kaldırıldı. Eşleşmeleri kontrol edip Start / Resume ile başlatın. Minimize ile pencereyi kapatınca aynı sayfada yükleme sürer. Sağ alttaki Photos düğmesi ilerlemeyi gösterir ve pencereyi tekrar açar. Yüzde, başarılı + başarısız işlenen fotoğraf sayısıdır; ağ üzerinden gönderilen bayt yüzdesi değildir. Başarılı ve hatalı sayıları ayrı gösterilir. Pause mevcut fotoğraf bitince durur; Retry failed başarılı fotoğrafları yeniden göndermez.
+Tek seferde yalnızca bir fotoğraf hazırlanır/yüklenir. Liste 50 kayıtlık sayfalara bölünür. Başarılı fotoğrafların dosya referansları serbest bırakılır. Eşleşmeyen dosyalar yüklenmez. Depolama ve yetki kontrolleri korunur.
+Sekmeyi açık tutun. Tarayıcıyı kapatma, yenileme, çıkış veya bilgisayarın uyuması kesintiye yol açabilir; kalıcı kuyruk yoktur. Ayrı punch içindeki 10 dosyalık seçim sınırı bu güncellemenin konusu değildir; sınırsız seçim ana sayfadaki Import photos içindir.
+Punch 14964 veri uyuşmazlığı bu pakette değiştirilmedi.
