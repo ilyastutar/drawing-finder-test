@@ -1,6 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="access-locked">
 <head>
+<style id="access-critical">
+html.access-locked,html.access-locked body{background:#eef3f6!important;background-image:none!important;overflow:hidden!important}
+html.access-locked body>*:not(#accessGate):not(script):not(style),html.access-locked body>*:not(#accessGate):not(script):not(style) *{visibility:hidden!important;pointer-events:none!important}
+html.access-locked body::before,html.access-locked body::after{display:none!important}
+#accessGate{position:fixed;inset:0;z-index:200000;overflow:auto;display:grid;place-items:center;background:#eef3f6;color:#263e50;padding:20px;font:14px system-ui,sans-serif}
+#accessGate[hidden]{display:none!important}
+</style>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TOP Punch Closure v0.21.0 — Drawing Indexing</title>
@@ -70,7 +77,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <link rel="stylesheet" href="drawing-import.css?v=0.21.0">
 
 </head>
-<body data-admin-only="true"><link rel="stylesheet" href="project-access.css?v=0.22.0"><script src="project-access.js?v=0.23.3"></script>
+<body data-admin-only="true"><link rel="stylesheet" href="project-access.css?v=0.22.0"><script src="project-access.js?v=0.23.4"></script>
 <main>
 <h1>TOP Punch Closure v0.21.0 — Drawing Indexing</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
