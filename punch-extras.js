@@ -48,41 +48,331 @@ async function upload(row,file,onProgress){
  return {...result,preparation:prepared};
 }
 async function openPhoto(rows,index=0,onChanged){
- const dialog=document.createElement('dialog');dialog.className='photo-viewer';dialog.innerHTML='<div class="gallery-tools"><h3></h3><button class="action" data-expand>Full screen ⛶</button><button class="action" data-close>Close ×</button></div><div class="gallery-stage" tabindex="0"><p role="status">Loading…</p></div><div class="gallery-nav"><button class="action" data-prev aria-label="Previous photo">← Previous</button><span data-count></span><button class="action" data-next aria-label="Next photo">Next →</button></div>';
- document.body.append(dialog);let draw=0;
- async function paint(){const run=++draw,p=rows[index],stage=dialog.querySelector('.gallery-stage');dialog.querySelector('h3').textContent=p.name;dialog.querySelector('[data-count]').textContent=(index+1)+' / '+rows.length;dialog.querySelector('[data-prev]').disabled=dialog.querySelector('[data-next]').disabled=rows.length<2;stage.innerHTML='<p role="status">Loading…</p>';try{const url=await imageUrl(p.id,'display');if(dialog.open&&run===draw)stage.innerHTML='<img src="'+url+'" alt="'+esc(p.name)+'" draggable="false">'}catch(e){if(dialog.open&&run===draw)stage.textContent=e.message}}
- function move(delta){if(rows.length<2)return;index=(index+delta+rows.length)%rows.length;paint()}
- dialog.querySelector('[data-close]').onclick=()=>dialog.close();dialog.querySelector('[data-prev]').onclick=()=>move(-1);dialog.querySelector('[data-next]').onclick=()=>move(1);
- dialog.querySelector('[data-expand]').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await dialog.requestFullscreen()}catch{dialog.classList.toggle('photo-maximized')}};
- dialog.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();e.stopPropagation();move(e.key==='ArrowRight'?1:-1)}});
- const stage=dialog.querySelector('.gallery-stage');let touch=null,lastSwipe=0;stage.addEventListener('touchstart',e=>{touch=[e.touches[0].clientX,e.touches[0].clientY]},{passive:true});stage.addEventListener('touchend',e=>{if(!touch)return;const dx=e.changedTouches[0].clientX-touch[0],dy=e.changedTouches[0].clientY-touch[1];if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)){lastSwipe=Date.now();move(dx<0?1:-1)}touch=null},{passive:true});stage.onclick=e=>{if(Date.now()-lastSwipe<400)return;const r=stage.getBoundingClientRect();move(e.clientX-r.left<r.width/2?-1:1)};
- dialog.addEventListener('close',()=>{draw++;dialog.remove()});dialog.showModal();await paint();
+ if(!rows.length)return;
+ index=Math.max(0,Math.min(index,rows.length-1));
+ const dialog=document.createElement('dialog');
+ dialog.className='photo-viewer photo-zoom';
+ dialog.setAttribute('aria-label','Punch photo viewer');
+ dialog.innerHTML=`
+  <div class="gallery-tools">
+   <h3></h3>
+   <button type="button" class="action" data-out aria-label="Zoom out">−</button>
+   <button type="button" class="action" data-reset aria-label="Reset zoom">100%</button>
+   <button type="button" class="action" data-in aria-label="Zoom in">+</button>
+   <button type="button" class="action" data-expand>Full screen ⛶</button>
+   <button type="button" class="action" data-close>Close ×</button>
+  </div>
+  <div class="gallery-stage" tabindex="0" role="region" aria-label="Photo: scroll or pinch to zoom; drag to pan"></div>
+  <p class="gallery-help">Scroll / pinch: zoom · Drag: pan · + / −: zoom · 0: reset</p>
+  <div class="gallery-nav">
+   <button type="button" class="action" data-prev aria-label="Previous photo">← Previous</button>
+   <span data-count aria-live="polite"></span>
+   <button type="button" class="action" data-next aria-label="Next photo">Next →</button>
+  </div>`;
+ document.body.append(dialog);
+ const stage=dialog.querySelector('.gallery-stage');
+ const find=selector=>dialog.querySelector(selector);
+ const controller=new AbortController(),pointers=new Map();
+ const options={signal:controller.signal};
+ let draw=0,img=null,scale=1,x=0,y=0,navigationGesture=null;
+ const clamp=(value,min,max)=>Math.max(min,Math.min(value,max));
+ const ready=()=>Boolean(img?.naturalWidth&&img?.naturalHeight);
+
+ function renderZoom(){
+  if(ready()){
+   const fit=Math.min(stage.clientWidth/img.naturalWidth,stage.clientHeight/img.naturalHeight);
+   const maxX=Math.max(0,(img.naturalWidth*fit*scale-stage.clientWidth)/2);
+   const maxY=Math.max(0,(img.naturalHeight*fit*scale-stage.clientHeight)/2);
+   x=clamp(x,-maxX,maxX);y=clamp(y,-maxY,maxY);
+   img.style.transform=`translate(${x}px, ${y}px) scale(${scale})`;
+  }
+  stage.classList.toggle('is-zoomed',scale>1);
+  stage.classList.toggle('is-panning',scale>1&&pointers.size>0);
+  find('[data-reset]').textContent=Math.round(scale*100)+'%';
+  find('[data-reset]').disabled=!ready();
+  find('[data-in]').disabled=!ready()||scale>=8;
+  find('[data-out]').disabled=!ready()||scale<=1;
+ }
+ function resetZoom(){
+  for(const id of pointers.keys())if(stage.hasPointerCapture(id))stage.releasePointerCapture(id);
+  pointers.clear();navigationGesture=null;scale=1;x=0;y=0;renderZoom();
+ }
+ function zoomAt(next,point={x:0,y:0},destination=point){
+  if(!ready())return;
+  navigationGesture=null;next=clamp(next,1,8);
+  const ratio=next/scale;
+  x=destination.x-(point.x-x)*ratio;
+  y=destination.y-(point.y-y)*ratio;
+  scale=next;renderZoom();
+ }
+ function geometry(){
+  const points=[...pointers.values()],a=points[0],b=points[1]||a;
+  const rect=stage.getBoundingClientRect();
+  return {x:(a.x+b.x)/2-rect.left-rect.width/2,
+   y:(a.y+b.y)/2-rect.top-rect.height/2,
+   distance:Math.hypot(a.x-b.x,a.y-b.y)};
+ }
+ stage.addEventListener('wheel',event=>{
+  if(!ready())return;
+  event.preventDefault();
+  const rect=stage.getBoundingClientRect();
+  const unit=event.deltaMode===1?16:event.deltaMode===2?stage.clientHeight:1;
+  zoomAt(scale*Math.exp(-clamp(event.deltaY*unit,-1000,1000)*0.002),
+   {x:event.clientX-rect.left-rect.width/2,y:event.clientY-rect.top-rect.height/2});
+ },{...options,passive:false});
+ stage.addEventListener('pointerdown',event=>{
+  if(!ready()||(event.pointerType==='mouse'&&event.button!==0))return;
+  event.preventDefault();stage.focus({preventScroll:true});
+  navigationGesture=pointers.size===0&&scale===1?{x:event.clientX,y:event.clientY}:null;
+  pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+  stage.setPointerCapture(event.pointerId);renderZoom();
+ },options);
+ stage.addEventListener('pointermove',event=>{
+  if(!pointers.has(event.pointerId))return;
+  event.preventDefault();
+  const before=geometry();
+  pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+  const after=geometry();
+  if(pointers.size>=2&&before.distance>0){
+   zoomAt(scale*after.distance/before.distance,before,after);
+  }else if(pointers.size===1&&scale>1){
+   x+=after.x-before.x;y+=after.y-before.y;renderZoom();
+  }
+ },options);
+ function release(event){
+  let delta=0;
+  if(event.type==='pointerup'&&pointers.size===1&&navigationGesture&&scale===1){
+   const dx=event.clientX-navigationGesture.x,dy=event.clientY-navigationGesture.y;
+   if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy))delta=dx<0?1:-1;
+   else if(Math.abs(dx)<6&&Math.abs(dy)<6){
+    const rect=stage.getBoundingClientRect();delta=event.clientX-rect.left<rect.width/2?-1:1;
+   }
+  }
+  navigationGesture=null;
+  pointers.delete(event.pointerId);
+  if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);
+  renderZoom();if(delta)move(delta);
+ }
+ for(const type of ['pointerup','pointercancel','lostpointercapture'])stage.addEventListener(type,release,options);
+ find('[data-in]').onclick=()=>zoomAt(scale*1.25);
+ find('[data-out]').onclick=()=>zoomAt(scale/1.25);
+ find('[data-reset]').onclick=resetZoom;
+
+ async function paint(){
+  const run=++draw,p=rows[index];
+  img=null;resetZoom();
+  find('h3').textContent=p.name;
+  find('[data-count]').textContent=(index+1)+' / '+rows.length;
+  find('[data-prev]').disabled=find('[data-next]').disabled=rows.length<2;
+  stage.innerHTML='<p role="status">Loading…</p>';
+  try{
+   const url=await imageUrl(p.id,'display');
+   if(!dialog.open||run!==draw)return;
+   const picture=new Image();picture.alt=p.name;picture.draggable=false;
+   picture.onload=()=>{if(dialog.open&&run===draw)resetZoom()};
+   picture.onerror=()=>{
+    if(dialog.open&&run===draw){img=null;stage.textContent='Photo could not be displayed.';resetZoom()}
+   };
+   img=picture;stage.replaceChildren(picture);picture.src=url;
+   if(picture.complete&&picture.naturalWidth)resetZoom();
+  }catch(error){
+   if(dialog.open&&run===draw){stage.textContent=error.message;resetZoom()}
+  }
+ }
+ function move(delta){
+  if(rows.length<2)return;
+  index=(index+delta+rows.length)%rows.length;void paint();
+ }
+ find('[data-close]').onclick=()=>dialog.close();
+ find('[data-prev]').onclick=()=>move(-1);
+ find('[data-next]').onclick=()=>move(1);
+ function updateFullscreen(){
+  find('[data-expand]').textContent=document.fullscreenElement===dialog||dialog.classList.contains('photo-maximized')
+   ?'Exit full screen ⤡':'Full screen ⛶';
+ }
+ find('[data-expand]').onclick=async()=>{
+  try{
+   if(document.fullscreenElement===dialog)await document.exitFullscreen();
+   else if(dialog.classList.contains('photo-maximized'))dialog.classList.remove('photo-maximized');
+   else await dialog.requestFullscreen();
+  }catch{if(dialog.open)dialog.classList.toggle('photo-maximized')}
+  updateFullscreen();
+ };
+ document.addEventListener('fullscreenchange',updateFullscreen,options);
+ dialog.addEventListener('keydown',event=>{
+  if(event.ctrlKey||event.metaKey||event.altKey)return;
+  const actions={ArrowRight:()=>move(1),ArrowLeft:()=>move(-1),
+   '+':()=>zoomAt(scale*1.25),'=':()=>zoomAt(scale*1.25),
+   '-':()=>zoomAt(scale/1.25),'0':resetZoom};
+  if(actions[event.key]){event.preventDefault();event.stopPropagation();actions[event.key]()}
+ },options);
+ const observer=new ResizeObserver(renderZoom);observer.observe(stage);
+ dialog.addEventListener('close',()=>{
+  draw++;observer.disconnect();controller.abort();pointers.clear();
+  if(document.fullscreenElement===dialog)document.exitFullscreen().catch(()=>{});
+  dialog.remove();
+ },{once:true});
+ dialog.showModal();await paint();
 }
+
+function matchPhotoImportFiles(files,rows){
+ const match=PhotoMatching.createMatcher(rows);
+ return Array.from(files,file=>{
+  // Match the complete snapshot before applying any status filter.
+  const found=match(file.name),row=found.length===1?found[0]:null;
+  return {file,name:file.name,row,status:row?PunchItems.rowStatus(row).status:null,
+   state:row?'Waiting':found.length?'Ambiguous — skipped':'No match — skipped'};
+ });
+}
+function filterPhotoImportJobs(candidates,scope){
+ if(!['Open','Closed','All'].includes(scope))throw Error('Invalid photo import scope.');
+ return candidates.map(candidate=>{
+  const job={...candidate};
+  if(job.row&&scope!=='All'&&job.status!==scope){job.row=null;job.state='Filtered — skipped'}
+  if(!job.row)job.file=null;
+  return job;
+ });
+}
+function choosePhotoImportScope(candidates){
+ return new Promise((resolve,reject)=>{
+  const counts={Open:0,Closed:0,Other:0,All:0,Skipped:0};
+  for(const job of candidates){
+   if(!job.row){counts.Skipped++;continue}
+   counts.All++;
+   counts[job.status==='Open'?'Open':job.status==='Closed'?'Closed':'Other']++;
+  }
+  const dialog=document.createElement('dialog');
+  dialog.className='photo-scope-dialog';
+  dialog.setAttribute('aria-labelledby','photoScopeTitle');
+  dialog.setAttribute('aria-describedby','photoScopeSummary');
+  dialog.innerHTML=`
+   <h2 id="photoScopeTitle">Hangi fotoğraflar yüklensin?</h2>
+   <p id="photoScopeSummary">${counts.Open} açık · ${counts.Closed} kapalı ·
+    ${counts.Other} incelemede / diğer · ${counts.Skipped} eşleşmeyen veya belirsiz fotoğraf.</p>
+   <p>İncelemede / diğer durumlar yalnızca “Tümünü Yükle” seçeneğine dahildir.
+    Eşleşmeyen veya birden fazla punch ile eşleşen fotoğraflar atlanır.</p>
+   <form method="dialog" class="photo-scope-actions">
+    <button class="action" value="Open" ${counts.Open?'':'disabled'}>Sadece Açık Punch Fotoğraflarını Yükle (${counts.Open})</button>
+    <button class="action" value="Closed" ${counts.Closed?'':'disabled'}>Sadece Kapalıları Yükle (${counts.Closed})</button>
+    <button class="action" value="All" ${counts.All?'':'disabled'}>Tümünü Yükle (${counts.All})</button>
+    <button class="action" value="cancel" autofocus>İptal</button>
+   </form>`;
+  dialog.addEventListener('close',()=>{
+   const scope=['Open','Closed','All'].includes(dialog.returnValue)?dialog.returnValue:null;
+   dialog.remove();resolve(scope);
+  },{once:true});
+  (document.fullscreenElement||document.body).append(dialog);
+  try{dialog.showModal()}catch(error){dialog.remove();reject(error)}
+ });
+}
+
 let bulkPanel=null;
 function bulkUpload(){
  if(bulkPanel){if(!bulkPanel.open)bulkPanel.showModal();return}
- const dialog=document.createElement('dialog');bulkPanel=dialog;dialog.className='photo-import';
- dialog.innerHTML='<button class="action photo-close" style="float:right">Minimize ×</button><h2>Import punch photos</h2><p>Choose photos named with punch numbers or NFI + Walkdown Item numbers. Review matches before uploading.</p><p>Uploads continue while you use this page. Keep this browser tab open; refreshing or closing it discards the remaining queue.</p><input type="file" accept="image/jpeg,image/png,image/webp" multiple><p class="photo-message" role="status"></p><progress aria-label="Photo upload progress" max="1" value="0" style="width:100%"></progress><p class="queue-counts"></p><button class="action photo-upload" disabled>Start / Resume</button> <button class="action queue-pause" disabled>Pause</button> <button class="action queue-retry" disabled>Retry failed</button><div class="photo-import-list"></div><button class="action queue-prev">Previous</button> <span class="queue-page"></span> <button class="action queue-next">Next</button>';
- const launcher=document.createElement('button');launcher.className='action';launcher.style.cssText='position:fixed;bottom:16px;right:16px;z-index:10000;background:#fff;box-shadow:0 2px 12px #0003';launcher.textContent='Photo uploads';launcher.onclick=()=>{if(!dialog.open)dialog.showModal()};
- document.body.append(dialog,launcher);dialog.showModal();dialog.querySelector('.photo-close').onclick=()=>dialog.close();
- const input=dialog.querySelector('input'),start=dialog.querySelector('.photo-upload'),pause=dialog.querySelector('.queue-pause'),retry=dialog.querySelector('.queue-retry'),message=dialog.querySelector('.photo-message');
- let jobs=[],running=false,paused=false,page=0;
- const pending=()=>jobs.some(j=>j.row&&j.state==='Waiting');
+ const dialog=document.createElement('dialog');bulkPanel=dialog;
+ dialog.className='photo-import';
+ dialog.innerHTML=`
+  <button type="button" class="action photo-close" style="float:right">Minimize ×</button>
+  <h2>Import punch photos</h2>
+  <p>Choose photos named with punch numbers or NFI + Walkdown Item numbers. Review matches before uploading.</p>
+  <p>Uploads continue while you use this page. Keep this browser tab open; refreshing or closing it discards the remaining queue.</p>
+  <input type="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="Choose punch photos">
+  <p class="photo-message" role="status"></p>
+  <progress aria-label="Photo upload progress" max="1" value="0" style="width:100%"></progress>
+  <p class="queue-counts"></p>
+  <button type="button" class="action photo-upload" disabled>Start / Resume</button>
+  <button type="button" class="action queue-pause" disabled>Pause</button>
+  <button type="button" class="action queue-retry" disabled>Retry failed</button>
+  <div class="photo-import-list"></div>
+  <button type="button" class="action queue-prev">Previous</button>
+  <span class="queue-page"></span>
+  <button type="button" class="action queue-next">Next</button>`;
+ const launcher=document.createElement('button');
+ launcher.type='button';launcher.className='action photo-upload-launcher';
+ launcher.textContent='Photo uploads';
+ launcher.onclick=()=>{if(!dialog.open)dialog.showModal()};
+ document.body.append(dialog);
+ const importButton=document.getElementById('punchImportPhotos');
+ if(importButton)importButton.after(launcher);else document.body.append(launcher);
+ dialog.showModal();dialog.querySelector('.photo-close').onclick=()=>dialog.close();
+ const input=dialog.querySelector('input'),start=dialog.querySelector('.photo-upload');
+ const pause=dialog.querySelector('.queue-pause'),retry=dialog.querySelector('.queue-retry');
+ const message=dialog.querySelector('.photo-message');
+ let jobs=[],running=false,paused=false,page=0,choosing=false;
+ const pending=()=>jobs.some(job=>job.row&&job.state==='Waiting');
+
  function paint(){
-  const total=jobs.filter(j=>j.row).length,done=jobs.filter(j=>j.state==='Uploaded').length,failed=jobs.filter(j=>j.state==='Failed').length,processed=done+failed;
-  dialog.querySelector('progress').max=total||1;dialog.querySelector('progress').value=processed;
-  const summary=processed+' / '+total+' processed · '+(total?Math.floor(processed/total*100):0)+'% · '+done+' uploaded · '+failed+' failed · '+jobs.filter(j=>!j.row).length+' skipped';
-  dialog.querySelector('.queue-counts').textContent=summary;launcher.textContent='Photos: '+processed+'/'+total+(running?' · Uploading':paused?' · Paused':'');
-  input.disabled=running||pending();start.disabled=running||!pending();pause.disabled=!running||paused;retry.disabled=running||!failed;
-  dialog.querySelector('.photo-import-list').innerHTML=jobs.slice(page*50,page*50+50).map(j=>'<p>'+esc(j.name)+' → '+esc(j.row?'Punch '+j.row.itemNumber+' · ':'')+esc(j.state)+(j.error?' · '+esc(j.error):'')+'</p>').join('');
-  dialog.querySelector('.queue-page').textContent=(page+1)+' / '+Math.max(1,Math.ceil(jobs.length/50));dialog.querySelector('.queue-prev').disabled=page===0;dialog.querySelector('.queue-next').disabled=(page+1)*50>=jobs.length;
+  const total=jobs.filter(job=>job.row).length;
+  const done=jobs.filter(job=>job.state==='Uploaded').length;
+  const failed=jobs.filter(job=>job.state==='Failed').length,processed=done+failed;
+  dialog.querySelector('progress').max=total||1;
+  dialog.querySelector('progress').value=processed;
+  const summary=processed+' / '+total+' processed · '+(total?Math.floor(processed/total*100):0)+
+   '% · '+done+' uploaded · '+failed+' failed · '+jobs.filter(job=>!job.row).length+' skipped';
+  dialog.querySelector('.queue-counts').textContent=summary;
+  launcher.textContent='Photos: '+processed+'/'+total+(running?' · Uploading':paused?' · Paused':'');
+  launcher.title=summary;
+  launcher.hidden=!running&&!pending()&&!failed;
+  input.disabled=choosing||running||pending();
+  start.disabled=choosing||running||!pending();
+  pause.disabled=!running||paused;
+  retry.disabled=choosing||running||!failed;
+  dialog.querySelector('.photo-import-list').innerHTML=jobs.slice(page*50,page*50+50).map(job=>
+   '<p>'+esc(job.name)+' → '+esc(job.row?'Punch '+job.row.itemNumber+' · ':'')+
+   esc(job.state)+(job.error?' · '+esc(job.error):'')+'</p>').join('');
+  dialog.querySelector('.queue-page').textContent=(page+1)+' / '+Math.max(1,Math.ceil(jobs.length/50));
+  dialog.querySelector('.queue-prev').disabled=page===0;
+  dialog.querySelector('.queue-next').disabled=(page+1)*50>=jobs.length;
  }
- input.onchange=()=>{jobs=[];page=0;paused=false;const match=PhotoMatching.createMatcher(PunchItems.getSnapshot()?.rows||[]);for(const file of input.files){const found=match(file.name);jobs.push({file,name:file.name,row:found.length===1?found[0]:null,state:found.length===1?'Waiting':found.length?'Ambiguous — skipped':'No match — skipped'})}input.value='';message.textContent='Review matches, then start uploading.';paint()};
- dialog.querySelector('.queue-prev').onclick=()=>{page--;paint()};dialog.querySelector('.queue-next').onclick=()=>{page++;paint()};
+ input.onchange=async()=>{
+  const files=Array.from(input.files);input.value='';
+  if(!files.length)return;
+  choosing=true;paint();
+  try{
+   const rows=PunchItems.getSnapshot()?.rows;
+   if(!rows?.length)throw Error('Punch list is not ready. Wait for it to load and try again.');
+   const candidates=matchPhotoImportFiles(files,rows);
+   const scope=await choosePhotoImportScope(candidates);
+   if(scope===null)return;
+   jobs=filterPhotoImportJobs(candidates,scope);
+   page=0;paused=false;
+   const labels={Open:'Açık',Closed:'Kapalı',All:'Tümü'};
+   message.textContent=labels[scope]+' seçildi. Eşleşmeleri kontrol edip Start / Resume düğmesine basın.';
+  }catch(error){message.textContent=error.message}
+  finally{choosing=false;paint()}
+ };
+ dialog.querySelector('.queue-prev').onclick=()=>{page--;paint()};
+ dialog.querySelector('.queue-next').onclick=()=>{page++;paint()};
  pause.onclick=()=>{paused=true;message.textContent='Pausing after the current photo finishes…';paint()};
- async function run(){if(running)return;running=true;paused=false;paint();try{for(const job of jobs){if(paused)break;if(!job.row||job.state!=='Waiting')continue;job.state='Uploading';paint();try{await upload(job.row,job.file,text=>message.textContent=text);job.state='Uploaded';job.file=null;job.error=''}catch(e){job.state='Failed';job.error=e.message}paint();await new Promise(resolve=>setTimeout(resolve,200))}}finally{running=false;message.textContent=paused?'Paused. Resume when ready.':'Queue finished. Failed photos can be retried.';paint();refresh().catch(()=>{})}}
- start.onclick=run;retry.onclick=()=>{for(const job of jobs)if(job.state==='Failed'){job.state='Waiting';job.error=''}run()};
- window.addEventListener('beforeunload',e=>{if(running||pending()||jobs.some(j=>j.state==='Failed')){e.preventDefault();e.returnValue=''}});paint();
+ async function run(){
+  if(running||choosing)return;
+  running=true;paused=false;paint();
+  try{
+   for(const job of jobs){
+    if(paused)break;
+    if(!job.row||job.state!=='Waiting')continue;
+    job.state='Uploading';paint();
+    try{
+     await upload(job.row,job.file,text=>message.textContent=text);
+     job.state='Uploaded';job.file=null;job.error='';
+    }catch(error){job.state='Failed';job.error=error.message}
+    paint();await new Promise(resolve=>setTimeout(resolve,200));
+   }
+  }finally{
+   running=false;
+   message.textContent=paused?'Paused. Resume when ready.':'Queue finished. Failed photos can be retried.';
+   paint();refresh().catch(()=>{});
+  }
+ }
+ start.onclick=run;
+ retry.onclick=()=>{
+  for(const job of jobs)if(job.state==='Failed'){job.state='Waiting';job.error=''}
+  void run();
+ };
+ window.addEventListener('beforeunload',event=>{
+  if(running||pending()||jobs.some(job=>job.state==='Failed')){event.preventDefault();event.returnValue=''}
+ });
+ paint();
 }
 
 document.addEventListener('punch-updated',()=>prepareKeys().catch(()=>{}));ProjectAccess.ready.then(()=>{refresh();setInterval(refresh,60000)});
