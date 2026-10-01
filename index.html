@@ -11,7 +11,7 @@ html.access-locked body::before,html.access-locked body::after{display:none!impo
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TOP Punch Closure v0.21.0 — Drawing Indexing</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="vendor/pdf/pdf.min.js?v=0.24.0"></script>
 <style>
 :root{
  color-scheme:dark;--bg:#0d1117;--panel:#161b22;--panel2:#0f141b;--border:#30363d;
@@ -76,8 +76,10 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 </style>
 <link rel="stylesheet" href="drawing-import.css?v=0.21.0">
 
+<link rel="stylesheet" href="drawing-indexer.css?v=0.25.0">
+<link rel="stylesheet" href="cable-register.css?v=0.25.0">
 </head>
-<body data-admin-only="true"><link rel="stylesheet" href="project-access.css?v=0.22.0"><script src="project-access.js?v=0.23.8"></script>
+<body data-admin-only="true"><link rel="stylesheet" href="project-access.css?v=0.22.0"><script src="project-access.js?v=0.24.0"></script>
 <main>
 <h1>TOP Punch Closure v0.21.0 — Drawing Indexing</h1>
 <p>Stable v0.6.12.1 OCR engine + recursive folder indexing + IndexedDB checkpoint + Firestore cloud sync/search.</p>
@@ -361,7 +363,7 @@ input[type="checkbox"]{width:auto;accent-color:var(--accent)}
 <script src="kks-dictionary.js"></script>
 <script src="kks-validator.js"></script>
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf/pdf.worker.min.js?v=0.24.0';
 
 const $=id=>document.getElementById(id);
 const TAG_EXACT=/^[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}[A-Z]?$/;
@@ -408,7 +410,7 @@ function pointerPos(ev){
 $('pdfInput').onchange=async e=>{
  const f=e.target.files?.[0];if(!f)return;
  try{
-  pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+  pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer()),isEvalSupported:false}).promise;
   pageNum=1;zones=[];tiles=[];resetResults();
   await renderPreview();update();
   $('status').innerHTML='<span class="ok">PDF loaded. Click Plan tiles for automatic table detection, or draw manual zones if you want to override it.</span>';
@@ -849,7 +851,7 @@ const DF_HEADERS=[
  {role:'TAG',subtype:'INSTRUMENT_TAG',aliases:['INSTRUMENT KKS','INSTRUMENT TAG','INSTRUMENT TAG NUMBER']},
  {role:'TAG',subtype:'VALVE_TAG',aliases:['VALVE TAG','VALVE KKS']},
  {role:'TAG',subtype:'BOX_TAG',aliases:['BOX TAG','JB TAG','JUNCTION BOX TAG','JUNCTION BOX KKS']},
- {role:'TAG',subtype:'EQUIPMENT_TAG',aliases:['EQUIPMENT TAG','EQUIPMENT KKS','TAG NUMBER','TAG NO']},
+ {role:'TAG',subtype:'EQUIPMENT_TAG',aliases:['EQUIPMENT TAG','EQUIPMENT KKS','TAG NUMBER','TAG NO','KKS NO','KKS NUMBER']},
  {role:'PIPELINE',subtype:'PIPELINE',aliases:['PIPELINE NAME','LINE NUMBER','LINE NO','PIPELINE KKS','PIPE LINE NAME']},
  {role:'DESCRIPTION',subtype:'DESCRIPTION',aliases:['DESCRIPTION','DESC']},
  {role:'IGNORE',subtype:'NO',aliases:['NO','NR','NUMBER','ITEM NO']}
@@ -3297,6 +3299,7 @@ renderResults=function(){
 $('runDual').onclick=async()=>{
   if(!tiles.length||!endpoint())return;
 
+  DrawingLayout.lastError=null;
   resetResults();
   dfGoogleLines=[];dfGoogleTokens=[];dfColumnModels=[];dfRecords=[];dfProfiles=[];
   df66Rows=[];df66PaddleNums=[];df67IntegrityRows=[];
@@ -3326,10 +3329,21 @@ $('runDual').onclick=async()=>{
       await new Promise(r=>setTimeout(r,0));
     }
 
+    // Electrical tables also use short cabinet identifiers, without instrument-row semantics.
+    if(window.DrawingLayout?.headers(dfGoogleTokens,dfGoogleLines).length){
+      dfRecords=DrawingLayout.fromTokens(dfGoogleTokens,dfGoogleLines);
+      if(!dfRecords.length)throw Error('KKS column found, but no readable codes. Try Drawing / electrical layout mode at higher detail.');
+      googleCandidates=dfRecords.map(r=>({...r,confidence:r.google.confidence}));paddleCandidates=[];
+      renderResults();updateMetrics();$('progress').style.width='100%';return;
+    }
     // 2) Exact stable schema/continuation/profile route.
     dfBuildColumns();dfBuildProfiles();
-    if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG')))
-      throw new Error('No searchable table schema recognized.');
+    if(!dfColumnModels.some(m=>m.columns.some(c=>c.role==='TAG'))){
+      dfRecords=DrawingLayout.fromTokens(dfGoogleTokens,dfGoogleLines);
+      if(!dfRecords.length)throw Error('No readable KKS in these regions. Use Drawing / electrical layout mode to scan the whole drawing.');
+      googleCandidates=dfRecords.map(r=>({...r,confidence:r.google.confidence}));paddleCandidates=[];
+      renderResults();updateMetrics();$('progress').style.width='100%';return;
+    }
 
     // 3) Stable tag OCR / tag rescue from v0.6.7.1.
     googleCandidates=df66FilterSearchableTags(await dfRunRowRescue());
@@ -3394,6 +3408,7 @@ $('runDual').onclick=async()=>{
 
     $('status').innerHTML=`<span class="ok">v0.7.0 core complete. Records: ${dfRecords.length} · resolved rows: ${goodRows}/${df66Rows.length} · stable physical-row model preserved.</span>`;
   }catch(e){
+    DrawingLayout.lastError=e;
     console.error(e);
     $('status').innerHTML='<span class="bad">'+escapeHtml(e.message)+'</span>';
   }finally{
@@ -4358,6 +4373,8 @@ df66RenderRowEngine=function(){
 const df6121BaseRunClick=$('runDual').onclick;
 $('runDual').onclick=async function(ev){
   await df6121BaseRunClick.call(this,ev);
+  if(DrawingLayout.lastError&&['project-batch','drawing-import'].includes(ev?.type))throw DrawingLayout.lastError;
+  if(dfRecords.some(r=>r.profile==='ELECTRICAL_LAYOUT')){$('status').textContent=dfRecords.length+' drawing occurrences detected. OCR readings need review; no table relationships inferred.';return;}
 
   if(dfRecords.length){
     const goodRows=df66Rows.filter(r=>df6121IsResolvedStatus(r.rowStatus)).length;
@@ -4851,7 +4868,7 @@ async function df70LoadPdfForBatch(file){
   if(pdfDoc?.destroy){
     try{await pdfDoc.destroy()}catch(_){}
   }
-  pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+  pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}).promise;
   pageNum=1;tiles=[];resetResults();
 
   if($('batchAutoTables')?.checked!==false){
@@ -4935,6 +4952,7 @@ async function df70ProcessEntry(entry,index,total){
     await $('runDual').onclick({type:'project-batch',preventDefault(){},stopPropagation(){}});
 
     const recs=(dfRecords||[]).map(r=>r);
+    if(!recs.length)throw Error('No KKS detected. Existing records were kept. Retry in Import drawings using Drawing / electrical layout mode.');
     await df70PersistPdfRecords(entry.path,entry.name,recs);
 
     state.status='done';
@@ -5894,7 +5912,8 @@ renderResults=function(){
 </script>
 
 <script src="drawing-metadata.js?v=0.21.0"></script>
-<script src="drawing-import.js?v=0.21.0"></script>
+<script src="drawing-local.js?v=0.25.0"></script><script src="drawing-reference.js?v=0.25.0"></script><script src="drawing-layout.js?v=0.25.0"></script><script src="drawing-positions.js?v=0.25.0"></script><script src="drawing-import.js?v=0.25.0"></script>
 <link rel="stylesheet" href="punch-extras.css?v=0.22.0">
+<script src="drawing-indexer.js?v=0.25.0"></script>
 </body>
 </html>

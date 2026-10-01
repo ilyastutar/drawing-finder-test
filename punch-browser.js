@@ -181,22 +181,6 @@
  document.addEventListener('cable-identifiers-updated',()=>render(query,true));
  window.PunchBrowser={render,activate(on){hideSuggestions();closePicker();active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;if(!on){setSelecting(false);tokens=[];filters={};selectedFilters={};exactFilters={};chips();if(expanded)toggle()}else{makeColumns();render('',true)}}};
 
-ProjectAccess.ready.then(()=>{
- const button=document.createElement('button');button.type='button';button.textContent='Cable Lists';document.querySelector('.mode-tabs').append(button);
- button.onclick=()=>{
-  const cols=[['cable','Cable number'],['fromTag','From tag'],['toTag','To tag'],['pulledDate','Pulled date'],['fromTermination','From term.'],['toTermination','To term.'],['source','Source']];
-  const d=document.createElement('dialog');d.className='cable-register';
-  d.innerHTML='<button class="action sticky-close" data-close>Close ×</button><h2>Power & I&C Cable Lists</h2><input data-search placeholder="Search or paste cable numbers…" aria-label="Search cables"><button class="action" data-clear>Clear filters</button><p role="status"></p><div class="wrap"><table><thead><tr>'+cols.map(([k,label])=>'<th>'+label+(k==='source'?'<select data-filter="source"><option value="">All sources</option><option value="power">Power Cable List</option><option value="ic">I&C Cable List</option></select>':'<input data-filter="'+k+'" aria-label="Filter '+label+'" placeholder="'+(k.includes('Date')||k.includes('Termination')?':blank = No date':'Filter…')+'">')+'</th>').join('')+'<th>Related punches</th></tr></thead><tbody></tbody></table></div><button class="action" data-prev>Previous</button><button class="action" data-next>Next</button>';
-  document.body.append(d);d.showModal();let offset=0,revision='',run=0,timer;
-  const normalize=v=>String(v||'').toUpperCase().replace(/\s/g,'').replace(/[•·]/g,':');
-  let punchRows,index;
-  function related(r){const snapshot=PunchItems.getSnapshot()?.rows||[];if(snapshot!==punchRows){punchRows=snapshot;index=new Map();snapshot.forEach((p,i)=>{for(const tag of PunchItems.extractTags(p)){const k=normalize(tag);if(!index.has(k))index.set(k,new Set());index.get(k).add(i)}})}const ids=new Set();for(const k of [r.cable,r.fromTag,r.toTag].map(normalize))for(const i of index.get(k)||[])ids.add(i);return [...ids]}
-  async function load(){const n=++run;d.querySelector('[role=status]').textContent='Loading…';d.querySelector('[data-prev]').disabled=d.querySelector('[data-next]').disabled=true;try{const filters=Object.fromEntries([...d.querySelectorAll('[data-filter]')].map(e=>[e.dataset.filter,e.value.trim()]));const result=await ProjectAccess.api('/api/cables/list?'+new URLSearchParams({offset,revision,search:d.querySelector('[data-search]').value,filters:JSON.stringify(filters)}));if(n!==run||!d.open)return;revision=result.revision;
-   d.querySelector('tbody').innerHTML=result.rows.map(r=>'<tr>'+cols.map(([k])=>'<td'+(['pulledDate','fromTermination','toTermination'].includes(k)&&!r[k]?' class="missing-date"':'')+'>'+esc(k==='source'?({ic:'I&C Cable List',power:'Power Cable List'}[r[k]]||r[k]):['pulledDate','fromTermination','toTermination'].includes(k)?r[k]?PunchItems.formatDate(r[k]):'No date':r[k]||'—')+'</td>').join('')+'<td>'+related(r).map(i=>'<button class="action" data-related="'+i+'">'+esc(punchRows[i].itemNumber)+'</button>').join(' ')+'</td></tr>').join('');
-   d.querySelector('[role=status]').textContent=(result.total?offset+1:0)+'–'+(offset+result.rows.length)+' / '+result.total+' · Missing dates first';d.querySelector('[data-prev]').disabled=offset===0;d.querySelector('[data-next]').disabled=offset+100>=result.total;
-  }catch(e){if(n===run&&d.open){d.querySelector('tbody').replaceChildren();d.querySelector('[role=status]').textContent=e.message+' Use Clear filters to reload.'}}}
-  const reset=()=>{clearTimeout(timer);run++;offset=0;revision='';timer=setTimeout(load,250)};d.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',reset));d.querySelector('[data-clear]').onclick=()=>{d.querySelectorAll('input,select').forEach(e=>e.value='');reset()};d.querySelector('[data-prev]').onclick=()=>{offset-=100;void load()};d.querySelector('[data-next]').onclick=()=>{offset+=100;void load()};d.querySelector('[data-close]').onclick=()=>d.close();d.querySelector('tbody').onclick=e=>{const b=e.target.closest('[data-related]');if(b){const item=punchRows[Number(b.dataset.related)],i= (PunchItems.getSnapshot()?.rows||[]).indexOf(item);if(i>=0){d.close();PunchItems.openRecord(i)}}};d.addEventListener('close',()=>{run++;clearTimeout(timer);d.remove()},{once:true});void load();
- };
-});
+
 })();
 
