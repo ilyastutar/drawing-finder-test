@@ -16,18 +16,36 @@ function sound(){if(muted||!audioContext||audioContext.state!=='running')return;
 function unlock(){try{audioContext=audioContext||new (window.AudioContext||window.webkitAudioContext)();audioContext.resume().catch(()=>{})}catch{}}
 document.addEventListener('pointerdown',unlock,{once:true});document.addEventListener('keydown',unlock,{once:true});
 function message(r){if(r.kind==='registration')return r.actorName+' registered and needs approval.';if(r.kind==='comment')return r.actorName+' commented on punch '+r.item+'.';return 'Punch closed: '+r.items.map(i=>i.item).join(', ')}
+let readObserver=null,readTimers=new Map(),sendingRead=false;
+const seenQueue=new Set();
+const unread=r=>r.createdAt>readThrough&&!r.read;
+async function saveSeen(){
+ if(sendingRead||!seenQueue.size)return;sendingRead=true;
+ const ids=[...seenQueue].slice(0,100);
+ try{await api('/api/notifications/seen',json({ids}));for(const id of ids){seenQueue.delete(id);if(rows.has(id))rows.get(id).read=true}paintNotifications()}
+ catch(e){if(panel?.open)panel.querySelector('.notification-status').textContent=e.message}
+ finally{sendingRead=false}
+}
+function observeRead(){
+ readObserver?.disconnect();for(const t of readTimers.values())clearTimeout(t);readTimers.clear();
+ if(!panel?.open)return;
+ readObserver=new IntersectionObserver(entries=>{for(const e of entries){const id=e.target.dataset.notificationId;clearTimeout(readTimers.get(id));if(e.isIntersecting&&e.intersectionRatio>=.6)readTimers.set(id,setTimeout(()=>{if(panel?.open&&!document.hidden&&unread(rows.get(id))){seenQueue.add(id);void saveSeen()}},800))}},{root:panel,threshold:[0,.6]});
+ panel.querySelectorAll('[data-notification-id]').forEach(el=>{if(unread(rows.get(el.dataset.notificationId)))readObserver.observe(el)});
+}
+document.addEventListener('visibilitychange',observeRead);
+
 function paintNotifications(){
- const unread=[...rows.values()].filter(r=>r.createdAt>readThrough).length;bell.textContent='🔔 Notifications'+(unread?' · '+unread:'');bell.setAttribute('aria-label','Notifications, '+unread+' unread in loaded history');
+ const unreadCount=[...rows.values()].filter(unread).length;bell.textContent='🔔 Notifications'+(unreadCount?' · '+unreadCount:'');bell.setAttribute('aria-label','Notifications, '+unreadCount+' unread in loaded history');
  if(!panel?.open)return;const list=panel.querySelector('.notification-list');list.replaceChildren();
  for(const r of [...rows.values()].sort((a,b)=>b.createdAt-a.createdAt)){
-  const article=document.createElement('article');article.className=r.createdAt>readThrough?'notification-unread':'';const p=document.createElement('p');p.textContent=message(r);const small=document.createElement('small');small.textContent=date(r.createdAt);article.append(p,small);list.append(article);
+  const article=document.createElement('article');article.dataset.notificationId=r.id;article.className=unread(r)?'notification-unread':'';const p=document.createElement('p');p.textContent=message(r);const small=document.createElement('small');small.textContent=date(r.createdAt);article.append(p,small);list.append(article);
   const items=r.kind==='closed'?r.items:r.item?[{item:r.item,sheet:r.sheet}]:[];
   for(const item of items){const button=document.createElement('button');button.className='action';button.textContent='Open '+item.item;button.onclick=()=>{const records=PunchItems.getSnapshot()?.rows||[],index=records.findIndex(x=>String(x.itemNumber)===item.item&&(x.sheet||'Punch')===item.sheet);if(index<0){panel.querySelector('.notification-status').textContent='This punch is not in the current workbook.';return}panel.close();const proxy=document.createElement('button');proxy.dataset.punchRecord=index;proxy.hidden=true;document.body.append(proxy);proxy.click();proxy.remove()};article.append(button)}
  }
  if(!list.children.length)list.textContent='No notifications in this page of history.';
- panel.querySelector('[data-more]').hidden=!next;
+ panel.querySelector('[data-more]').hidden=!next;observeRead();
 }
-async function poll(older=false){if(polling)return;polling=true;try{const d=await api('/api/notifications'+(older&&next?'?after='+encodeURIComponent(next):revision?'?revision='+encodeURIComponent(revision):''));readThrough=Math.max(readThrough,d.readThrough||0);if(d.unchanged){paintNotifications();return}if(!older)revision=d.revision;const fresh=d.rows.some(r=>!shownIds.has(r.id)&&r.createdAt>Math.max(readThrough,d.readThrough));for(const r of d.rows){rows.set(r.id,r);shownIds.add(r.id)}readThrough=Math.max(readThrough,d.readThrough||0);if(older||!panel?.open)next=d.next;else if(!next)next=d.next;if(initialized&&!older&&fresh)sound();initialized=true;paintNotifications();if(panel?.open)panel.querySelector('.notification-status').textContent='Updated '+new Date().toLocaleTimeString()}catch(e){if(panel?.open)panel.querySelector('.notification-status').textContent=e.message}finally{polling=false}}
+async function poll(older=false){if(polling)return;polling=true;try{const d=await api('/api/notifications'+(older&&next?'?after='+encodeURIComponent(next):revision?'?revision='+encodeURIComponent(revision):''));readThrough=Math.max(readThrough,d.readThrough||0);if(d.unchanged){paintNotifications();return}if(!older)revision=d.revision;const fresh=d.rows.some(r=>!r.read&&!shownIds.has(r.id)&&r.createdAt>Math.max(readThrough,d.readThrough));for(const r of d.rows){rows.set(r.id,r);shownIds.add(r.id)}readThrough=Math.max(readThrough,d.readThrough||0);if(older||!panel?.open)next=d.next;else if(!next)next=d.next;if(initialized&&!older&&fresh)sound();initialized=true;paintNotifications();if(panel?.open)panel.querySelector('.notification-status').textContent='Updated '+new Date().toLocaleTimeString()}catch(e){if(panel?.open)panel.querySelector('.notification-status').textContent=e.message}finally{polling=false}}
 function notifications(){
  if(panel?.open)return;panel=dialog('Notifications');panel.classList.add('notification-panel');
  panel.insertAdjacentHTML('beforeend','<div class="notification-tools"><button class="action" data-mute></button><button class="action" data-read>Mark loaded notifications as read</button></div><p class="hint">Closure alerts are for punches you follow. Posting a comment follows that punch automatically. Sound starts after interacting with the page.</p><div class="notification-list"></div><button class="action" data-more>Older notifications</button><p class="notification-status" role="status"></p>');
@@ -36,10 +54,21 @@ function notifications(){
  panel.querySelector('[data-more]').onclick=()=>poll(true);paintNotifications();poll();
 }
 async function storage(){
- const d=dialog('Photo storage');d.insertAdjacentHTML('beforeend','<p>Europe · Belgium (europe-west1)</p><div class="storage-stats" role="status">Loading…</div><button class="action" data-measure>Measure current usage</button><div class="storage-pending"></div><form class="storage-settings"><label>Upload limit (GiB)<input name="limit" type="number" min="0" max="10000" step="any" value="0" required></label><small>0 = no application limit. This is not a Google Cloud billing cap.</small><label><input name="open" type="checkbox" checked> At 90% of the limit, allow uploads only for Open punches</label><button class="action" type="submit">Save settings</button></form><p class="hint">Estimate: $0.02 per GiB/month for storage only; excludes requests, transfers, tax and other services. Deleted photos are retained for audit and still use storage. Live objects are measured; old object versions and Cloud Storage soft-deleted objects are not included.</p><p class="storage-message" role="status"></p>');
+ const d=dialog('Photo storage');d.insertAdjacentHTML('beforeend','<p>Europe · Belgium (europe-west1)</p><div class="storage-stats" role="status">Loading…</div><button class="action" data-measure>Measure current usage</button><div class="storage-pending"></div><form class="storage-settings"><label>Upload limit (GiB)<input name="limit" type="number" min="0" max="10000" step="any" value="0" required></label><small>0 = no application limit. This is not a Google Cloud billing cap.</small><label><input name="open" type="checkbox" checked> At 90% of the limit, allow uploads only for Open punches</label><button class="action" type="submit">Save settings</button></form><p class="hint">Estimate: $0.02 per GiB/month for storage only; excludes requests, transfers, tax and other services. Soft-deleted photos keep their image files until Delete photos cleanup. Audit records remain after cleanup. Live objects are measured; old object versions and Cloud Storage soft-deleted objects are not included.</p><p class="storage-message" role="status"></p>');
  const form=d.querySelector('form'),message=d.querySelector('.storage-message'),stats=d.querySelector('.storage-stats'),measure=d.querySelector('[data-measure]');
  function show(data){const used=Number(data.usedBytes||0),reserved=Number(data.reservedBytes||0),limit=Number(data.limitBytes||0);stats.textContent=data.initialized?'Used: '+size(used)+' · Estimated storage: $'+(used>0&&used/1073741824*0.02<0.0001?'<0.0001':(used/1073741824*0.02).toFixed(4))+'/month'+(limit?' · Remaining upload allowance: '+size(Math.max(0,limit-used-reserved)):' · Upload limit: not set')+(reserved?' · Pending uploads: '+size(reserved):'')+' · Last measured: '+date(data.measuredAt):'Usage has not been measured yet.';form.elements.limit.value=limit/1073741824;form.elements.open.checked=data.openOnlyAtCritical!==false;const pending=d.querySelector('.storage-pending');pending.replaceChildren();for(const r of data.pending||[]){const line=document.createElement('p'),b=document.createElement('button');line.textContent='Unfinished upload: '+(r.name||r.id)+' · Punch '+r.item+' ';b.className='action';b.textContent='Cancel unfinished upload';b.disabled=!r.cancellable;b.onclick=async()=>{if(!confirm('Cancel this unfinished upload and remove its temporary image files? Saved photos will not be affected.'))return;b.disabled=true;try{await api('/api/admin/photo-storage/cancel',json({id:r.id}));await load();message.textContent='Unfinished upload cancelled.'}catch(e){message.textContent=e.message;b.disabled=false}};line.append(b);pending.append(line)}}
  const load=async()=>show(await api('/api/admin/photo-storage'));
+const cleanup=document.createElement('button');cleanup.className='action';cleanup.textContent='Delete photos';measure.after(cleanup);
+cleanup.onclick=async()=>{
+ cleanup.disabled=true;
+ try{const preview=await api('/api/admin/photo-storage/closed');message.textContent=preview.count+' Closed-punch photos · '+size(preview.bytes)+' stored image bytes.';
+  if(!preview.count||!confirm(message.textContent+' Remove these image files? Deletion audit remains. Cloud soft-delete/version retention may delay storage savings.'))return;
+  let done=0,failed=0;
+  for(let i=0;i<preview.ids.length;i+=10){const r=await api('/api/admin/photo-storage/purge',json({generation:preview.generation,ids:preview.ids.slice(i,i+10)}));done+=r.results.filter(x=>x.ok).length;failed+=r.results.filter(x=>!x.ok).length;message.textContent=done+' deleted · '+failed+' failed · '+preview.count+' total'}
+  await window.PunchExtras?.refresh();await api('/api/admin/photo-storage/refresh',json({}));await load();message.textContent=done+' deleted · '+failed+' failed. Audit records retained.';
+ }catch(e){message.textContent=e.message+' Reload cleanup to review remaining photos.'}finally{cleanup.disabled=false}
+};
+
  measure.onclick=async()=>{measure.disabled=true;message.textContent='Measuring…';try{await api('/api/admin/photo-storage/refresh',json({}));await load();message.textContent='Usage updated.'}catch(e){message.textContent=e.message}finally{measure.disabled=false}};
  form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await api('/api/admin/photo-storage/settings',json({limitGiB:Number(form.elements.limit.value),openOnlyAtCritical:form.elements.open.checked}));await load();message.textContent='Settings saved.'}catch(e){message.textContent=e.message}finally{b.disabled=false}};
  try{await load()}catch(e){message.textContent=e.message}

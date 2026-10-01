@@ -23,7 +23,15 @@
   for(let i=0;i<=5;i++){const y=top+plot-i*plot/5;svg+='<line x1="'+left+'" y1="'+y+'" x2="'+(w-15)+'" y2="'+y+'" stroke="#e4ebf0"/><text x="'+(left-8)+'" y="'+(y+4)+'" text-anchor="end" fill="#647b89" font-size="11">'+(ceil*i/5)+'</text>'}
   buckets.forEach((b,i)=>{let y=top+plot;const x=left+i*slot+slot*.15;b.counts.forEach((v,j)=>{const bh=v/ceil*plot;y-=bh;if(v)svg+='<rect x="'+x+'" y="'+y+'" width="'+slot*.7+'" height="'+bh+'" rx="2" fill="'+series[j][2]+'"><title>'+esc(b.key+' · '+series[j][1]+': '+v)+'</title></rect>'});if(i%Math.max(1,Math.ceil(n/18))===0||i===n-1)svg+='<text x="'+(x+slot*.35)+'" y="'+(h-15)+'" text-anchor="middle" fill="#526c7d" font-size="10">'+esc(b.key.length===7?b.key:b.key.slice(5))+'</text>'});return svg+'</svg>';
  }
- function render(){if(!active)return;const snapshot=P.getSnapshot();$('dashboardClock').textContent=snapshot?.checkedAt?'Last check: '+P.formatObserved(snapshot.checkedAt)+' (Germany)':'';
+// punch-dashboard.js: before function render().
+function renderSubsystems(rows){
+ let box=$('dashboardSubsystems');if(!box){box=document.createElement('section');box.id='dashboardSubsystems';box.className='dashboard-chart-card';box.innerHTML='<h3>Subsystem progress</h3><p>Current snapshot · discipline filter applies · independent of date range</p><input aria-label="Find subsystem" placeholder="Find subsystem…"><div class="subsystem-summary"></div>';host.append(box);box.querySelector('input').oninput=()=>renderSubsystems(P.getSnapshot()?.rows||[])}
+ const groups=new Map(),discipline=$('dashboardDiscipline').value,query=box.querySelector('input').value.trim().toLowerCase();
+ for(const r of rows){if(discipline!=='all'&&P.disciplineTone(r)!==discipline)continue;const key=r.subsystem||'Unspecified';if(!groups.has(key))groups.set(key,{Open:0,Closed:0,Review:0});groups.get(key)[P.rowStatus(r).status]++}
+ box.querySelector('.subsystem-summary').innerHTML=[...groups].filter(([key])=>key.toLowerCase().includes(query)).sort((a,b)=>b[1].Open-a[1].Open||a[0].localeCompare(b[0])).map(([key,g])=>{const total=g.Open+g.Closed+g.Review,pct=total?g.Closed/total*100:0;return '<article><strong>'+esc(key)+'</strong><span>'+g.Open+' Open · '+g.Closed+' Closed · '+g.Review+' Review · '+pct.toFixed(1)+'%</span><progress max="'+total+'" value="'+g.Closed+'" aria-label="'+esc(key)+' closed"></progress></article>'}).join('')||'<p>No matching subsystems.</p>';
+}
+
+ function render(){if(!active)return;const snapshot=P.getSnapshot();renderSubsystems(snapshot?.rows||[]);$('dashboardClock').textContent=snapshot?.checkedAt?'Last check: '+P.formatObserved(snapshot.checkedAt)+' (Germany)':'';
   if(!snapshot){$('dashboardError').textContent='Punch data unavailable. Waiting for a successful update.';$('dashboardMetrics').innerHTML='';$('dashboardChart').innerHTML='';$('dashboardBreakdown').innerHTML='';$('dashboardData').innerHTML='';return}
   let data;try{data=aggregate(snapshot.rows,$('dashboardFrom').value,$('dashboardTo').value,$('dashboardDiscipline').value,$('dashboardPeriod').value)}catch(e){$('dashboardError').textContent=e.message;for(const id of ['dashboardMetrics','dashboardChart','dashboardBreakdown','dashboardData'])$(id).innerHTML='';return}
   $('dashboardError').textContent=snapshot.stale?'Update unavailable — reporting the last saved snapshot.':'';

@@ -62,3 +62,16 @@
 .photo-scope-dialog h2{margin-top:0;font-size:20px}
 .photo-scope-actions{display:grid;gap:10px;margin-top:16px}
 .photo-scope-actions button{min-height:44px;white-space:normal}
+
+/* punch-workspace.css: append */
+.is-photo .preview-content.preview-zoom{display:block;overflow:auto;min-height:80px}
+.is-photo .preview-content.preview-zoom img{display:block;max-width:none!important;max-height:none!important;margin:auto}
+.preview-zoom-tools{display:flex;justify-content:center;gap:6px;flex:none}
+.photo-upload-launcher.upload-done{display:inline-block!important;background:#dcfce7;color:#166534;border-color:#16a34a;animation:upload-done-pulse 1.5s ease-in-out infinite}
+@keyframes upload-done-pulse{50%{box-shadow:0 0 0 5px #22c55e40}}
+@media(prefers-reduced-motion:reduce){.photo-upload-launcher.upload-done{animation:none}}
+.cable-register{width:min(1500px,96vw);max-height:92dvh;border:1px solid #bdd0dc;border-radius:14px;color:#294c62;padding:20px}
+.cable-register .wrap{overflow:auto;max-height:65dvh}.cable-register table{width:100%;border-collapse:collapse;min-width:980px}
+.cable-register th,.cable-register td{padding:10px;border-bottom:1px solid #d9e4ea;text-align:left}.cable-register th{background:#e6eff5;position:sticky;top:0}
+.cable-register th input,.cable-register th select{display:block;width:100%;min-width:100px;box-sizing:border-box;margin-top:6px}.missing-date{background:#fee2e2;color:#991b1b}
+.subsystem-summary{max-height:450px;overflow:auto}.subsystem-summary article{display:grid;grid-template-columns:minmax(100px,1fr) 2fr;gap:8px;padding:12px 0;border-bottom:1px solid #d9e4ea}.subsystem-summary progress{grid-column:1/-1;width:100%;accent-color:#239363}

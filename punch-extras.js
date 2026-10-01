@@ -19,6 +19,19 @@ function position(button){tip.style.height='';document.documentElement.style.rem
 async function history(row,button){const run=++tipRun;anchor=button;tip.innerHTML='<strong>Comment history</strong><div class="preview-content">Loading…</div><button class="action" data-preview-close>Close</button>';position(button);tip.hidden=false;const list=tip.querySelector('.preview-content');let cursor=null;async function load(){try{const d=await ProjectAccess.api('/api/punch-comments?'+new URLSearchParams({sheet:row.sheet||'Punch',item:row.itemNumber,...(cursor?{after:cursor}:{})}));if(run!==tipRun)return;if(!cursor)list.replaceChildren();for(const c of d.comments){const a=document.createElement('article');a.innerHTML=c.deletedAt?'<p class="deleted-record">Comment deleted by '+esc(c.deletedByName)+' · '+esc(PunchItems.formatObserved(new Date(c.deletedAt).toISOString()))+'</p>':'<small>'+esc(c.authorName)+' · '+esc(PunchItems.formatObserved(new Date(c.createdAt).toISOString()))+'</small><p>'+esc(c.text)+'</p>';list.append(a)}cursor=d.next;tip.querySelector('[data-older]')?.remove();if(cursor){const b=document.createElement('button');b.dataset.older='1';b.className='action';b.textContent='Older comments';b.onclick=load;tip.append(b)}}catch(e){if(run===tipRun)list.textContent=e.message}}await load()}
 const blobs=new Map();
 async function imageUrl(id,size='thumb'){const k=id+size;if(blobs.has(k)){const v=blobs.get(k);blobs.delete(k);blobs.set(k,v);return v}const response=await fetch(API+'/api/punch-photos/image?'+new URLSearchParams({id,size}));if(!response.ok)throw Error('Photo could not be loaded.');const url=URL.createObjectURL(await response.blob());blobs.set(k,url);while(blobs.size>50){const [old,u]=blobs.entries().next().value;URL.revokeObjectURL(u);blobs.delete(old)}return url}
+// punch-extras.js: add before previewPhoto; call after inserting its <img>.
+function previewZoom(content){
+ const img=content.querySelector('img');if(!img)return;
+ content.classList.add('preview-zoom');let scale=1,fit=0;
+ const tools=document.createElement('div');tools.className='preview-zoom-tools';
+ tools.innerHTML='<button type="button" class="action" aria-label="Zoom out">−</button><button type="button" class="action">100%</button><button type="button" class="action" aria-label="Zoom in">+</button>';
+ content.before(tools);const buttons=tools.querySelectorAll('button');
+ function zoom(next){if(!img.naturalWidth)return;const old=scale;scale=Math.max(1,Math.min(8,next));fit=fit||Math.min(content.clientWidth/img.naturalWidth,content.clientHeight/img.naturalHeight);const cx=content.scrollLeft+content.clientWidth/2,cy=content.scrollTop+content.clientHeight/2;img.style.width=img.naturalWidth*fit*scale+'px';img.style.height=img.naturalHeight*fit*scale+'px';content.scrollLeft=cx*scale/old-content.clientWidth/2;content.scrollTop=cy*scale/old-content.clientHeight/2;buttons[1].textContent=Math.round(scale*100)+'%';buttons[0].disabled=scale===1;buttons[2].disabled=scale===8}
+ buttons[0].onclick=()=>zoom(scale/1.25);buttons[1].onclick=()=>zoom(1);buttons[2].onclick=()=>zoom(scale*1.25);
+ content.onwheel=e=>{e.preventDefault();zoom(scale*(e.deltaY<0?1.15:1/1.15))};
+ img.onload=()=>zoom(1);if(img.complete)zoom(1);
+}
+
 async function previewPhoto(row,button){
  const run=++tipRun;anchor=button;tip.classList.add('is-photo');tip.innerHTML='<div class="gallery-tools"><strong>Photo preview</strong><button class="action" data-fullscreen>Full screen ⛶</button><button class="action" data-preview-close>Close ×</button></div><div class="preview-content">Loading…</div><div class="gallery-nav"><button class="action" data-prev aria-label="Previous photo">←</button><span data-count></span><button class="action" data-next aria-label="Next photo">→</button></div>';tip.hidden=false;
  // Keep the preview strictly left of Description. If the column is near the
@@ -26,7 +39,7 @@ async function previewPhoto(row,button){
  tip.style.height=Math.min(760,innerHeight-16)+'px';const rect=button.getBoundingClientRect(),width=Math.min(1140,innerWidth-16),leftSpace=rect.left-16;
  if(leftSpace>=300){tip.style.width=Math.min(width,leftSpace)+'px';tip.style.left=Math.max(8,rect.left-tip.offsetWidth-8)+'px';tip.style.top=Math.max(8,Math.min(rect.top,innerHeight-tip.offsetHeight-8))+'px'}
  else{tip.style.width=Math.min(width,Math.max(280,innerWidth-16))+'px';tip.style.left='8px';const tableTop=document.querySelector('.punch-scroll')?.getBoundingClientRect().top||rect.top;tip.style.top='8px';tip.style.height=Math.min(320,innerHeight-16)+'px';tip.classList.add('photo-preview-above');document.documentElement.style.setProperty('--photo-preview-space',Math.max(0,Math.min(320,innerHeight-16)+24-tableTop)+'px')}
- try{const d=await ProjectAccess.api('/api/punch-photos?key='+await key(row));if(run!==tipRun)return;const rows=d.rows.filter(p=>!p.deletedAt);let index=0,draw=0;async function paint(){const n=++draw;tip.querySelector('[data-count]').textContent=(index+1)+' / '+rows.length;tip.querySelector('[data-prev]').disabled=rows.length<2;tip.querySelector('[data-next]').disabled=rows.length<2;const content=tip.querySelector('.preview-content');content.textContent='Loading…';if(!rows.length){content.textContent='No photos.';return}try{const url=await imageUrl(rows[index].id,'display');if(run===tipRun&&n===draw)content.innerHTML='<img src="'+url+'" alt="'+esc(rows[index].name)+'">'}catch(e){if(run===tipRun&&n===draw)content.textContent=e.message}}
+ try{const d=await ProjectAccess.api('/api/punch-photos?key='+await key(row));if(run!==tipRun)return;const rows=d.rows.filter(p=>!p.deletedAt);let index=0,draw=0;async function paint(){const n=++draw;tip.querySelector('[data-count]').textContent=(index+1)+' / '+rows.length;tip.querySelector('[data-prev]').disabled=rows.length<2;tip.querySelector('[data-next]').disabled=rows.length<2;const content=tip.querySelector('.preview-content');tip.querySelector('.preview-zoom-tools')?.remove();content.onwheel=null;content.textContent='Loading…';if(!rows.length){content.textContent='No photos.';return}try{const url=await imageUrl(rows[index].id,'display');if(run===tipRun&&n===draw){content.innerHTML='<img src="'+url+'" alt="'+esc(rows[index].name)+'">';previewZoom(content)}}catch(e){if(run===tipRun&&n===draw)content.textContent=e.message}}
  tip.querySelector('[data-prev]').onclick=()=>{index=(index-1+rows.length)%rows.length;paint()};tip.querySelector('[data-next]').onclick=()=>{index=(index+1)%rows.length;paint()};tip.querySelector('[data-fullscreen]').onclick=()=>{const chosen=index;hide();if(rows.length)openPhoto(rows,chosen)};await paint();
  }catch(e){if(run===tipRun)tip.querySelector('.preview-content').textContent=e.message}
 }
@@ -290,7 +303,7 @@ function bulkUpload(){
  const launcher=document.createElement('button');
  launcher.type='button';launcher.className='action photo-upload-launcher';
  launcher.textContent='Photo uploads';
- launcher.onclick=()=>{if(!dialog.open)dialog.showModal()};
+ launcher.onclick=()=>{if(launcher.classList.contains('upload-done')){launcher.classList.remove('upload-done');launcher.hidden=true;return}if(!dialog.open)dialog.showModal()};
  document.body.append(dialog);
  const importButton=document.getElementById('punchImportPhotos');
  if(importButton)importButton.after(launcher);else document.body.append(launcher);
@@ -326,7 +339,7 @@ function bulkUpload(){
  }
  input.onchange=async()=>{
   const files=Array.from(input.files);input.value='';
-  if(!files.length)return;
+  if(!files.length)return;launcher.classList.remove('upload-done');
   choosing=true;paint();
   try{
    const rows=PunchItems.getSnapshot()?.rows;
@@ -346,7 +359,7 @@ function bulkUpload(){
  pause.onclick=()=>{paused=true;message.textContent='Pausing after the current photo finishes…';paint()};
  async function run(){
   if(running||choosing)return;
-  running=true;paused=false;paint();
+  launcher.classList.remove('upload-done');running=true;paused=false;paint();
   try{
    for(const job of jobs){
     if(paused)break;
@@ -361,7 +374,7 @@ function bulkUpload(){
   }finally{
    running=false;
    message.textContent=paused?'Paused. Resume when ready.':'Queue finished. Failed photos can be retried.';
-   paint();refresh().catch(()=>{});
+   paint();if(!paused&&!pending()){const failed=jobs.filter(j=>j.state==='Failed').length;launcher.hidden=false;launcher.classList.add('upload-done');launcher.textContent=failed?'Upload finished · '+failed+' failed — click to dismiss':'Upload complete ✓ — click to dismiss'}refresh().catch(()=>{});
   }
  }
  start.onclick=run;
