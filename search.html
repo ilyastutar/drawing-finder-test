@@ -361,7 +361,7 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 
 <div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenau - Hamburg</h1>
 
-<p class="subtitle">TOP Punch Closure <span class="version">v0.26.0</span></p></div></div>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.27.0</span></p></div></div>
 
 
 
@@ -588,6 +588,7 @@ function syncModeIndicator(){
 
 
 function setMode(next,keepText=false){
+  $('resultsTable').classList.remove('drawing-grouped');
 
   if(!MODES[next])return;
 
@@ -842,6 +843,7 @@ function renderChips(){
 }
 
 function resetResults(){
+ $('resultsTable').classList.remove('drawing-grouped');
 
   $('summary').style.display='none'; $('copyNotFound').style.display='none';
 
@@ -1196,6 +1198,7 @@ function getLookup(){
 const tagCache=new Map();
 
 async function runTagContains(){
+ $('resultsTable').classList.remove('drawing-grouped');
 
  syncModeIndicator();const q=norm($('q').value);
 
@@ -1529,7 +1532,7 @@ async function runBatchTagSearch(){
 
     const map=new Map(items.map(x=>[norm(x.query),x.results||[]]));
 
-    let found=0,total=0;const missing=[],rows=[];
+    let found=0,total=0;const missing=[],rows=[],groupRecords=[];
 
     for(const tag of tags){
 
@@ -1541,7 +1544,7 @@ async function runBatchTagSearch(){
 
         found++;total+=matches.length;
 
-        for(const x of matches)rows.push(rowHtml(x,'FOUND'));
+        groupRecords.push(...matches);
 
       }else{
 
@@ -1569,7 +1572,8 @@ async function runBatchTagSearch(){
 
       <span class="stat"><strong>${total}</strong> matching records</span>`;
 
-    $('results').innerHTML=rows.join(''); bindRelatedButtons();
+    const grouped=DrawingGroups.render(groupRecords,missing);$('resultsTable').classList.add('drawing-grouped');$('results').innerHTML=grouped.html;
+    $('summary').innerHTML+='<span class="stat"><strong>'+grouped.count+'</strong> drawings</span>';
 
     $('status').innerHTML=missing.length
 
@@ -1618,7 +1622,7 @@ getLookup().catch(()=>{});
 <link rel="stylesheet" href="punch-extras.css?v=0.23.0">
 <link rel="stylesheet" href="punch-workspace.css?v=0.25.0">
 <script src="punch-workspace.js?v=0.24.0"></script>
-<link rel="stylesheet" href="drawing-viewer.css?v=0.24.0"><script src="drawing-local.js?v=0.25.1"></script><script src="drawing-viewer.js?v=0.25.1"></script>
+<link rel="stylesheet" href="drawing-viewer.css?v=0.27.0"><script src="drawing-local.js?v=0.25.1"></script><script src="drawing-groups.js?v=0.27.0"></script><script src="drawing-viewer.js?v=0.27.0"></script>
 <script src="cable-columns.js?v=0.26.0"></script><script src="cable-register.js?v=0.26.0"></script>
 </body>
 
