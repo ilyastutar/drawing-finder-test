@@ -344,7 +344,7 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 </style>
 
 
-<link rel="stylesheet" href="cable-register.css?v=0.25.0">
+<link rel="stylesheet" href="cable-register.css?v=0.26.0">
 </head>
 
 <body>
@@ -361,13 +361,14 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 
 <div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenau - Hamburg</h1>
 
-<p class="subtitle">TOP Punch Closure <span class="version">v0.25.0</span></p></div></div>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.26.0</span></p></div></div>
 
 
 
 <div class="mode-tabs" aria-label="Search type">
 
   <button type="button" data-mode="punch">Punch Item</button>
+  <button type="button" data-mode="cables">Cable Lists</button>
   <button type="button" data-mode="tag">Tag</button>
 
   <button type="button" data-mode="drawing">Drawing</button>
@@ -523,6 +524,7 @@ const norm=s=>String(s??'').trim().toUpperCase();
 
 
 const MODES={
+  cables:{label:'Cable Lists',placeholder:''},
   dashboard:{label:'Dashboard',placeholder:''},
 
   auto:{label:'All fields',placeholder:'Search tags, drawings, pipeline numbers or rows…'},
@@ -595,10 +597,11 @@ function setMode(next,keepText=false){
 
   PunchBrowser.activate(mode==='punch');
   PunchDashboard.activate(mode==='dashboard');
-  document.querySelector('.search-wrap').hidden=mode==='dashboard';
-  document.getElementById('clearAll').hidden=mode==='dashboard';
-  document.getElementById('modeHint').hidden=mode==='dashboard';
-  if(mode==='dashboard'){document.getElementById('resultsTable').closest('.wrap').hidden=true;document.querySelector('.filter-tools').hidden=true;document.getElementById('status').hidden=true;}
+  window.CableRegister?.activate(mode==='cables');
+  document.querySelector('.search-wrap').hidden=['dashboard','cables'].includes(mode);
+  document.getElementById('clearAll').hidden=['dashboard','cables'].includes(mode);
+  document.getElementById('modeHint').hidden=['dashboard','cables'].includes(mode);
+  if(['dashboard','cables'].includes(mode)){document.getElementById('resultsTable').closest('.wrap').hidden=true;document.querySelector('.filter-tools').hidden=true;document.getElementById('status').hidden=true;}
 
   updatePunchHeaders();
 
@@ -652,7 +655,7 @@ function setMode(next,keepText=false){
 
   $('q').focus();
 
-  if(mode==='drawing')runDrawingSuggest();else if(mode!=='dashboard')runExamples();
+  if(mode==='drawing')runDrawingSuggest();else if(!['dashboard','cables'].includes(mode))runExamples();
 
 }
 
@@ -1615,8 +1618,8 @@ getLookup().catch(()=>{});
 <link rel="stylesheet" href="punch-extras.css?v=0.23.0">
 <link rel="stylesheet" href="punch-workspace.css?v=0.25.0">
 <script src="punch-workspace.js?v=0.24.0"></script>
-<link rel="stylesheet" href="drawing-viewer.css?v=0.24.0"><script src="drawing-local.js?v=0.25.0"></script><script src="drawing-viewer.js?v=0.25.0"></script>
-<script src="cable-register.js?v=0.25.0"></script>
+<link rel="stylesheet" href="drawing-viewer.css?v=0.24.0"><script src="drawing-local.js?v=0.25.1"></script><script src="drawing-viewer.js?v=0.25.1"></script>
+<script src="cable-columns.js?v=0.26.0"></script><script src="cable-register.js?v=0.26.0"></script>
 </body>
 
 </html>

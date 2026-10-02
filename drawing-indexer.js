@@ -3,7 +3,7 @@
 const main=document.querySelector('main');main.classList.add('indexing-workspace');
 const title=main.querySelector('h1');title.textContent='Drawing Index';
 const subtitle=title.nextElementSibling;subtitle.textContent='Add drawings, check the detected tags and publish them to your project.';
-const hero=document.createElement('header');hero.className='indexer-hero';title.before(hero);hero.innerHTML='<div class="indexer-eyebrow">PROJECT DOCUMENTS · v0.25.0</div>';hero.append(title,subtitle);const back=document.createElement('a');back.href='search.html';back.className='indexer-back';back.textContent='← Back to search';hero.append(back);
+const hero=document.createElement('header');hero.className='indexer-hero';title.before(hero);hero.innerHTML='<div class="indexer-eyebrow">PROJECT DOCUMENTS · v0.26.0</div>';hero.append(title,subtitle);const back=document.createElement('a');back.href='search.html';back.className='indexer-back';back.textContent='← Back to search';hero.append(back);
 const originalNote=hero.nextElementSibling;if(originalNote?.classList.contains('note'))originalNote.hidden=true;
 const report=document.getElementById('truncatedPipelineReport');if(report)report.hidden=true;
 const importer=document.getElementById('drawingImport');hero.after(importer);importer.querySelector('h2').textContent='1. Add drawings';importer.querySelector('p').textContent='PDF, DWG or ZIP. PDF scans keep tag positions for highlighting. Nothing is published until you choose Publish to project.';
