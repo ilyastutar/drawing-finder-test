@@ -37,3 +37,10 @@ body.cable-is-expanded{overflow:hidden}
 @media(max-width:700px){#cablePanel .cable-source-checks{flex-shrink:1;text-align:left}#cablePanel .punch-top{gap:8px}#cablePanel.cable-fullscreen{left:4px;right:4px;bottom:4px;padding:10px;gap:8px}#cablePanel .cable-query{width:100%}#cablePanel .cable-source-checks>div{font-size:11px}#cablePanel .punch-footer{gap:6px}#cablePanel .cable-toolbar span{display:none}}
 
 .cable-is-expanded .access-bar{position:fixed!important;top:0;left:0;right:0;z-index:1001!important;box-sizing:border-box;background:#eff4f8}
+
+#cablePanel .punch-scroll tbody td{height:66px;max-height:66px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:10px}
+#cablePanel .punch-col-label{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:30px}
+#cablePanel .punch-hide-column{flex:none}
+#cablePanel .punch-hide-column svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+#cablePanel:not(.cable-fullscreen) .punch-scroll{flex:none;height:58vh;max-height:58vh}
