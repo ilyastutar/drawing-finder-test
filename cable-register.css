@@ -60,3 +60,5 @@ body.cable-is-expanded{overflow:hidden}
 .cable-completion.completed{background:#eaf6ee;color:#27805a;border-radius:5px;padding:4px 6px}
 
 #cablePanel .punch-scroll th select{padding:2px 5px;font-size:10px;margin-top:5px;width:auto;max-width:100%}
+
+#cablePanel .punch-filter-menu{display:block;margin-top:5px;padding:2px 6px;font-size:10px;background:#f7fafc;border:1px solid #b9cddd;border-radius:4px;color:#345e79;cursor:pointer}

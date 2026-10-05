@@ -2,6 +2,8 @@
 
  const normalize=v=>String(v??'').trim().toUpperCase().replace(/[•·]/g,':');
 
+ const textCache=new WeakMap();
+ function cachedText(row){let c=textCache.get(row);if(!c||c.location!==row.locationRoom||c.description!==row.description){c={location:row.locationRoom,description:row.description,g:normalize(row.locationRoom),h:normalize(row.description)};textCache.set(row,c)}return c}
  function findItems(rows,tag){
 
   const q=normalize(tag);if(!q)return [];
@@ -12,11 +14,11 @@
 
   return rows.flatMap(row=>{
 
-   const matchedIn=[];
+   const matchedIn=[],cached=cachedText(row);
 
-   if(re.test(normalize(row.locationRoom)))matchedIn.push('G');
+   if(re.test(cached.g))matchedIn.push('G');
 
-   if(re.test(normalize(row.description)))matchedIn.push('H');
+   if(re.test(cached.h))matchedIn.push('H');
 
    return matchedIn.length?[{...row,matchedIn}]:[];
 

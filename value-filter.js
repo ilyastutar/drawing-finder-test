@@ -1,0 +1,12 @@
+(function(){
+'use strict';
+function open(title,values,selected,apply){
+ const d=document.createElement('dialog');d.className='value-filter-dialog';d.style.cssText='width:min(420px,90vw);border:1px solid #bdd0de;border-radius:12px;padding:18px;color:#294d65;background:#f7fafc';
+ d.innerHTML='<button data-close style="float:right">Close ×</button><h3></h3><input data-query placeholder="Search values…" aria-label="Search filter values" style="width:100%;box-sizing:border-box;padding:8px"><p><button data-all>Select all results</button> <button data-none>Clear selection</button></p><div data-list style="height:280px;overflow:auto;background:white"></div><p data-count></p><button data-reset>Remove filter</button> <button data-apply>Apply</button>';
+ d.querySelector('h3').textContent=title;const all=[...new Set(values.map(v=>String(v??'')))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));let chosen=new Set(selected??all),shown=all;
+ const list=d.querySelector('[data-list]');function paint(){const start=Math.max(0,Math.floor(list.scrollTop/32)-3),end=Math.min(shown.length,start+16);list.replaceChildren();const space=h=>{const e=document.createElement('div');e.style.height=h+'px';list.append(e)};space(start*32);for(const v of shown.slice(start,end)){const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;height:32px;gap:8px;overflow:hidden;white-space:nowrap';const c=document.createElement('input');c.type='checkbox';c.checked=chosen.has(v);c.onchange=()=>{c.checked?chosen.add(v):chosen.delete(v);count()};label.append(c,document.createTextNode(v||'(Blanks)'));label.title=v;list.append(label)}space((shown.length-end)*32);count()}
+ function count(){d.querySelector('[data-count]').textContent=chosen.size+' selected · '+shown.length+' values'}
+ list.onscroll=paint;d.querySelector('[data-query]').oninput=e=>{const q=e.target.value.toLocaleLowerCase();shown=all.filter(v=>v.toLocaleLowerCase().includes(q));list.scrollTop=0;paint()};d.querySelector('[data-all]').onclick=()=>{shown.forEach(v=>chosen.add(v));paint()};d.querySelector('[data-none]').onclick=()=>{chosen.clear();paint()};d.querySelector('[data-reset]').onclick=()=>{apply(null);d.close()};d.querySelector('[data-apply]').onclick=()=>{apply(chosen);d.close()};d.querySelector('[data-close]').onclick=()=>d.close();d.onclose=()=>d.remove();document.body.append(d);d.showModal();paint();d.querySelector('[data-query]').focus();
+}
+window.ValueFilter={open};
+})();
