@@ -44,3 +44,19 @@ body.cable-is-expanded{overflow:hidden}
 #cablePanel .punch-hide-column svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 
 #cablePanel:not(.cable-fullscreen) .punch-scroll{flex:none;height:58vh;max-height:58vh}
+
+/* Match Punch Item header controls and compact column spacing. */
+#cablePanel .punch-scroll th,#cablePanel .punch-scroll td{width:130px!important;min-width:130px;max-width:130px}
+#cablePanel .punch-scroll th[data-column="cable"],#cablePanel .punch-scroll td[data-column="cable"]{width:130px!important;min-width:130px}
+#cablePanel .punch-scroll th[data-column="completion"],#cablePanel .punch-scroll td[data-column="completion"]{width:180px!important;min-width:180px;max-width:180px}
+#cablePanel .punch-scroll th{padding:8px;font-size:10px;line-height:1.4}
+#cablePanel .punch-scroll td{padding:8px;font-size:12px}
+#cablePanel .punch-col-label{min-height:30px;align-items:flex-start;gap:4px}
+#cablePanel .punch-hide-column{width:22px;height:24px;padding:3px;margin:0;border:0;border-radius:4px;background:transparent;color:#668393;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+#cablePanel .punch-hide-column:hover{background:#d4e4ef;color:#214e69}
+#cablePanel .punch-hide-column:focus-visible{outline:2px solid #32688c;outline-offset:1px}
+#cablePanel .punch-scroll th input,#cablePanel .punch-scroll th select{font-size:12px;padding:6px;margin-top:6px}
+.cable-completion{display:block;white-space:normal;line-height:18px;color:#738895;font-size:11px}
+.cable-completion.completed{background:#eaf6ee;color:#27805a;border-radius:5px;padding:4px 6px}
+
+#cablePanel .punch-scroll th select{padding:2px 5px;font-size:10px;margin-top:5px;width:auto;max-width:100%}
