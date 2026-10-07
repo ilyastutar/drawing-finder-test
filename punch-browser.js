@@ -2,13 +2,14 @@
 
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
- const norm=v=>String(v??'').trim().toUpperCase(),split=v=>String(v).split(/[\s,;]+/).map(norm).filter(Boolean);
+ const norm=v=>String(v??'').trim().toUpperCase().replace(/[•·]/g,':'),split=v=>String(v).split(/[\s,;]+/).map(norm).filter(Boolean);
 
+ const searchCache=new WeakMap();function searchText(row){let c=searchCache.get(row);if(!c||c.number!==row.itemNumber||c.location!==row.locationRoom||c.description!==row.description){c={number:row.itemNumber,location:row.locationRoom,description:row.description,text:[row.itemNumber,row.locationRoom,row.description].map(norm).join(' ')};searchCache.set(row,c)}return c.text}
  const panel=document.createElement('section');panel.id='punchPanel';panel.hidden=true;
 
  document.getElementById('resultsTable').closest('.wrap').after(panel);
 
- panel.innerHTML='<div class="punch-top"><div><div class="punch-heading"><strong>Punch Items</strong><div class="discipline-legend"><span class="disc-electric">Red: Electric and I&amp;C</span><span class="disc-mechanical">Blue: Mechanical</span><span class="disc-civil">Gray: Civil</span></div></div><input id="punchFullQuery" class="punch-full-query" aria-label="Search punch numbers" placeholder="Search or paste punch numbers…"><div id="punchCount" class="hint"></div></div><div id="punchClock" class="punch-clock"></div></div><div class="punch-chips" id="punchChips"></div><div id="punchMissing" class="punch-missing"></div><div class="punch-scroll"><table><thead><tr id="punchHead"></tr></thead><tbody id="punchRows"></tbody></table></div><div class="punch-footer"><button class="action" id="punchClear">Clear punch filters</button><span class="hint">Paste Excel cells · Enter to add numbers</span><button class="action" id="punchExpand">Full screen ⛶</button></div>';
+ panel.innerHTML='<div class="punch-top"><div><div class="punch-heading"><strong>Punch Items</strong><div class="discipline-legend"><span class="disc-electric">Red: Electric and I&amp;C</span><span class="disc-mechanical">Blue: Mechanical</span><span class="disc-civil">Gray: Civil</span></div></div><input id="punchFullQuery" class="punch-full-query" aria-label="Search punches or cable tags" placeholder="Search punch numbers or cable tags…"><div id="punchCount" class="hint"></div></div><div id="punchClock" class="punch-clock"></div></div><div class="punch-chips" id="punchChips"></div><div id="punchMissing" class="punch-missing"></div><div class="punch-scroll"><table><thead><tr id="punchHead"></tr></thead><tbody id="punchRows"></tbody></table></div><div class="punch-footer"><button class="action" id="punchClear">Clear punch filters</button><span class="hint">Paste Excel cells · Enter to add numbers</span><button class="action" id="punchExpand">Full screen ⛶</button></div>';
 
  const $=id=>document.getElementById(id),compact=[['itemNumber','Punch Item No.'],['closedDate','Closed Date'],['statusText','Status'],['latestComment','Latest Comment'],['cableCompletion','Cable Completion'],['subsystem','Subsystem No.'],['discipline','Discipline'],['photoCount','Photo'],['description','Description'],['locationRoom','Location / Room'],['category','Category'],['issuedDate','Issued Date']];
 
@@ -108,7 +109,7 @@
 
   if(!data){matches=[];body.innerHTML='<tr><td colspan="'+columns.length+'">'+(PunchItems.getState()==='loading'?'Loading punch data…':'Punch data unavailable.')+'</td></tr>';$('punchCount').textContent='';$('punchTotals').textContent='';return}
 
-  const wanted=new Set(tokens),found=new Set();matches=[];for(let index=0;index<data.rows.length;index++){const row=data.rows[index],number=norm(row.itemNumber);if(wanted.has(number))found.add(number);if(wanted.size?(!wanted.has(number)&&!(query&&number.includes(norm(query)))):(query&&!number.includes(norm(query))))continue;if(!matchesFilters(row))continue;matches.push({row,index})}
+  const wanted=new Set(tokens),found=new Set();matches=[];for(let index=0;index<data.rows.length;index++){const row=data.rows[index],number=norm(row.itemNumber);const searchable=searchText(row),queryMatch=query&&(/^\d+$/.test(query)?number:searchable).includes(norm(query)),accept=t=>/^\d+$/.test(t)?number===t:searchable.includes(t);for(const t of wanted)if(accept(t))found.add(t);if(wanted.size?(![...wanted].some(accept)&&!(queryMatch)):(query&&!queryMatch))continue;if(!matchesFilters(row))continue;matches.push({row,index})}
 
   $('punchMissing').textContent=tokens.filter(n=>!found.has(n)).length?'Not found: '+tokens.filter(n=>!found.has(n)).join(', '):'';
 

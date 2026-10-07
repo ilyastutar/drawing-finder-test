@@ -15,7 +15,7 @@ let audioContext=null,muted=false,bell,panel,rows=new Map(),readThrough=0,initia
 function sound(){if(muted||!audioContext||audioContext.state!=='running')return;const o=audioContext.createOscillator(),g=audioContext.createGain();o.type='sine';o.frequency.value=740;g.gain.setValueAtTime(0.05,audioContext.currentTime);g.gain.exponentialRampToValueAtTime(0.001,audioContext.currentTime+0.2);o.connect(g);g.connect(audioContext.destination);o.start();o.stop(audioContext.currentTime+0.2)}
 function unlock(){try{audioContext=audioContext||new (window.AudioContext||window.webkitAudioContext)();audioContext.resume().catch(()=>{})}catch{}}
 document.addEventListener('pointerdown',unlock,{once:true});document.addEventListener('keydown',unlock,{once:true});
-function message(r){if(r.kind==='registration')return r.actorName+' registered and needs approval.';if(r.kind==='comment')return r.actorName+' commented on punch '+r.item+'.';return 'Punch closed: '+r.items.map(i=>i.item).join(', ')}
+function message(r){if(r.kind==='new-punch')return 'New punches: '+r.items.map(i=>i.item+' ('+(i.subsystem||'Unspecified subsystem')+')').join(', ');if(r.kind==='cable-completed')return 'Both side termination completed: '+r.items.map(i=>i.cable).join(', ')+' · '+(r.source==='ic'?'I&C Cable List':'Power Cable List');if(r.kind==='registration')return r.actorName+' registered and needs approval.';if(r.kind==='comment')return r.actorName+' commented on punch '+r.item+'.';return 'Punch closed: '+r.items.map(i=>i.item).join(', ')}
 let readObserver=null,readTimers=new Map(),sendingRead=false;
 const seenQueue=new Set();
 const unread=r=>r.createdAt>readThrough&&!r.read;
@@ -39,7 +39,7 @@ function paintNotifications(){
  if(!panel?.open)return;const list=panel.querySelector('.notification-list');list.replaceChildren();
  for(const r of [...rows.values()].sort((a,b)=>b.createdAt-a.createdAt)){
   const article=document.createElement('article');article.dataset.notificationId=r.id;article.className=unread(r)?'notification-unread':'';const p=document.createElement('p');p.textContent=message(r);const small=document.createElement('small');small.textContent=date(r.createdAt);article.append(p,small);list.append(article);
-  const items=r.kind==='closed'?r.items:r.item?[{item:r.item,sheet:r.sheet}]:[];
+  const items=['closed','new-punch'].includes(r.kind)?r.items:r.item?[{item:r.item,sheet:r.sheet}]:[];
   for(const item of items){const button=document.createElement('button');button.className='action';button.textContent='Open '+item.item;button.onclick=()=>{const records=PunchItems.getSnapshot()?.rows||[],index=records.findIndex(x=>String(x.itemNumber)===item.item&&(x.sheet||'Punch')===item.sheet);if(index<0){panel.querySelector('.notification-status').textContent='This punch is not in the current workbook.';return}panel.close();const proxy=document.createElement('button');proxy.dataset.punchRecord=index;proxy.hidden=true;document.body.append(proxy);proxy.click();proxy.remove()};article.append(button)}
  }
  if(!list.children.length)list.textContent='No notifications in this page of history.';
