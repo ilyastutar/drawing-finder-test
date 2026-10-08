@@ -10,3 +10,4 @@ body:has(#resultsTable.drawing-grouped) .filter-tools{display:none!important}
 @media(max-width:650px){.drawing-group{padding:13px}.drawing-group header{flex-direction:column}.drawing-group .drawing-highlight-button{width:100%}}
 
 .drawing-viewer .dv-mark.dv-location{background:#ffe00066;outline:3px solid #ff8500;border-radius:50%;box-shadow:0 0 0 3px white,0 0 16px #ffb00099}
+.dv-scroll{touch-action:none;cursor:grab}.dv-scroll[data-tool=area]{cursor:crosshair}.dv-scroll[data-tool=text]{cursor:text}.dv-annotations{position:absolute;inset:0;pointer-events:none}.dv-annotation{position:absolute;box-sizing:border-box}.dv-area{background:#ffe00055;border:2px solid #d49c00}.dv-note{background:#fff8cc;color:#233c4b;white-space:nowrap;overflow:hidden;line-height:1.33}.dv-edit-status{color:#5b778b;font-size:11px}.drawing-viewer button[aria-pressed=true]{background:#236584;color:white;border-color:#236584}.dv-sheet{user-select:none}
