@@ -22,7 +22,7 @@ function layout(){pending=false;setup();if(bar)document.documentElement.style.se
 function schedule(){if(!pending){pending=true;requestAnimationFrame(layout)}}
 document.addEventListener('workspace-mode-changed',e=>{mode=e.detail.mode;applyFull();schedule()});
 document.addEventListener('click',e=>{if(e.target.closest('#punchExpand,#cablePanel [data-expand]')){full=!e.target.closest('.punch-expanded,.cable-fullscreen');document.body.classList.toggle('operations-full',full)}schedule()},true);
-new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});window.addEventListener('resize',schedule);document.addEventListener('punch-updated',schedule);
+new MutationObserver(records=>{if(records.every(r=>r.target.closest?.('tbody,.punch-mobile-cards')))return;schedule()}).observe(document.body,{childList:true,subtree:true});window.addEventListener('resize',schedule);document.addEventListener('punch-updated',schedule);
 function closeMenus(target){for(const d of document.querySelectorAll('.cable-column-menu[open]'))if(!d.contains(target))d.open=false}
 document.addEventListener('pointerdown',e=>{closeMenus(e.target);const d=e.target;if(d instanceof HTMLDialogElement&&d.open&&d.matches('.columns-dialog,.workspace-dialog')){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close()}});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenus(null)});
 ProjectAccess.ready.then(()=>{setup();applyFull();schedule()});schedule();

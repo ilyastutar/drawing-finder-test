@@ -95,13 +95,16 @@
  }
  function tone(row){const index=tokens.indexOf(norm(row.itemNumber));return index>=0?index:(query&&norm(row.itemNumber).includes(norm(query))?0:-1)}
  function rowClass(row){return ' class="'+PunchItems.disciplineTone(row)+(tone(row)>=0?' punch-match':'')+'"'}
- function paint(){scheduled=false;if(!active)return;const start=Math.max(0,Math.floor(scroll.scrollTop/66)-8),end=Math.min(matches.length,start+70),height=n=>'<tr aria-hidden="true"><td colspan="'+columns.length+'" style="height:'+n+'px;padding:0;border:0"></td></tr>';
+ let paintedRange='',paintCache=new Map();
+ function paint(force=true){scheduled=false;if(force){paintedRange='';paintCache.clear()}if(!active)return;const start=Math.max(0,Math.floor(scroll.scrollTop/66)-5),end=Math.min(matches.length,start+Math.ceil(scroll.clientHeight/66)+12),height=n=>'<tr aria-hidden="true"><td colspan="'+columns.length+'" style="height:'+n+'px;padding:0;border:0"></td></tr>';
 
-  body.innerHTML=height(start*66)+matches.slice(start,end).map(({row,index},offset)=>'<tr'+rowClass(row)+' style="height:66px">'+columns.map(([key])=>'<td data-copy-column="'+esc(key)+'" data-copy-position="'+(start+offset)+'"'+(cellSelected(start+offset,key)?' class="punch-cell-selected"':'')+'>'+(window.PunchExtras?.cell(row,key,index)??(key==='itemNumber'?'<button class="related-tag" data-punch-record="'+index+'">'+esc(row.itemNumber)+'</button>'+(PunchItems.relatedCount(source||[],row)?'<div class="punch-related-count">'+PunchItems.relatedCount(source||[],row)+' related</div>':'')+(tone(row)>=0?'<div class="match-label">Searched '+(tokens.length?'#'+(tone(row)+1):'match')+'</div>':''):'<div class="punch-clip" title="'+esc(value(row,key))+'">'+(key==='statusText'?'<span class="'+(PunchItems.rowStatus(row).status==='Closed'?'found':'warn')+'">'+esc(value(row,key))+'</span>':esc(value(row,key)))+'</div>'))+'</td>').join('')+'</tr>').join('')+height((matches.length-end)*66);
+  const range=start+':'+end;if(!force&&range===paintedRange)return;paintedRange=range;
+  body.innerHTML=height(start*66)+matches.slice(start,end).map(({row,index},offset)=>{const position=start+offset;if(paintCache.has(position))return paintCache.get(position);const html='<tr'+rowClass(row)+' style="height:66px">'+columns.map(([key])=>'<td data-copy-column="'+esc(key)+'" data-copy-position="'+(start+offset)+'"'+(cellSelected(start+offset,key)?' class="punch-cell-selected"':'')+'>'+(window.PunchExtras?.cell(row,key,index)??(key==='itemNumber'?'<button class="related-tag" data-punch-record="'+index+'">'+esc(row.itemNumber)+'</button>'+(PunchItems.relatedCount(source||[],row)?'<div class="punch-related-count">'+PunchItems.relatedCount(source||[],row)+' related</div>':'')+(tone(row)>=0?'<div class="match-label">Searched '+(tokens.length?'#'+(tone(row)+1):'match')+'</div>':''):'<div class="punch-clip" title="'+esc(value(row,key))+'">'+(key==='statusText'?'<span class="'+(PunchItems.rowStatus(row).status==='Closed'?'found':'warn')+'">'+esc(value(row,key))+'</span>':esc(value(row,key)))+'</div>'))+'</td>').join('')+'</tr>';paintCache.set(position,html);return html}).join('')+height((matches.length-end)*66);
 
+  for(const key of paintCache.keys())if(key<start-25||key>end+25)paintCache.delete(key);
  }
 
- scroll.addEventListener('scroll',()=>{if(!scheduled){scheduled=true;requestAnimationFrame(paint)}});
+ scroll.addEventListener('scroll',()=>{if(!scheduled){scheduled=true;requestAnimationFrame(()=>paint(false))}});
 
  function render(q=query,force=false){if(/[\s,;]/.test(q)&&q.trim()){tokens=[...new Set([...tokens,...split(q)])];q='';$('q').value='';$('punchFullQuery').value='';chips()}query=q;if(!active)return;const data=PunchItems.getSnapshot();$('punchClock').innerHTML='Last update: <strong>'+esc(date(data?.syncedAt))+'</strong><br>Last check: '+esc(date(PunchItems.getLastChecked()))+(data?.stale?'<br><span class="punch-stage">Update unavailable — displaying saved data</span>':'');
 
