@@ -1,0 +1,34 @@
+'use strict';
+const identity=require('./drawing-identity');
+const crypto=require('node:crypto'),multer=require('multer');
+const hash=v=>crypto.createHash('sha256').update(v).digest('hex');
+const normalize=v=>String(v||'').toUpperCase().replace(/\s+/g,'').replace(/[•·:]/g,'-');
+function positions(input){if(!Array.isArray(input)||input.length>20000)throw Object.assign(Error('At most 20,000 occurrences are supported.'),{status:400});return input.map(o=>{if(!/^[A-Z0-9-]{3,100}$/.test(normalize(o.tag))||!Number.isInteger(o.page)||o.page<1||o.page>100||!Array.isArray(o.boxes)||!o.boxes.length||o.boxes.length>30)throw Object.assign(Error('Invalid tag or page'),{status:400});const boxes=o.boxes.map(b=>{if(!['x0','y0','x1','y1'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<=1)||b.x1<=b.x0||b.y1<=b.y0)throw Object.assign(Error('Invalid rectangle'),{status:400});return {x0:b.x0,y0:b.y0,x1:b.x1,y1:b.y1}});return {tag:normalize(o.tag),page:o.page,source:o.location===true?'reference-circle':o.source==='pdf-text'?'pdf-text':'ocr',location:o.location===true,rowNo:String(o.rowNo??'').slice(0,40),boxes}})}
+module.exports=function(app,{firestore,publicProjectId,normalizeProjectId,storageBucket,env=process.env}){
+ const bucket=()=>storageBucket||require('firebase-admin/storage').getStorage().bucket(env.DF_DRAWING_BUCKET);
+ const wrap=fn=>(q,s,n)=>Promise.resolve(fn(q,s)).catch(n);
+ const reader=(q,s,n)=>['reader','writer','admin'].includes(q.user?.role)?n():s.status(403).json({error:'Approved account required'});
+ const admin=(q,s,n)=>q.user?.role==='admin'?n():s.status(403).json({error:'Administrator permission required'});
+ const enabled=(q,s,n)=>(storageBucket||env.DF_DRAWING_BUCKET)?n():s.status(503).json({error:'Cloud PDF storage is not configured. Choose Local PDF instead.'});
+ const project=id=>firestore.collection('drawing_finder_projects').doc(normalizeProjectId(id));
+ const ref=(id,path)=>project(id).collection('highlights').doc(hash(identity.key(path)).slice(0,32));
+ function pathValue(value){const path=identity.name(value);if(!path||path.length>1000)throw Object.assign(Error('Drawing path required'),{status:400});return path}
+ async function store(q,{path,fileName,sha,clean,pdfKey=null,bytes=0}){
+  const p=project(q.body.projectId),drawingId=hash(identity.key(path)).slice(0,32),generation=hash(JSON.stringify(clean)),chunkIds=[];
+  for(let i=0;i<clean.length;i+=100){const id=drawingId+'-'+generation+'-'+i;await p.collection('highlight_chunks').doc(id).set({rows:clean.slice(i,i+100),createdAt:Date.now()});chunkIds.push(id)}
+  await ref(q.body.projectId,path).set({path,fileName:String(fileName||path.split('/').pop()).slice(0,250),sha,pdfKey,bytes,chunkIds,storage:pdfKey?'cloud':'local',occurrences:clean.length,updatedAt:Date.now(),updatedBy:q.user.uid});
+ }
+ app.post('/api/drawing-highlights/local',admin,wrap(async(q,s)=>{const path=pathValue(q.body?.drawingPath),sha=String(q.body?.sha||'');if(!/^[a-f0-9]{64}$/.test(sha))return s.status(400).json({error:'PDF fingerprint required'});const clean=positions(q.body.occurrences);await store(q,{path,fileName:q.body.fileName,sha,clean,bytes:Math.max(0,Number(q.body.bytes)||0)});s.json({ok:true,storage:'local',sha,occurrences:clean.length})}));
+ const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024,files:1,fields:4,fieldSize:6*1024*1024}}).single('pdf');
+ app.post('/api/drawing-highlights',admin,enabled,(q,s,n)=>upload(q,s,e=>e?s.status(413).json({error:'Cloud PDF limit: 25 MB; use Local PDF for larger drawings.'}):n()),wrap(async(q,s)=>{
+  const path=pathValue(q.body.drawingPath);if(!q.file||q.file.buffer.subarray(0,5).toString()!=='%PDF-')return s.status(400).json({error:'A PDF is required.'});let input;try{input=JSON.parse(q.body.occurrences)}catch{return s.status(400).json({error:'Invalid positions'})}const clean=positions(input),sha=hash(q.file.buffer),pdfKey='drawings/'+hash(normalizeProjectId(q.body.projectId)).slice(0,24)+'/'+sha+'.pdf';
+  try{await bucket().file(pdfKey).save(q.file.buffer,{resumable:false,preconditionOpts:{ifGenerationMatch:0},metadata:{contentType:'application/pdf',cacheControl:'private, no-store'}})}catch(e){if(Number(e.code)!==412)throw e}
+  await store(q,{path,fileName:q.file.originalname,sha,clean,pdfKey,bytes:q.file.size});s.json({ok:true,storage:'cloud',sha,occurrences:clean.length});
+ }));
+ async function manifest(q,requestedPath=q.query.path){const path=pathValue(requestedPath);let d=(await ref(publicProjectId,path).get()).data();if(!d){const all=await project(publicProjectId).collection('highlights').get();const matches=all.docs.map(x=>x.data()).filter(x=>identity.key(x.path)===identity.key(path)).sort((a,b)=>Number(b.updatedAt||0)-Number(a.updatedAt||0));d=matches[0]}if(!d)throw Object.assign(Error('Re-import this PDF through Import drawings to enable highlighting.'),{status:404});return d}
+
+ const highlight=wrap(async(q,s)=>{const params=q.method==='POST'?{path:q.body?.path,tags:JSON.stringify(q.body?.tags)}:q.query;let input;try{input=params.tags?JSON.parse(params.tags):[params.tag]}catch{return s.status(400).json({error:'Invalid tags'})}if(!Array.isArray(input)||!input.length||input.length>2000||input.some(t=>typeof t!=='string'||!t.trim()||t.length>100))return s.status(400).json({error:'Choose between 1 and 2,000 tags'});const tags=new Set(input.map(normalize));const d=await manifest(q,params.path);let rows=[];if(Array.isArray(d.chunkIds)){for(let i=0;i<d.chunkIds.length;i+=10){const chunks=await Promise.all(d.chunkIds.slice(i,i+10).map(id=>project(publicProjectId).collection('highlight_chunks').doc(id).get()));if(chunks.some(c=>!c.exists))throw Error('Drawing positions are incomplete. Re-import the PDF.');rows.push(...chunks.flatMap(c=>c.data().rows))}}else if(d.positionsKey){const [bytes]=await bucket().file(d.positionsKey).download();rows=JSON.parse(bytes.toString())}s.set('Cache-Control','private, no-store');s.json({ok:true,sha:d.sha,fileName:d.fileName,path:d.path,storage:d.storage||'cloud',occurrences:rows.filter(o=>tags.has(normalize(o.tag)))})});
+ app.get('/api/public/drawing-highlight',reader,highlight);
+ app.post('/api/public/drawing-highlight',reader,highlight);
+ app.get('/api/public/drawing-pdf',reader,enabled,wrap(async(q,s)=>{const d=await manifest(q);if(!d.pdfKey)return s.status(404).json({error:'This PDF is stored locally. Select the local file in the viewer.'});if(q.query.sha!==d.sha)return s.status(409).json({error:'Drawing changed. Close and reopen it.'});s.set({'Cache-Control':'private, no-store','Content-Type':'application/pdf','X-Content-Type-Options':'nosniff','Content-Disposition':'attachment; filename="drawing.pdf"'});const stream=bucket().file(d.pdfKey).createReadStream();stream.on('error',e=>{if(!s.headersSent)s.status(502).end();else s.destroy(e)});s.on('close',()=>stream.destroy());stream.pipe(s)}));
+};
