@@ -77,16 +77,18 @@ df70PersistPdfRecords=async function(path,fileName,rows){pageMetadata=new Map();
 async function scanPDF(q){
  if(pdfDoc)try{await pdfDoc.destroy()}catch{};pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(await q.file.arrayBuffer()),isEvalSupported:false}).promise;
  if(pdfDoc.numPages>100)throw Error('PDF exceeds 100 pages. Split it into smaller files.');
- const pages=await inspectPDF(pdfDoc,q.file.name),needsOCR=pages.filter(p=>!p.tags.length||p.hasRaster||el('drawingForceOCR').checked).map(p=>p.page);let found=[];
+ const pages=await inspectPDF(pdfDoc,q.file.name),needsOCR=pages.filter(p=>!p.tags.length||p.hasRaster||el('drawingForceOCR').checked).map(p=>p.page);let found=[],ocrNumbers=[];
  for(const p of pages)for(const tag of p.tags){const rows=[...new Set(p.occurrences.filter(o=>o.tag===DrawingPositions.normalize(tag)).map(o=>o.rowNo||''))];for(const rowNo of rows.length?rows:[''])found.push({tag:DrawingPositions.normalize(tag),page:p.page,rowNo,status:'Native PDF text',...p.meta});}
  if(needsOCR.length){
   if(el('drawingScanMode')?.value==='table'){
    try{await df70LoadPdfForBatch(q.file)}catch(e){if(!/No table region detected/.test(e.message))throw e}
    zones=zones.filter(z=>needsOCR.includes(z.page));if(!zones.length)zones=needsOCR.map(page=>({page,x:0,y:0,w:1,h:1,fullPageFallback:true}));await planTiles();
    await el('runDual').onclick({type:'drawing-import',preventDefault(){},stopPropagation(){}});
+   ocrNumbers=DrawingBubbles.numbers(dfGoogleTokens||[]);
    found.push(...(dfRecords||[]).map(r=>({...r,...pages.find(p=>p.page==r.page)?.meta})));
   }else{
    const detected=await DrawingLayout.scan(pdfDoc,needsOCR,(done,total)=>{q.state='OCR '+done+' / '+total;draw();status(q.path+' — OCR '+done+' / '+total+' sections. Keep this tab open.');},{dpi:Number(el('drawingLayoutDpi')?.value)||400});
+   ocrNumbers=detected.numbers||[];
    found.push(...detected.map(r=>({...r,...pages.find(p=>p.page==r.page)?.meta})));
   }
  }
@@ -94,6 +96,8 @@ async function scanPDF(q){
  const accepted=new Set(found.map(r=>r.page+'|'+DrawingPositions.normalize(r.tag)));
  const candidates=[...found.filter(r=>r.status!=='Native PDF text'),...(needsOCR.length&&el('drawingScanMode')?.value==='table'?googleCandidates:[]),...(needsOCR.length&&el('drawingScanMode')?.value==='table'?paddleCandidates:[])].filter(r=>accepted.has(r.page+'|'+DrawingPositions.normalize(r.tag)));
  q.occurrences=DrawingPositions.merge(pages.flatMap(p=>p.occurrences),candidates);
+ q.state="Matching reference bubbles";draw();
+ q.occurrences.push(...await DrawingBubbles.find(pdfDoc,q.occurrences,ocrNumbers));
  const ocrTags=new Set(found.filter(r=>r.status!=='Native PDF text').map(r=>r.page+'|'+r.tag));
  const unique=new Map();for(const r of found){if(r.status==='Native PDF text'&&!r.rowNo&&ocrTags.has(r.page+'|'+r.tag))continue;unique.set(r.page+'|'+r.tag+'|'+(r.profile==='ELECTRICAL_LAYOUT'?(r.rowNo||''):(r.physicalRowId||r.rowNo||'')),{...r,path:q.path,fileName:q.file.name})}
  if(!unique.size)throw Error('No tags detected. Review OCR settings and retry; existing cloud records were not changed.');
