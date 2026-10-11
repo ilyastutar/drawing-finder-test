@@ -13,7 +13,7 @@
 
  const $=id=>document.getElementById(id),compact=[['itemNumber','Punch Item No.'],['closedDate','Closed Date'],['statusText','Status'],['latestComment','Latest Comment'],['cableCompletion','Cable Completion'],['subsystem','Subsystem No.'],['discipline','Discipline'],['photoCount','Photo'],['description','Description'],['locationRoom','Location / Room'],['category','Category'],['issuedDate','Issued Date']];
 
- let hiddenColumns=new Set(),allColumns=[];try{hiddenColumns=new Set(JSON.parse(localStorage.getItem('punch-hidden-columns')||'[]'))}catch{}
+ let hiddenColumns=new Set(),allColumns=[];
  let active=false,expanded=false,tokens=[],query='',filters={},selectedFilters={},exactFilters={},matches=[],source=null,lastSignature='',columns=compact,scheduled=false;
  panel.querySelector('.punch-footer').insertAdjacentHTML('beforebegin','<div id="punchTotals" class="punch-totals" role="status" aria-live="polite"></div>');
  panel.querySelector('.punch-footer .hint').textContent='Type to see suggestions · Enter or Tab to add · Select for checkboxes';
@@ -40,8 +40,9 @@
  scroll.insertAdjacentHTML('beforebegin','<div class="punch-copy-tools"><button class="action" id="punchSelectCells" aria-pressed="false">Select cells</button><label><input id="punchCopyHeaders" type="checkbox" checked> Include headers</label><button class="action" id="punchCopyCells" disabled>Copy selected</button><button class="action" id="punchExportSelected" disabled>Export selected punches (.xlsx)</button><button class="action" id="punchExportFiltered">Export filtered (.xlsx)</button><button class="action punch-quick-filter" id="punchQuickFilter" title="Open Electrical / I&amp;C punches in category A or B; keeps your subsystem filter">Electrical A/B · Open</button><button class="action" id="punchImportPhotos" hidden>Import photos</button><span id="punchCopyHint" class="hint" role="status">Click a cell, then Shift-click the opposite corner. Esc cancels selection.</span></div>');
  $('punchQuickFilter').onclick=()=>{for(const k of ['statusText','discipline','category']){delete filters[k];delete selectedFilters[k];delete exactFilters[k]}selectedFilters.statusText=['Open'];selectedFilters.category=['A','B'];exactFilters.discipline=[...new Set((PunchItems.getSnapshot()?.rows||[]).filter(r=>PunchItems.disciplineTone(r)==='disc-electric').map(r=>PunchItems.discipline(r)))];makeColumns();scroll.scrollTop=0;render(query,true)};
  ProjectAccess.ready.then(u=>{$('punchImportPhotos').hidden=!['writer','admin'].includes(u.role)});$('punchImportPhotos').onclick=()=>window.PunchExtras?.bulkUpload();
- function saveColumns(){try{localStorage.setItem('punch-hidden-columns',JSON.stringify([...hiddenColumns]))}catch{}clearCells();hideSuggestions();makeColumns();paint();paintMobile()}
+ function saveColumns(){UserPreferences.setColumns('punch',[...hiddenColumns],allColumns.map(c=>c[0]));clearCells();hideSuggestions();makeColumns();paint();paintMobile()}
  $('punchHead').addEventListener('click',event=>{const button=event.target.closest('[data-hide-column]');if(!button)return;event.preventDefault();event.stopPropagation();if(columns.length<=1)return;const key=button.dataset.hideColumn,index=columns.findIndex(c=>c[0]===key);hiddenColumns.add(key);saveColumns();const next=$('punchHead').querySelectorAll('[data-hide-column]');next[Math.min(index,next.length-1)]?.focus({preventScroll:true})});
+ document.addEventListener('user-preferences-changed',()=>{hiddenColumns=new Set(UserPreferences.columns('punch')?.hidden||[]);clearCells();hideSuggestions();makeColumns();paint();paintMobile()});
  const columnsButton=document.createElement('button');columnsButton.className='action';columnsButton.id='punchColumns';columnsButton.textContent='Columns';$('punchExportFiltered').after(columnsButton);
  columnsButton.onclick=()=>{
   const d=document.createElement('dialog');d.className='columns-dialog';d.innerHTML='<button class="action sticky-close">Close ×</button><h2>Visible columns</h2><p>Hidden columns keep their filters. Copy and Excel export use visible columns.</p><div class="column-options"></div><button class="action columns-reset">Show all</button>';
@@ -73,9 +74,9 @@
   for(const l of labels)if(!used.has(l.toLowerCase().replace(/[^a-z]/g,'')))columns.push(['field:'+l,l]);
 
   const notes=columns.findIndex(c=>/^comm(?:issioning)?notes$/i.test(c[1].replace(/[^a-z]/gi,'')));columns.splice(notes<0?columns.length:notes+1,0,['issuedObservedAt','Issued Time (First Seen)']);
-  allColumns=[...columns];columns=columns.filter(([key])=>!hiddenColumns.has(key));if(!columns.length){hiddenColumns.delete('itemNumber');columns=[compact[0]]}
+  columns=UserPreferences.order(columns,'punch');allColumns=[...columns];columns=columns.filter(([key])=>!hiddenColumns.has(key));if(!columns.length){hiddenColumns.delete('itemNumber');columns=[compact[0]]}
   const focused=document.activeElement?.dataset?.punchFilter,caret=document.activeElement?.selectionStart;
-  $('punchHead').innerHTML=columns.map(([k,l])=>'<th><span class="punch-col-label"><span>'+esc(l)+'</span><button type="button" class="punch-hide-column" data-hide-column="'+esc(k)+'" aria-label="Hide '+esc(l)+' column" title="Hide '+esc(l)+' column" '+(columns.length===1?'disabled':'')+'><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.8 5.2A10.6 10.6 0 0112 5c7 0 10 7 10 7a15.6 15.6 0 01-3.1 4.2M6.3 6.3A16.5 16.5 0 002 12s3 7 10 7a10.3 10.3 0 004.1-.8"/></svg></button></span><input placeholder="'+(k==='closedDate'?'e.g. 14 Sept 2026':'Type + Tab…')+'" aria-label="Filter '+esc(l)+'" data-punch-filter="'+esc(k)+'" value="'+esc(filters[k]||'')+'">'+'<button type="button" class="punch-filter-menu" data-filter-menu="'+esc(k)+'" aria-label="Choose '+esc(l)+' values">'+(Object.hasOwn(exactFilters,k)?'Selected ('+exactFilters[k].length+') ▾':'Select ▾')+'</button>'+filterChips(k)+'</th>').join('');
+  $('punchHead').innerHTML=columns.map(([k,l])=>'<th data-column="'+esc(k)+'"><span class="punch-col-label"><span>'+esc(l)+'</span><button type="button" class="punch-hide-column" data-hide-column="'+esc(k)+'" aria-label="Hide '+esc(l)+' column" title="Hide '+esc(l)+' column" '+(columns.length===1?'disabled':'')+'><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.8 5.2A10.6 10.6 0 0112 5c7 0 10 7 10 7a15.6 15.6 0 01-3.1 4.2M6.3 6.3A16.5 16.5 0 002 12s3 7 10 7a10.3 10.3 0 004.1-.8"/></svg></button></span><input placeholder="'+(k==='closedDate'?'e.g. 14 Sept 2026':'Type + Tab…')+'" aria-label="Filter '+esc(l)+'" data-punch-filter="'+esc(k)+'" value="'+esc(filters[k]||'')+'">'+'<button type="button" class="punch-filter-menu" data-filter-menu="'+esc(k)+'" aria-label="Choose '+esc(l)+' values">'+(Object.hasOwn(exactFilters,k)?'Selected ('+exactFilters[k].length+') ▾':'Select ▾')+'</button>'+filterChips(k)+'</th>').join('');
   if(focused){const input=[...$('punchHead').querySelectorAll('input')].find(el=>el.dataset.punchFilter===focused);input?.focus({preventScroll:true});if(input&&caret!=null)input.setSelectionRange(caret,caret)}
 
   const mobileKey=columns.some(c=>c[0]===$('punchMobileColumn').value)?$('punchMobileColumn').value:columns[0][0];$('punchMobileColumn').innerHTML=columns.map(([k,l])=>'<option value="'+esc(k)+'">'+esc(l)+'</option>').join('');$('punchMobileColumn').value=mobileKey;$('punchMobileFilter').dataset.punchFilter=mobileKey;$('punchMobileFilter').value=filters[mobileKey]||'';$('punchMobileChips').innerHTML=filterChips(mobileKey);
@@ -191,5 +192,6 @@
  }};
 
 
+ ColumnLayout.register(panel.querySelector('table'),{section:'punch',keys:()=>allColumns.map(c=>c[0]),commit:order=>UserPreferences.setColumns('punch',[...hiddenColumns],order)});
 })();
 

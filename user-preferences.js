@@ -1,13 +1,12 @@
+(function(){
 'use strict';
-const invalid=()=>{throw Object.assign(Error('Invalid view preferences'),{status:400})};
-function validate(value){
- if(!value||typeof value!=='object'||Array.isArray(value)||JSON.stringify(value).length>30000)invalid();
- if(!['light','dark'].includes(value.theme))invalid();
- const columns={};if(value.columns!==undefined&&(!value.columns||typeof value.columns!=='object'||Array.isArray(value.columns)))invalid();
- for(const key of Object.keys(value.columns||{})){
-  if(!['punch','cables'].includes(key)&&!/^table:[a-f0-9]{1,8}$/.test(key))invalid();const section=value.columns[key];if(!section||typeof section!=='object'||Array.isArray(section))invalid();
-  columns[key]={};for(const type of ['hidden','order']){const list=section[type]||[];if(!Array.isArray(list)||list.length>250||list.some(v=>typeof v!=='string'||!v.length||v.length>160))invalid();columns[key][type]=[...new Set(list)]}
- }
- return {version:1,theme:value.theme,columns};
-}
-module.exports={validate};
+const defaults=()=>({version:1,theme:'light',columns:{}});let value=defaults(),uid='',dirty=false,timer,revision=0,saving=false,status='Loading preferences…';
+const copy=v=>JSON.parse(JSON.stringify(v));
+function notify(type='user-preferences-changed'){document.documentElement.dataset.theme=value.theme;document.dispatchEvent(new CustomEvent(type,{detail:{status}}))}
+function cache(){try{localStorage.setItem('top-profile-view-v1:'+uid,JSON.stringify({value,dirty}))}catch{}}
+function change(next){if(!uid)return;value=copy(next);dirty=true;revision++;status='Saving preferences…';cache();notify();clearTimeout(timer);timer=setTimeout(save,500)}
+async function save(){clearTimeout(timer);if(!uid||!dirty||saving)return;saving=true;const current=revision;try{await ProjectAccess.api('/api/profile/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preferences:value})});if(current===revision){dirty=false;status='Saved to your profile';cache()}else status='Saving preferences…'}catch{status='Saved on this device. Profile sync pending — retry when connected.'}finally{saving=false;notify('user-preferences-status');if(dirty&&current!==revision)timer=setTimeout(save,500)}}
+const ready=ProjectAccess.ready.then(user=>{uid=user.uid;const cloud=user.preferences;value=cloud?.version===1&&['light','dark'].includes(cloud.theme)?copy(cloud):defaults();try{const saved=JSON.parse(localStorage.getItem('top-profile-view-v1:'+uid)||'null');if(saved?.dirty&&saved.value?.version===1){value=saved.value;dirty=true}}catch{}status=dirty?'Profile sync pending':'Preferences loaded';cache();notify();if(dirty)void save();return value});
+window.addEventListener('online',save);document.addEventListener('visibilitychange',()=>{if(!document.hidden)void save()});
+window.UserPreferences={ready,get:()=>copy(value),get status(){return status},setTheme(theme){if(['light','dark'].includes(theme))change({...value,theme})},columns(key){return copy(value.columns?.[key]||null)},setColumns(key,hidden,order){change({...value,columns:{...value.columns,[key]:{hidden:[...hidden],order:[...order]}}})},reset(){change(defaults());return save()},save,order(columns,section){const order=value.columns?.[section]?.order||[];const rank=new Map(order.map((k,i)=>[k,i]));return [...columns].sort((a,b)=>(rank.get(a[0])??1e6)-(rank.get(b[0])??1e6))}};
+})();

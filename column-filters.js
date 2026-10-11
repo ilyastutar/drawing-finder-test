@@ -6,7 +6,7 @@
   const rows=[...body.rows].filter(r=>r.cells.length===inputs.length);
   let shown=0;
   for(const row of rows){
-   row.hidden=!inputs.every(input=>normalize(row.cells[Number(input.dataset.columnFilter)].textContent).includes(normalize(input.value)));
+   row.hidden=!inputs.every(input=>normalize(([...row.cells].find(c=>c.dataset.originalColumn===input.dataset.columnFilter)||row.cells[Number(input.dataset.columnFilter)]).textContent).includes(normalize(input.value)));
    if(!row.hidden)shown++;
   }
   document.getElementById('filterCount').textContent=rows.length?`${shown} of ${rows.length} loaded results shown`:'Filters apply to loaded results';

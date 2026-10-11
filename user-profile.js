@@ -1,0 +1,16 @@
+(function(){
+'use strict';
+let panel;
+function show(){document.getElementById('workspaceSidebar')?.close();if(panel){panel.showModal();return}
+ panel=document.createElement('dialog');panel.className='user-profile-dialog';panel.setAttribute('aria-label','Your profile');panel.innerHTML='<header><div><small>YOUR ACCOUNT</small><h2>Profile & preferences</h2></div><button class="action" data-close aria-label="Close profile">Close ×</button></header><dl><div><dt>User name</dt><dd data-name></dd></div><div><dt>Email</dt><dd data-email></dd></div><div><dt>Access</dt><dd data-role></dd></div></dl><section><h3>Appearance</h3><label class="profile-theme"><span>Dark mode<small>Saved to your account across devices.</small></span><input type="checkbox" data-theme aria-label="Dark mode"></label></section><section><h3>Table preferences</h3><p>Drag the ⠿ handle in any table to arrange columns. Visibility and order are saved to your account.</p><div class="profile-actions"><button class="action" data-columns="punch">Punch Item columns</button><button class="action" data-columns="cables">Cable List columns</button></div></section><footer><button class="action" data-reset>Restore default view</button><button class="action" data-retry>Save / retry sync</button><p role="status" data-status></p></footer>';
+ const u=ProjectAccess.user;for(const key of ['name','email','role'])panel.querySelector('[data-'+key+']').textContent=u[key]||'—';
+ panel.querySelector('[data-close]').onclick=()=>panel.close();panel.addEventListener('click',e=>{if(e.target!==panel)return;const r=panel.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)panel.close()});
+ panel.querySelector('[data-theme]').onchange=e=>UserPreferences.setTheme(e.target.checked?'dark':'light');
+ panel.querySelector('[data-reset]').onclick=()=>UserPreferences.reset();panel.querySelector('[data-retry]').onclick=()=>UserPreferences.save();
+ panel.querySelectorAll('[data-columns]').forEach(b=>b.onclick=()=>{panel.close();document.querySelector('.mode-tabs [data-mode="'+b.dataset.columns+'"]').click();if(b.dataset.columns==='punch')document.getElementById('punchColumns').click();else{const menu=document.querySelector('#cablePanel .cable-column-menu');menu.open=true;menu.querySelector('summary').focus()}});
+ document.body.append(panel);paint();panel.showModal();
+}
+function paint(){if(!panel)return;panel.querySelector('[data-theme]').checked=UserPreferences.get().theme==='dark';panel.querySelector('[data-status]').textContent=UserPreferences.status}
+document.addEventListener('user-preferences-changed',paint);document.addEventListener('user-preferences-status',paint);
+UserPreferences.ready.then(()=>{const b=document.createElement('button');b.id='workspaceProfile';b.textContent='Profile & preferences';b.onclick=show;document.querySelector('#workspaceSidebar .sidebar-management').prepend(b);const badge=document.querySelector('.access-profile');if(badge){badge.tabIndex=0;badge.setAttribute('role','button');badge.setAttribute('aria-label','Open your profile');badge.onclick=show;badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show()}}}});
+})();
