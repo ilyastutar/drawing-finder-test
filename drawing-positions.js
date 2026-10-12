@@ -27,9 +27,9 @@ async function native(page,content,tags){
      const b=box({x0:Math.min(...points.map(p=>p[0]))/display.width,y0:Math.min(...points.map(p=>p[1]))/display.height,x1:Math.max(...points.map(p=>p[0]))/display.width,y1:Math.max(...points.map(p=>p[1]))/display.height});if(b)boxes.push(b);
     }
     if(boxes.length){
-     const involved=segments.filter(s=>s.end>match.index&&s.start<match.index+match[0].length&&s.div).map(s=>{const r=s.div.getBoundingClientRect();return {x:(r.left+r.right-2*origin.left)/2/viewport.width,y:(r.top+r.bottom-2*origin.top)/2/viewport.height}});
+     const involved=segments.filter(s=>s.end>match.index&&s.start<match.index+match[0].length&&s.div).map(s=>{const r=s.div.getBoundingClientRect();return {x:(r.left+r.right-2*origin.left)/2/viewport.width,y:(r.top+r.bottom-2*origin.top)/2/viewport.height,x0:(r.left-origin.left)/viewport.width,x1:(r.right-origin.left)/viewport.width,y0:(r.top-origin.top)/viewport.height,y1:(r.bottom-origin.top)/viewport.height}});
      const labels=[...new Set(tableRows.filter(r=>r.tag===normalize(tag)&&r.rowNo&&involved.some(p=>p.x>=r.bbox.x0&&p.x<=r.bbox.x1&&p.y>=r.bbox.y0&&p.y<=r.bbox.y1)).map(r=>r.rowNo))];
-     out.push({tag:normalize(tag),page:page.pageNumber,source:'pdf-text',rowNo:labels.length===1?labels[0]:'',boxes});
+     out.push({tag:normalize(tag),page:page.pageNumber,source:'pdf-text',rowNo:labels.length===1?labels[0]:'',referenceId:window.DrawingBubbles?.reference(tokens,{x0:Math.min(...involved.map(p=>p.x0)),x1:Math.max(...involved.map(p=>p.x1)),y0:Math.min(...involved.map(p=>p.y0)),y1:Math.max(...involved.map(p=>p.y1))},page.pageNumber)||'',referenceVersion:2,boxes});
     }
    }
   }return out;
@@ -38,8 +38,8 @@ async function native(page,content,tags){
 function merge(nativeOccurrences,rows){const out=[...nativeOccurrences];for(const r of rows){const b=box(r.bbox);if(!b||!r.tag)continue;const tag=normalize(r.tag),page=Number(r.page)||1;
  // Keep repeated appearances; discard only an OCR box covering an existing native occurrence.
  const duplicate=out.find(o=>o.tag===tag&&o.page===page&&o.boxes.some(a=>{const intersection=Math.max(0,Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0))*Math.max(0,Math.min(a.y1,b.y1)-Math.max(a.y0,b.y0));return intersection/Math.min((a.x1-a.x0)*(a.y1-a.y0),(b.x1-b.x0)*(b.y1-b.y0))>.7}));
- if(duplicate&&r.rowNo&&!duplicate.rowNo)duplicate.rowNo=String(r.rowNo);
- if(!duplicate)out.push({tag,page,source:'ocr',rowNo:String(r.rowNo||''),boxes:[b]});
+ if(duplicate&&r.referenceVersion===2&&r.referenceId){duplicate.rowNo=r.referenceId;duplicate.referenceId=r.referenceId;duplicate.referenceVersion=2}
+ if(!duplicate)out.push({tag,page,source:'ocr',rowNo:String(r.rowNo||''),referenceId:r.referenceId||'',referenceVersion:r.referenceVersion||0,boxes:[b]});
  }return out}
 window.DrawingPositions={native,merge,normalize,box};
 })();

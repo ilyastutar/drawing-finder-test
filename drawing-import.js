@@ -95,9 +95,10 @@ async function scanPDF(q){
 
  const accepted=new Set(found.map(r=>r.page+'|'+DrawingPositions.normalize(r.tag)));
  const candidates=[...found.filter(r=>r.status!=='Native PDF text'),...(needsOCR.length&&el('drawingScanMode')?.value==='table'?googleCandidates:[]),...(needsOCR.length&&el('drawingScanMode')?.value==='table'?paddleCandidates:[])].filter(r=>accepted.has(r.page+'|'+DrawingPositions.normalize(r.tag)));
+ if(needsOCR.length&&el('drawingScanMode')?.value==='table')for(const r of candidates){if(r.bbox){r.referenceId=DrawingBubbles.reference(dfGoogleTokens||[],r.bbox,Number(r.page));r.referenceVersion=2}}
  q.occurrences=DrawingPositions.merge(pages.flatMap(p=>p.occurrences),candidates);
  q.state="Matching reference bubbles";draw();
- q.occurrences.push(...await DrawingBubbles.find(pdfDoc,q.occurrences,ocrNumbers));
+ q.occurrences.push(...await DrawingBubbles.find(pdfDoc,q.occurrences,ocrNumbers,{progress:(done,total)=>{q.state="Matching reference bubbles "+done+" / "+total;draw()}}));
  const ocrTags=new Set(found.filter(r=>r.status!=='Native PDF text').map(r=>r.page+'|'+r.tag));
  const unique=new Map();for(const r of found){if(r.status==='Native PDF text'&&!r.rowNo&&ocrTags.has(r.page+'|'+r.tag))continue;unique.set(r.page+'|'+r.tag+'|'+(r.profile==='ELECTRICAL_LAYOUT'?(r.rowNo||''):(r.physicalRowId||r.rowNo||'')),{...r,path:q.path,fileName:q.file.name})}
  if(!unique.size)throw Error('No tags detected. Review OCR settings and retry; existing cloud records were not changed.');
@@ -143,3 +144,4 @@ el('drawingPublish').onclick=async()=>{if(busy||!records.length)return;busy=true
 el('drawingExport').onclick=()=>{const cell=x=>'"'+String(x??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"';const lines=[['Tag Number','Drawing Number','DCC No','Revision','Description','Page','Row no.','Cable list check','Reference sources','Layout','File','Review'],...filteredReview().map(r=>[r.tag,r.drawingNumber,r.dccNo,r.revision,r.drawingDescription,r.page,r.rowNo,r.referenceStatus,(r.referenceSources||[]).join(' / '),r.layout,r.path,r.metadataStatus])];const url=URL.createObjectURL(new Blob(['\ufeff'+lines.map(r=>r.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='drawing-tags-dcc.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 window.DrawingImport={inspectPDF,scanPDF,scanDWG,workerTask,selectFolder,walk};
 })();
+

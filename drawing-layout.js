@@ -15,7 +15,7 @@ function fromTokens(tokens,lines=[]){tokens=tokens.filter(t=>valid(t.bbox));line
  for(const l of lines)add(l.text,l.bbox,l.page,l.confidence);
  // A label such as VFD-10LAC13AP001 still contains a complete KKS reference.
  for(const t of tokens)for(const m of String(t.text).toUpperCase().matchAll(/(?<![A-Z0-9])(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z]?)(?![A-Z0-9])/g))add(m[1],t.bbox,t.page,t.confidence);
- for(const r of out){const c=columns.find(c=>c.page===r.page&&(r.bbox.x0+r.bbox.x1)/2>=c.x0&&(r.bbox.x0+r.bbox.x1)/2<=c.x1&&r.bbox.y0>c.y0&&r.bbox.y1<=c.y1);if(!c?.rowHeader)continue;
+ for(const r of out){r.referenceId=window.DrawingBubbles?.reference(tokens,r.bbox,r.page)||'';r.referenceVersion=2;if(r.referenceId)r.rowNo=r.referenceId;const c=columns.find(c=>c.page===r.page&&(r.bbox.x0+r.bbox.x1)/2>=c.x0&&(r.bbox.x0+r.bbox.x1)/2<=c.x1&&r.bbox.y0>c.y0&&r.bbox.y1<=c.y1);if(!c?.rowHeader)continue;
   const h=r.bbox.y1-r.bbox.y0,cy=(r.bbox.y0+r.bbox.y1)/2;
   const numbers=tokens.filter(t=>t.page===r.page&&/^\d{1,5}(?:\.\d{1,3})?$/.test(String(t.text).trim())&&t.bbox.x1<r.bbox.x0&&(t.bbox.x0+t.bbox.x1)/2>=c.rowHeader.x0-h*2&&(t.bbox.x0+t.bbox.x1)/2<=c.rowHeader.x1+h*2&&Math.abs((t.bbox.y0+t.bbox.y1)/2-cy)<h*.6);
   const values=[...new Set(numbers.map(t=>t.text.trim()))];if(values.length===1){r.rowNo=values[0];r.rowStatus='OCR_ROW_LABEL';r.rowIntegrity='REVIEW'}
