@@ -62,3 +62,11 @@ body.cable-is-expanded{overflow:hidden}
 #cablePanel .punch-scroll th select{padding:2px 5px;font-size:10px;margin-top:5px;width:auto;max-width:100%}
 
 #cablePanel .punch-filter-menu{display:block;margin-top:5px;padding:2px 6px;font-size:10px;background:#f7fafc;border:1px solid #b9cddd;border-radius:4px;color:#345e79;cursor:pointer}
+
+/* Cable identity remains visible when columns move or Source is hidden. */
+#cablePanel td.cable-source-power:not(.cable-cell-selected){background:#fce6e6;color:#713b3b}
+#cablePanel td.cable-source-ic:not(.cable-cell-selected){background:#e2efff;color:#284e76}
+#cablePanel .cable-legend .cable-key-power::before{background:#fce6e6;border-color:#ca8989}
+#cablePanel .cable-legend .cable-key-ic::before{background:#e2efff;border-color:#83a9d2}
+html[data-theme=dark] #cablePanel td.cable-source-power:not(.cable-cell-selected){background:#513337!important;color:#ffdede!important}
+html[data-theme=dark] #cablePanel td.cable-source-ic:not(.cable-cell-selected){background:#263f5c!important;color:#d9eaff!important}

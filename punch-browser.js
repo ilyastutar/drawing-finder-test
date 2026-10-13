@@ -113,7 +113,7 @@
 
   if(!data){matches=[];body.innerHTML='<tr><td colspan="'+columns.length+'">'+(PunchItems.getState()==='loading'?'Loading punch data…':'Punch data unavailable.')+'</td></tr>';$('punchCount').textContent='';$('punchTotals').textContent='';return}
 
-  const wanted=new Set(tokens),found=new Set();matches=[];for(let index=0;index<data.rows.length;index++){const row=data.rows[index],number=norm(row.itemNumber);const searchable=searchText(row),queryMatch=query&&(/^\d+$/.test(query)?number:searchable).includes(norm(query)),accept=t=>/^\d+$/.test(t)?number===t:searchable.includes(t);for(const t of wanted)if(accept(t))found.add(t);if(wanted.size?(![...wanted].some(accept)&&!(queryMatch)):(query&&!queryMatch))continue;if(!matchesFilters(row))continue;matches.push({row,index})}
+  const wanted=new Set(tokens),found=new Set();matches=[];for(let index=0;index<data.rows.length;index++){const row=data.rows[index],number=norm(row.itemNumber);const searchable=searchText(row),queryMatch=query&&(/^\d+$/.test(query)?number:searchable).includes(norm(query)),accept=t=>/^\d+$/.test(t)?number===t:searchable.includes(t);for(const t of wanted)if(accept(t))found.add(t);if(wanted.size?(![...wanted].some(accept)&&!(queryMatch)):(query&&!queryMatch))continue;if(dashboardPredicate&&!dashboardPredicate(row))continue;if(!matchesFilters(row))continue;matches.push({row,index})}
 
   $('punchMissing').textContent=tokens.filter(n=>!found.has(n)).length?'Not found: '+tokens.filter(n=>!found.has(n)).join(', '):'';
 
@@ -185,7 +185,10 @@
  document.addEventListener('punch-extras-updated',()=>{if(!active)return;if(selecting){paint();return}const page=mobilePage;render(query,true);mobilePage=Math.min(page,Math.max(0,Math.ceil(matches.length/30)-1));paintMobile()});
  document.addEventListener('cable-identifiers-updated',()=>render(query,true));
  let savedPosition={top:0,left:0,mobile:0};
- window.PunchBrowser={render,getQuery:()=>query,setExpanded(on){if(expanded!==on)toggle()},activate(on){
+ let dashboardPredicate=null,dashboardSaved=null;
+ const dashboardBack=document.createElement('div');dashboardBack.className='dashboard-return';dashboardBack.hidden=true;panel.prepend(dashboardBack);
+ function clearDashboardRows(){dashboardPredicate=null;dashboardBack.hidden=true;if(dashboardSaved){({tokens,query,filters,selectedFilters,exactFilters,savedPosition}=dashboardSaved);dashboardSaved=null;$('q').value=query;$('punchFullQuery').value=query;chips();makeColumns();render(query,true)}}
+ window.PunchBrowser={clearDashboardRows,showDashboardRows(predicate,label,back){if(!dashboardSaved)dashboardSaved={tokens,query,filters,selectedFilters,exactFilters,savedPosition:{top:scroll.scrollTop,left:scroll.scrollLeft,mobile:mobilePage}};dashboardPredicate=predicate;tokens=[];query='';filters={};selectedFilters={};exactFilters={};savedPosition={top:0,left:0,mobile:0};$('q').value='';$('punchFullQuery').value='';chips();makeColumns();dashboardBack.hidden=false;dashboardBack.innerHTML='<button class="action">← Back to Dashboard</button><strong>'+esc(label)+'</strong>';dashboardBack.querySelector('button').onclick=back;scroll.scrollTop=0;render('',true)},render,getQuery:()=>query,setExpanded(on){if(expanded!==on)toggle()},activate(on){
  if(active&&on)return;hideSuggestions();closePicker();if(active&&!on)savedPosition={top:scroll.scrollTop,left:scroll.scrollLeft,mobile:mobilePage};
  active=on;panel.hidden=!on;$('resultsTable').closest('.wrap').hidden=on;document.querySelector('.filter-tools').hidden=on;$('status').hidden=on;
  if(!on){setSelecting(false);if(expanded)toggle()}else{makeColumns();$('punchFullQuery').value=query;render(query,true);requestAnimationFrame(()=>{if(!active)return;scroll.scrollTop=savedPosition.top;scroll.scrollLeft=savedPosition.left;mobilePage=savedPosition.mobile;paint();paintMobile()})}
