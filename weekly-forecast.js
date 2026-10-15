@@ -20,7 +20,7 @@ const kind=()=>host.querySelector('[data-kind]').value;
 const target=r=>kind()==='walkdown'?r.walkdownEstimate:r.estimate;
 const actual=r=>kind()==='walkdown'?r.walkdownActual:r.handoverActual;
 let warningsOnly=false;
-function safety(r){const s=ForecastModel.summary(snapshot()?.rows||[],r.subsystem,x=>PunchItems.rowStatus(x).status==='Closed',discipline);return {warning:!!(r.estimate&&r.estimate<today()&&s.blockers.length),complete:!!(snapshot()&&s.categories.slice(0,2).some(c=>c.total)&&!s.blockers.length)}}
+function safety(r){const s=summarize(r);return {warning:!!(r.estimate&&r.estimate<today()&&s.blockers.length),complete:!!(snapshot()&&s.categories.slice(0,2).some(c=>c.total)&&!s.blockers.length)}}
 function options(){const value=host.querySelector('[data-sub-select]').value,q=host.querySelector('[data-search]').value.trim().toUpperCase();host.querySelector('[data-sub-label]').textContent=value||'All subsystems ('+(data?.rows.length||0)+')';host.querySelector('[data-sub-options]').innerHTML='<button type="button" data-select-sub="">All subsystems</button>'+[...(data?.rows||[])].filter(r=>(r.subsystem+' '+r.description).toUpperCase().includes(q)).sort((a,b)=>a.subsystem.localeCompare(b.subsystem)).map(r=>'<button type="button" data-select-sub="'+esc(r.subsystem)+'" aria-pressed="'+(value===r.subsystem)+'"><strong>'+esc(r.subsystem)+'</strong><small>'+esc(r.description)+'</small></button>').join('')}
 host.querySelector('[data-search]').addEventListener('input',options);
 host.addEventListener('click',e=>{const b=e.target.closest('[data-select-sub]');if(!b)return;host.querySelector('[data-sub-select]').value=b.dataset.selectSub;host.querySelector('.wf-picker details').open=false;focusCurrent=true;options();render()});
