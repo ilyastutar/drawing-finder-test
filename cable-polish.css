@@ -1,0 +1,37 @@
+/* Compact identity/status chips; colour belongs to the label, not the cell. */
+#cablePanel .cable-name-chip,.cable-dialog .cable-name-chip,#cablePanel .cable-equipment-chip,.cable-no-date{display:inline-block;box-sizing:border-box;max-width:100%;padding:5px 8px;border:1px solid transparent;border-radius:6px;font-size:12px;line-height:1.45;vertical-align:middle;text-decoration:none!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cablePanel .cable-name-chip.source-power,.cable-dialog .cable-name-chip.source-power{color:#a13939;background:#fceaea;border-color:#edc6c6}
+#cablePanel .cable-name-chip.source-ic,.cable-dialog .cable-name-chip.source-ic{color:#276291;background:#eaf3ff;border-color:#bfd5ee}
+#cablePanel .cable-equipment-chip{font-family:inherit;cursor:pointer;margin:0;box-shadow:none}
+#cablePanel .cable-equipment-chip.is-complete{color:#23754d;background:#e8f5ed;border-color:#b6d9c5}
+#cablePanel .cable-equipment-chip.is-incomplete,.cable-no-date{color:#ac3636;background:#fff0f0;border-color:#efcccc}
+#cablePanel .cable-equipment-chip.is-pending{color:#647988;background:#edf2f6;border-color:#cfdae1}
+#cablePanel .cable-equipment-chip:hover{filter:brightness(.96)}#cablePanel .cable-equipment-chip:focus-visible{outline:2px solid #4585aa;outline-offset:2px}
+/* Single bounded scrolling surface: headers never overlap the close controls. */
+body.operations dialog.cable-dialog[open]{display:flex;flex-direction:column;gap:10px;height:min(820px,90dvh);max-height:90dvh;overflow:hidden;box-sizing:border-box;padding:20px}
+body.operations .cable-dialog .cable-detail-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex:none}
+body.operations .cable-dialog .cable-detail-header h2{margin:0;overflow-wrap:anywhere;min-width:0}
+body.operations .cable-dialog .cable-close{position:static!important;float:none!important;flex:none;align-self:flex-start}
+body.operations .cable-dialog .cable-message{flex:none;margin:0;line-height:1.5}
+body.operations .cable-dialog .cable-clear{flex:none;align-self:flex-start}
+body.operations .cable-dialog .cable-detail-scroll{flex:1 1 0;min-height:0;max-height:none!important;overflow:auto!important;isolation:isolate;overscroll-behavior:contain;margin:0;border:1px solid #cbdce7;border-radius:10px;background:#fff}
+body.operations .cable-dialog .cable-detail-scroll table{border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:1080px;width:100%}
+body.operations .cable-dialog .cable-detail-scroll thead th{position:sticky!important;top:0;z-index:5;background:#e8f1f8!important;box-shadow:0 1px 0 #c8dbe7;min-width:0;box-sizing:border-box}
+body.operations .cable-dialog .cable-detail-scroll thead th:nth-child(even){background:#e7f3f1!important}
+body.operations .cable-dialog .cable-detail-scroll td{position:static!important;min-width:0;max-width:none;vertical-align:top;background:transparent;overflow-wrap:anywhere;border-bottom:1px solid #e0eaf0}
+body.operations .cable-dialog .cable-detail-scroll tbody tr:nth-child(even){background:#f7fafc}
+body.operations .cable-dialog .cable-detail-scroll tbody tr:hover{background:#eef5f9}
+body.operations .cable-dialog .cable-detail-scroll :is(input,select){box-sizing:border-box;width:100%;min-width:0;max-width:100%}
+.cable-empty{text-align:center!important;padding:30px!important;color:#708492}
+html[data-theme=dark] :is(#cablePanel,.cable-dialog) .cable-name-chip.source-power,html[data-theme=dark] #cablePanel .cable-equipment-chip.is-incomplete,html[data-theme=dark] .cable-no-date{background:#482d30;color:#ffd0ce;border-color:#795056}
+html[data-theme=dark] :is(#cablePanel,.cable-dialog) .cable-name-chip.source-ic{background:#253e57;color:#c2dfff;border-color:#476d93}
+html[data-theme=dark] #cablePanel .cable-equipment-chip.is-complete{background:#204636;color:#b7efd0;border-color:#477962}
+html[data-theme=dark] #cablePanel .cable-equipment-chip.is-pending{background:#283b48;color:#bed0dd;border-color:#4a6578}
+html[data-theme=dark] body.operations .cable-dialog :is(.cable-detail-header h2,.cable-message){color:#dceaf2}
+html[data-theme=dark] body.operations .cable-dialog .cable-detail-scroll{background:#182e3e;border-color:#38576b}
+html[data-theme=dark] body.operations .cable-dialog .cable-detail-scroll thead th{background:#284657!important;color:#d5e8f3}
+html[data-theme=dark] body.operations .cable-dialog .cable-detail-scroll thead th:nth-child(even){background:#284c4a!important}
+html[data-theme=dark] body.operations .cable-dialog .cable-detail-scroll tbody tr:nth-child(even){background:#1e3747}
+html[data-theme=dark] body.operations .cable-dialog .cable-detail-scroll tbody tr:hover{background:#284656}
+html[data-theme=dark] body.operations .cable-dialog :is(input,select){background:#142b3b;color:#dfedf5;border-color:#466275}
+@media(max-width:650px){body.operations dialog.cable-dialog[open]{width:calc(100vw - 12px);max-width:none;height:94dvh;max-height:94dvh;padding:12px}body.operations .cable-dialog .cable-detail-header h2{font-size:19px}}
