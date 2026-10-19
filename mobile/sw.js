@@ -1,6 +1,6 @@
 'use strict';
-const CACHE='top-field-pocket-shell-0.1.1';
-const FILES=['./','index.html','mobile.css','mobile.js','offline-data.js','punch-model.js','manifest.webmanifest','icon.svg','project-access.js','project-access.css'];
+const CACHE='top-field-pocket-shell-0.2.0';
+const FILES=['./','index.html','mobile.css','mobile.js','offline-data.js','offline-photos.js','punch-model.js','manifest.webmanifest','icon.svg','project-access.js','project-access.css'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES))));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('top-field-pocket-shell-')&&k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()])));
 // Only this preview's static files are cached. No API responses or credentials.
