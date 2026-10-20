@@ -35,3 +35,8 @@ html[data-theme=dark] body.operations .cable-dialog .cable-detail-scroll tbody t
 html[data-theme=dark] body.operations .cable-dialog .cable-detail-scroll tbody tr:hover{background:#284656}
 html[data-theme=dark] body.operations .cable-dialog :is(input,select){background:#142b3b;color:#dfedf5;border-color:#466275}
 @media(max-width:650px){body.operations dialog.cable-dialog[open]{width:calc(100vw - 12px);max-width:none;height:94dvh;max-height:94dvh;padding:12px}body.operations .cable-dialog .cable-detail-header h2{font-size:19px}}
+
+.cable-change-note{display:block;font-size:10px;line-height:14px;color:#9a5a13;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cable-update-chip{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding:3px 5px;border-radius:6px;background:#fff1dc;color:#855016;font-size:11px;line-height:14px}
+.cable-related-tools{font-size:11px;line-height:18px;white-space:nowrap}.cable-related-tools button{font:inherit;padding:1px 5px;border:1px solid #bad1df;border-radius:5px;background:#f1f7fb;color:#245c7a;cursor:pointer}.cable-related-tools [data-show-related]{display:block;margin-top:3px}
+html[data-theme=dark] .cable-change-note{color:#f1c287}html[data-theme=dark] .cable-update-chip{background:#503e28;color:#ffe0ae}html[data-theme=dark] .cable-related-tools button{background:#284657;color:#def2ff;border-color:#52768c}
