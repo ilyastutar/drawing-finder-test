@@ -9,3 +9,5 @@
 .wf-empty-week{padding:16px;color:inherit;font-size:13px;line-height:1.6;opacity:.8}
 
 .wf-card .wf-engineer{display:block;margin:10px 0;padding:7px 10px;border-radius:8px;background:color-mix(in srgb,currentColor 7%,transparent);font-size:12px;font-weight:600;overflow-wrap:anywhere}.wf-assignment{margin:16px 0;padding:18px;border:1px solid #b9d3df;border-radius:12px;background:color-mix(in srgb,#4d8ba1 7%,transparent)}.wf-assignment h3{margin-top:0}.wf-assignment label{display:block;max-width:420px}.wf-assignment input{display:block;box-sizing:border-box;width:100%;padding:10px;border:1px solid #adc8d5;border-radius:8px;margin:6px 0 12px;background:var(--surface,#fff);color:inherit}.wf-assignment button{margin:0 8px 10px 0}.wf-assignment small{display:block}.wf-assignment p{font-size:13px}
+
+.wf-assignment select{display:block;width:100%;max-width:420px;padding:11px;margin:8px 0 14px;border:1px solid #adc8d5;border-radius:8px;background:var(--card,#fff);color:inherit}.wf-assignment button:disabled{opacity:.45;cursor:not-allowed}#weeklyForecast [data-criteria-label]{font-size:12px;font-weight:700;color:#357b86}
