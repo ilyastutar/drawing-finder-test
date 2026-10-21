@@ -9,7 +9,7 @@ const fmt=v=>v?new Date(v+'T00:00:00Z').toLocaleDateString('en-GB',{day:'numeric
 const pct=(n,d)=>d?Math.round(n/d*1000)/10:0;
 host.innerHTML=`<header class="ho-heading"><div><small>PROJECT DELIVERY</small><h2>Project Handover Overview</h2><p>CHP Dradenau · Construction to commissioning</p></div><div><span data-updated></span><button class="action" data-refresh>Refresh</button></div></header>
 <div class="ho-filters"><div class="ho-picker"><span>Subsystem</span><input type="hidden" data-subsystem><details><summary data-sub-choice>All subsystems</summary><div class="ho-picker-menu"><input type="search" data-sub-search placeholder="Search code or description…" aria-label="Find subsystem"><div data-sub-options></div></div></details></div><label>Discipline<select data-discipline aria-label="Discipline"><option value="">All disciplines</option><option>Civil</option><option>E&amp;I</option><option>Mechanical</option><option>Other</option></select></label><label>Responsible engineer<select data-engineer aria-label="Responsible engineer"><option value="">All engineers</option></select></label><button class="action" data-reset>Reset filters</button></div>
-<div class="ho-policy"><div><strong data-policy>Loading criteria…</strong><small>Warnings require an overdue target and an open punch in the selected categories. Recorded handovers stay unchanged.</small></div><button class="action" data-change hidden>Change criteria</button></div>
+<div class="ho-policy"><button class="action criteria-button" data-change hidden>Change criteria</button><div><strong data-policy>Loading criteria…</strong><small>Warnings require an overdue target and an open punch in the selected categories. Recorded handovers stay unchanged.</small></div></div>
 <p data-message role="status"></p><div data-content hidden></div>`;
 const dialog=document.createElement('dialog');dialog.className='ho-criteria';dialog.setAttribute('aria-label','Change handover criteria');document.body.append(dialog);
 const value=s=>host.querySelector(s).value;
@@ -28,7 +28,7 @@ function records(){return M.build(filteredSubsystems(),PunchItems.getSnapshot()?
 function week(date){const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10)}
 function render(){
  if(!active)return;
- host.querySelector('[data-change]').hidden=ProjectAccess.user?.role!=='admin'||!criteria;
+ host.querySelector('[data-change]').hidden=!criteria;
  host.querySelector('[data-policy]').textContent=criteria?'Blocking categories: '+criteria.categories.join(' + '):'Criteria unavailable';
  const container=host.querySelector('[data-content]');container.hidden=!data?.available||!criteria;if(container.hidden)return;
  const rows=records(),pending=rows.filter(r=>!r.delivered),delivered=rows.length-pending.length,overdue=rows.filter(r=>r.overdue).length,loaded=!!PunchItems.getSnapshot();
@@ -45,7 +45,7 @@ function render(){
 }
 async function load(){
  if(busy)return;busy=true;const id=++request;host.querySelector('[data-refresh]').disabled=true;
- try{const [d,c]=await Promise.all([ProjectAccess.api('/api/public/forecast'),ProjectAccess.api('/api/handover/criteria')]);if(id!==request)return;if(!d.ok||!c.ok||!Array.isArray(c.categories))throw Error('Update the backend to load handover criteria.');data=d;criteria=c;choices();host.querySelector('[data-updated]').textContent=d.syncedAt?'Imported '+new Date(d.syncedAt).toLocaleString('en-GB'):'';host.querySelector('[data-message]').textContent=d.available?'':'Import the DRA workbook to see the project overview.';render()}
+ try{const [d,c]=await Promise.all([ProjectAccess.api('/api/public/forecast'),personalCriteria()]);if(id!==request)return;if(!d.ok||!c.ok||!Array.isArray(c.categories))throw Error('Update the backend to load handover criteria.');data=d;criteria=c;choices();host.querySelector('[data-updated]').textContent=d.syncedAt?'Imported '+new Date(d.syncedAt).toLocaleString('en-GB'):'';host.querySelector('[data-message]').textContent=d.available?'':'Import the DRA workbook to see the project overview.';render()}
  catch(e){host.querySelector('[data-message]').textContent='Could not refresh: '+e.message}
  finally{busy=false;host.querySelector('[data-refresh]').disabled=false}
 }
@@ -60,20 +60,25 @@ host.addEventListener('click',e=>{
  if(e.target.closest('[data-blockers]'))navigate(null,true);
 });
 host.querySelector('[data-refresh]').onclick=load;
-host.querySelector('[data-reset]').onclick=()=>{host.querySelectorAll('select').forEach(el=>el.value='');host.querySelector('[data-subsystem]').value='';host.querySelector('[data-sub-search]').value='';Object.keys(tableFilters).forEach(k=>delete tableFilters[k]);drawSubsystems();priority='all';render()};
-host.addEventListener('change',render);
+host.querySelector('[data-reset]').onclick=()=>{host.querySelectorAll('select').forEach(el=>el.value='');host.querySelector('[data-subsystem]').value='';host.querySelector('[data-sub-search]').value='';Object.keys(tableFilters).forEach(k=>delete tableFilters[k]);UserPreferences.setDelivery({handoverDiscipline:''});drawSubsystems();priority='all';render()};
+host.addEventListener('change',e=>{if(e.target.matches('[data-discipline]'))UserPreferences.setDelivery({handoverDiscipline:e.target.value});render()});
 host.querySelector('[data-change]').onclick=()=>{
- if(ProjectAccess.user?.role!=='admin'||!criteria)return;
- dialog.innerHTML='<form><h2>Change handover criteria</h2><p>Select which open punch categories block handover.</p><div class="ho-checks">'+['A','B','C'].map(c=>'<label><input type="checkbox" name="category" value="'+c+'" '+(criteria.categories.includes(c)?'checked':'')+'>Category '+c+'</label>').join('')+'</div><p>Example: select A only to warn when the target has passed and at least one A punch remains open.</p><small>This project setting applies to all users of Handover Status and Skyline. Actual handover dates remain unchanged. Skyline uses the same criteria.</small><p data-save-status role="status"></p><footer><button type="button" class="action" data-cancel>Cancel</button><button type="submit" class="action">Save criteria</button></footer></form>';
+ if(!criteria)return;
+ dialog.innerHTML='<form><h2>Change handover criteria</h2><p>Select which open punch categories block handover.</p><div class="ho-checks">'+['A','B','C'].map(c=>'<label><input type="checkbox" name="category" value="'+c+'" '+(criteria.categories.includes(c)?'checked':'')+'>Category '+c+'</label>').join('')+'</div><p>Example: select A only to warn when the target has passed and at least one A punch remains open.</p><small>Saved to your profile for Skyline and Handover Status. Other users keep their own choices. Actual handover dates remain unchanged.</small><p data-save-status role="status"></p><footer><button type="button" class="action" data-cancel>Cancel</button><button type="submit" class="action">Save criteria</button></footer></form>';
  dialog.querySelector('[data-cancel]').onclick=()=>dialog.close();dialog.showModal();
 };
 dialog.addEventListener('submit',async e=>{
  e.preventDefault();const form=e.target,categories=[...form.querySelectorAll('input:checked')].map(el=>el.value),msg=form.querySelector('[data-save-status]'),buttons=form.querySelectorAll('button');
  if(!categories.length){msg.textContent='Select at least one category.';return}
  buttons.forEach(b=>b.disabled=true);
- try{const d=await ProjectAccess.api('/api/handover/criteria',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({categories,revision:criteria.revision})});if(!d.ok)throw Error(d.error||'Could not save criteria.');criteria=d;dialog.close();render();document.dispatchEvent(new CustomEvent('handover-criteria-changed',{detail:d}));host.querySelector('[data-message]').textContent='Criteria saved · Blocking categories: '+d.categories.join(' + ')}
+ try{UserPreferences.setDelivery({categories});await UserPreferences.save();const d={ok:true,categories};criteria=d;dialog.close();render();document.dispatchEvent(new CustomEvent('handover-criteria-changed',{detail:d}));host.querySelector('[data-message]').textContent='Criteria saved · Blocking categories: '+d.categories.join(' + ')}
  catch(err){msg.textContent=err.message}finally{buttons.forEach(b=>b.disabled=false)}
 });
 document.addEventListener('punch-updated',render);
-window.HandoverStatus={async getCriteria(){const c=await ProjectAccess.api('/api/handover/criteria');if(!c.ok||!Array.isArray(c.categories))throw Error('Could not load handover criteria.');criteria=c;return c},changeCriteria(){host.querySelector('[data-change]').onclick()},activate(on){active=on;host.hidden=!on;if(on){render();void load()}else {dialog.close();host.querySelector('.ho-picker details').open=false}}};
+
+async function personalCriteria(){await UserPreferences.ready;return {ok:true,categories:UserPreferences.get().delivery?.categories||['A','B']}}
+function restorePreferences(){const d=UserPreferences.get().delivery||{},categories=d.categories||['A','B'],disc=d.handoverDiscipline||'',changed=JSON.stringify(criteria?.categories)!==JSON.stringify(categories)||host.querySelector('[data-discipline]').value!==disc;criteria={ok:true,categories};host.querySelector('[data-discipline]').value=disc;if(changed)render()}
+UserPreferences.ready.then(restorePreferences);document.addEventListener('user-preferences-changed',restorePreferences);
+setInterval(()=>{if(active&&!document.hidden)void load()},60000);document.addEventListener('visibilitychange',()=>{if(active&&!document.hidden)void load()});
+window.HandoverStatus={async getCriteria(){criteria=await personalCriteria();return criteria},changeCriteria(){host.querySelector('[data-change]').onclick()},activate(on){active=on;host.hidden=!on;if(on){render();void load()}else {dialog.close();host.querySelector('.ho-picker details').open=false}}};
 })();

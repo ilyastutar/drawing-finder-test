@@ -1,0 +1,1 @@
+(function(root){const api={card(r,blockers,ready,today){const complete=!!r.handoverActual;return {complete,warning:!!(!complete&&r.walkdownActual&&ready&&r.estimate&&r.estimate<today&&blockers>0)}}};if(typeof module==='object')module.exports=api;else root.SkylineState=api})(typeof window==='undefined'?this:window);
