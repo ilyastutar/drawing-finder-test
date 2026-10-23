@@ -11,12 +11,12 @@ function setup(){bar=document.querySelector('.access-bar');if(!bar)return;bar.cl
  const management=drawer.querySelector('.sidebar-management');for(const id of ['accessUsers','punchStorage','accessLogout']){const b=document.getElementById(id);if(b&&b.parentElement!==management){management.append(b);b.addEventListener('click',()=>drawer.close(),{capture:true})}}
  const name=bar.querySelector('.access-profile')?.textContent||'';if(drawer.querySelector('.sidebar-user').textContent!==name)drawer.querySelector('.sidebar-user').textContent=name;
  for(const b of bar.querySelectorAll('.mode-tabs button:not([data-mode])'))management.append(b);
- if(!drawer.querySelector('[data-section]'))for(const source of bar.querySelectorAll('[data-mode]')){const b=document.createElement('button');b.textContent=source.textContent;b.dataset.section=source.dataset.mode;b.onclick=()=>{closeDrawer();source.click()};drawer.querySelector('nav').append(b)}
+ if(!drawer.querySelector('[data-section]'))for(const source of bar.querySelectorAll('[data-mode]')){const b=document.createElement('button');b.textContent=source.textContent;b.dataset.section=source.dataset.mode;b.hidden=source.hidden;b.onclick=()=>{closeDrawer();source.click()};drawer.querySelector('nav').append(b)}
 }
 function applyFull(){document.body.classList.toggle('operations-full',full);if(mode==='punch')window.PunchBrowser?.setExpanded(full);if(mode==='cables')window.CableRegister?.setExpanded(full)}
 function layout(){pending=false;setup();if(bar)document.documentElement.style.setProperty('--access-bar-height',Math.ceil(bar.getBoundingClientRect().height)+'px');
  for(const [panelId,selector] of [['punchPanel','#punchExpand'],['cablePanel','[data-expand]']]){const panel=document.getElementById(panelId),button=panel?.querySelector(selector),footer=panel?.querySelector('.punch-footer');if(button&&footer&&button.parentElement!==footer)footer.append(button)}
- for(const b of drawer.querySelectorAll('[data-section]'))b.classList.toggle('selected',b.dataset.section===mode);
+ for(const b of drawer.querySelectorAll('[data-section]')){b.classList.toggle('selected',b.dataset.section===mode);b.hidden=['excel','krastechnic'].includes(b.dataset.section)&&ProjectAccess.user?.role!=='admin';}
  const menu=document.querySelector('.cable-column-menu');if(menu&&!menu.querySelector('.menu-close')){const close=document.createElement('button');close.type='button';close.className='action menu-close';close.textContent='Close ×';close.onclick=()=>{menu.open=false;menu.querySelector('summary').focus()};menu.querySelector('[data-columns]').prepend(close)}
  for(const p of document.querySelectorAll('#punchPanel:not(.punch-expanded),#cablePanel:not(.cable-fullscreen)')){if(p.hidden)continue;const s=p.querySelector('.punch-scroll');if(s){const v=Math.max(220,innerHeight-s.getBoundingClientRect().top-80)+'px';if(p.style.getPropertyValue('--workspace-height')!==v)p.style.setProperty('--workspace-height',v)}}
 }
