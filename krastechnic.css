@@ -4,3 +4,5 @@
 
 .mode-tabs [data-mode=krastechnic]{--tab-bg:#e0ebf1;--tab-border:#b3cbd8;--tab-text:#294c61;--tab-active:#294c61}.mode-tabs [data-mode=excel]{--tab-bg:#e2f1e6;--tab-border:#b4d4bc;--tab-text:#2d6b40;--tab-active:#2d6b40}
 #krastechnicPanel{padding:18px;background:#f5f9fc;border:1px solid #cedee8;border-radius:12px;box-sizing:border-box}#krastechnicPanel .punch-full-query{display:block!important;width:360px;max-width:100%;padding:10px;border:1px solid #b5ccdb;border-radius:7px;margin:12px 0}#krastechnicPanel .punch-col-label{display:flex;align-items:center;gap:8px;min-height:34px}#krastechnicPanel .punch-col-label>span{flex:1;white-space:normal}#krastechnicPanel th .column-drag-handle{flex:none}html[data-theme=dark] #krastechnicPanel{background:#183342}
+
+.kt-sync-banner.is-partial{border-color:#bb7922;background:#fff7e8}html[data-theme=dark] .kt-sync-banner.is-partial{background:#483d26}

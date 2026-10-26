@@ -102,6 +102,8 @@
  let snapshot=null,loadState='loading',lastChecked=null;
 
  api.getLastChecked=()=>lastChecked;
+ let lastServerCheck=null,refreshError='',refreshing=false;
+ api.getSyncInfo=()=>({lastServerCheck,error:refreshError,refreshing});
 
  api.getSnapshot=()=>snapshot;
 
@@ -137,29 +139,31 @@
 
   const restored=ProjectAccess.ready.then(()=>cache('get',base)).then(data=>{if(!snapshot&&data?.rows?.length&&data.syncedAt){snapshot={...data,stale:true};lastChecked=data.checkedAt||null;loadState='ready';document.dispatchEvent(new Event('punch-updated'))}});
 
-  async function refresh(){
+  async function requestSnapshot(url){
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+   try{
+    const response=await fetch(url,{cache:'no-store',signal:controller.signal});
+    if(!response.ok)throw Error(response.status===401||response.status===403?'Session or access unavailable. Please sign in again.':'Punch server request failed ('+response.status+').');
+    const data=await response.json();if(!data.ok)throw Error('Punch server could not return the snapshot.');return data;
+   }finally{clearTimeout(timer)}
+  }
+  async function refresh(options={}){
 
-   if(busy)return;busy=true;
+   if(busy)return;busy=true;refreshing=true;document.dispatchEvent(new Event('punch-updated'));
 
    try{
 
     await restored;
 
-    const response=await fetch(base+'/api/public/punch'+(snapshot?.revision?'?since='+encodeURIComponent(snapshot.revision):''),{cache:'no-store'});
-
-    if(!response.ok)throw Error('Punch source unavailable');
-
-    let data=await response.json();
-
-    if(!data.ok)throw Error('Punch source unavailable');
-
-    lastChecked=data.checkedAt||new Date().toISOString();
+    let data=await requestSnapshot(base+'/api/public/punch'+(!options.full&&snapshot?.revision?'?since='+encodeURIComponent(snapshot.revision):''));
+    lastServerCheck=new Date().toISOString();refreshError='';
+    lastChecked=data.checkedAt||null;
 
     if(data.connected){
 
-     try{data=mergeSnapshot(snapshot,data)}catch{const full=await fetch(base+'/api/public/punch',{cache:'no-store'});if(!full.ok)throw Error('Recovery failed');data=mergeSnapshot(null,await full.json())}
+     try{data=mergeSnapshot(snapshot,data)}catch{data=mergeSnapshot(null,await requestSnapshot(base+'/api/public/punch'))}
 
-     if(!snapshot||snapshot.syncedAt!==data.syncedAt||snapshot.rows.length!==data.rows.length){snapshot=data}else snapshot={...snapshot,...data,rows:snapshot.rows};
+     snapshot=data;
 
      if(!data.unchanged)cache('put',base,snapshot);
 
@@ -169,7 +173,7 @@
 
     document.querySelectorAll('[data-punch-cell]').forEach(el=>{el.innerHTML=cellContent(el.dataset.punchCell)});
 
-   }catch{loadState=snapshot?'ready':'unavailable';if(snapshot)snapshot.stale=true;}finally{busy=false;document.dispatchEvent(new Event('punch-updated'))}
+   }catch(error){refreshError=error.name==='AbortError'?'Punch server did not respond within 45 seconds. Please retry.':error.message;loadState=snapshot?'ready':'unavailable';if(snapshot)snapshot.stale=true;}finally{busy=false;refreshing=false;document.dispatchEvent(new Event('punch-updated'))}
 
   }
 
