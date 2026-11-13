@@ -293,22 +293,27 @@ function bulkUpload(){
  if(bulkPanel){if(!bulkPanel.open)bulkPanel.showModal();return}
  const dialog=document.createElement('dialog');bulkPanel=dialog;
  dialog.className='photo-import';
+ dialog.classList.add('photo-import-redesign');
  dialog.innerHTML=`
-  <button type="button" class="action photo-close" style="float:right">Minimize ×</button>
-  <h2>Import punch photos</h2>
-  <p>Choose photos named with punch numbers or NFI + Walkdown Item numbers. Review matches before uploading.</p>
-  <p>Uploads continue while you use this page. Keep this browser tab open; refreshing or closing it discards the remaining queue.</p>
-  <label>Choose photos<input type="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="Choose punch photos"></label><label>Or choose a folder (including subfolders)<input type="file" accept="image/jpeg,image/png,image/webp" webkitdirectory multiple aria-label="Choose photo folder"></label>
-  <p class="photo-message" role="status"></p>
-  <progress aria-label="Photo upload progress" max="1" value="0" style="width:100%"></progress>
-  <p class="queue-counts"></p>
-  <button type="button" class="action photo-upload" disabled>Start / Resume</button>
-  <button type="button" class="action queue-pause" disabled>Pause</button>
-  <button type="button" class="action queue-retry" disabled>Retry failed</button>
-  <div class="photo-import-list"></div>
-  <button type="button" class="action queue-prev">Previous</button>
-  <span class="queue-page"></span>
-  <button type="button" class="action queue-next">Next</button>`;
+  <style>
+  dialog.photo-import-redesign{width:min(820px,calc(100vw - 28px));max-height:90dvh;box-sizing:border-box;border:1px solid #cbdde7;border-radius:18px;background:#f8fbfd;color:#244356;padding:26px;box-shadow:0 20px 70px #15364a33;overflow:auto}
+  .photo-import-redesign::backdrop{background:#18334366}
+  .photo-import-redesign .pi-header{display:flex;align-items:start;justify-content:space-between;gap:16px}.photo-import-redesign h2{margin:4px 0 8px;font-size:23px}.photo-import-redesign .pi-eyebrow{font-size:10px;letter-spacing:1.4px;font-weight:700;color:#52818c}.photo-import-redesign .pi-intro{font-size:13px;line-height:1.6;margin:0 0 18px;color:#60798b}
+  .photo-import-redesign .pi-choices{display:grid;grid-template-columns:1fr 1fr;gap:14px}.photo-import-redesign .pi-choice{display:flex;flex-direction:column;gap:9px;padding:20px;border:1px solid #cbdde7;border-radius:13px;background:#fff}.photo-import-redesign .pi-choice-folder{background:#edf7f3;border-color:#b7d6ca}.photo-import-redesign .pi-choice-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.photo-import-redesign .pi-icon{width:34px;height:34px;color:#326c8b}.photo-import-redesign .pi-choice-folder .pi-icon{color:#32806b}.photo-import-redesign .pi-badge{font-size:10px;font-weight:700;color:#276c58;background:#d8eee4;padding:5px 8px;border-radius:20px}.photo-import-redesign .pi-choice h3{margin:0;font-size:17px}.photo-import-redesign .pi-choice p{margin:0;font-size:12px;line-height:1.6;color:#60798b;flex:1}.photo-import-redesign .pi-choice .action{margin-top:5px;padding:10px 14px;border-radius:8px;font-weight:600;width:100%;background:#e9f2f8;border:1px solid #b9d2e2;color:#285d7c}.photo-import-redesign .pi-choice-folder .action{background:#d9eee4;border-color:#a7cdbb;color:#286a53}.photo-import-redesign input[type=file][hidden]{display:none!important}.photo-import-redesign button:focus-visible{outline:3px solid #4599b3;outline-offset:3px}.photo-import-redesign button:disabled{opacity:.45;cursor:not-allowed}
+  .photo-import-redesign .pi-note{padding:12px 14px;margin:16px 0;background:#edf3f8;border-radius:9px;font-size:12px;line-height:1.6;color:#526d80}.photo-import-redesign .pi-upload-area{border:1px solid #d9e5ec;border-radius:12px;background:#fff;padding:16px;margin-top:16px}.photo-import-redesign .photo-message{font-size:13px;line-height:1.5;margin:0 0 10px;overflow-wrap:anywhere}.photo-import-redesign progress{accent-color:#318a79;width:100%;height:8px}.photo-import-redesign .queue-counts{font-size:12px;line-height:1.7;color:#60798b}.photo-import-redesign .pi-actions{display:flex;flex-wrap:wrap;gap:8px}.photo-import-redesign .photo-upload:not(:disabled){background:#2d7187;border-color:#2d7187;color:white}.photo-import-redesign .photo-import-list{max-height:260px;overflow:auto;margin-top:14px}.photo-import-redesign .photo-import-list p{font-size:12px;line-height:1.5;padding:10px 0;margin:0;border-bottom:1px solid #e5edf2;overflow-wrap:anywhere}.photo-import-redesign .pi-pagination{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:14px;font-size:12px}.photo-import-redesign .pi-empty{color:#75909f}
+  html[data-theme=dark] dialog.photo-import-redesign{background:#152c3a;color:#e0edf4;border-color:#3c5869}html[data-theme=dark] .photo-import-redesign .pi-choice,html[data-theme=dark] .photo-import-redesign .pi-upload-area{background:#1c3545;border-color:#405b6b}html[data-theme=dark] .photo-import-redesign .pi-choice-folder{background:#1c3c37;border-color:#41695d}html[data-theme=dark] .photo-import-redesign .pi-note{background:#223d4d;color:#c3d8e4}html[data-theme=dark] .photo-import-redesign .pi-intro,html[data-theme=dark] .photo-import-redesign .pi-choice p,html[data-theme=dark] .photo-import-redesign .queue-counts{color:#afc7d5}
+  @media(max-width:600px){dialog.photo-import-redesign{padding:18px}.photo-import-redesign .pi-choices{grid-template-columns:1fr}.photo-import-redesign .pi-choice{padding:16px}.photo-import-redesign h2{font-size:20px}}
+  </style>
+  <div class="pi-header"><div><span class="pi-eyebrow">PHOTO LIBRARY</span><h2>Import punch photos</h2></div><button type="button" class="action photo-close">Minimize ×</button></div>
+  <p class="pi-intro">Choose one method below. Review the matched punch items before starting the upload.</p>
+  <div class="pi-choices">
+   <section class="pi-choice"><div class="pi-choice-top"><svg class="pi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg></div><h3>Individual photos</h3><p>Select one or more photo files.<br>Ideal for adding a few new photos.</p><button type="button" class="action" data-choose-photos>Choose photos</button><input type="file" hidden accept="image/jpeg,image/png,image/webp" multiple aria-label="Choose punch photos"></section>
+   <section class="pi-choice pi-choice-folder"><div class="pi-choice-top"><svg class="pi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M3 9h18"/></svg><span class="pi-badge">BULK UPLOAD</span></div><h3>Entire folder</h3><p>Select a folder to include its photos and subfolders. Ideal for subsystem photo collections.</p><button type="button" class="action" data-choose-folder>Choose folder</button><input type="file" hidden accept="image/jpeg,image/png,image/webp" webkitdirectory multiple aria-label="Choose photo folder"></section>
+  </div>
+  <p class="pi-note"><strong>JPEG · PNG · WebP</strong> — Name files with the punch number or NFI + Walkdown Item No.<br>Identical photos already stored for that punch are skipped. Keep this tab open until uploading finishes.</p>
+  <div class="pi-upload-area"><p class="photo-message" role="status">Select photos or a folder to begin.</p><progress aria-label="Photo upload progress" max="1" value="0"></progress><p class="queue-counts"></p>
+  <div class="pi-actions"><button type="button" class="action photo-upload" disabled>Start / Resume</button><button type="button" class="action queue-pause" disabled>Pause</button><button type="button" class="action queue-retry" disabled>Retry failed</button></div>
+  <div class="photo-import-list"></div><div class="pi-pagination"><button type="button" class="action queue-prev">Previous</button><span class="queue-page"></span><button type="button" class="action queue-next">Next</button></div></div>`;
  const launcher=document.createElement('button');
  launcher.type='button';launcher.className='action photo-upload-launcher';
  launcher.textContent='Photo uploads';
@@ -319,6 +324,7 @@ function bulkUpload(){
  dialog.showModal();dialog.querySelector('.photo-close').onclick=()=>dialog.close();
  const input=dialog.querySelector('input'),folder=dialog.querySelector('input[webkitdirectory]'),start=dialog.querySelector('.photo-upload');
  const pause=dialog.querySelector('.queue-pause'),retry=dialog.querySelector('.queue-retry');
+ const choosePhotos=dialog.querySelector('[data-choose-photos]'),chooseFolder=dialog.querySelector('[data-choose-folder]');choosePhotos.onclick=()=>input.click();chooseFolder.onclick=()=>folder.click();
  const message=dialog.querySelector('.photo-message');
  let jobs=[],running=false,paused=false,page=0,choosing=false;
  const pending=()=>jobs.some(job=>job.row&&job.state==='Waiting');
@@ -335,7 +341,7 @@ function bulkUpload(){
   launcher.textContent='Photos: '+processed+'/'+total+(running?' · Uploading':paused?' · Paused':'');
   launcher.title=summary;
   launcher.hidden=!running&&!pending()&&!failed;
-  input.disabled=folder.disabled=choosing||running||pending();
+  input.disabled=folder.disabled=choosePhotos.disabled=chooseFolder.disabled=choosing||running||pending();
   start.disabled=choosing||running||!pending();
   pause.disabled=!running||paused;
   retry.disabled=choosing||running||!failed;
