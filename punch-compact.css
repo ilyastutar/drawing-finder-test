@@ -1,6 +1,6 @@
 #punchPanel .punch-view-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:5px 0;flex-shrink:0}
 #punchPanel .punch-view-tools .hint{font-size:11px;flex:1}
-#punchPanel.punch-compact-top .punch-top,#punchPanel.punch-compact-top .punch-copy-tools{display:none!important}
+#punchPanel.punch-compact-top .punch-top{display:none!important}
 #punchPanel .punch-filter-line{display:flex;align-items:stretch;gap:0;margin-top:4px;min-width:0}
 #punchPanel .punch-filter-line input{flex:1;min-width:0!important;width:0!important;margin:0!important;border-radius:5px 0 0 5px!important;height:29px;box-sizing:border-box}
 #punchPanel .punch-filter-line .punch-filter-menu{flex:0 0 auto;min-width:26px;margin:0!important;padding:0 5px!important;border-radius:0 5px 5px 0!important;font-size:11px;height:29px;white-space:nowrap}
@@ -10,5 +10,8 @@
 #punchPanel .punch-col-label>.column-drag-handle{grid-column:1!important;grid-row:1!important}
 #punchPanel .punch-col-label>.punch-hide-column{grid-column:3!important;grid-row:1!important}
 #punchPanel .punch-filter-chips:empty{display:none}
-#punchPanel.punch-filters-hidden .punch-filter-line,#punchPanel.punch-filters-hidden .punch-filter-chips{display:none!important}
 #punchPanel .punch-filter-chips{max-height:54px;overflow:auto}
+
+body.punch-focus-mode .access-bar{display:none!important}
+body.operations.punch-focus-mode main{padding-top:6px!important}
+body.operations.punch-focus-mode #punchPanel.punch-expanded{top:4px!important}
