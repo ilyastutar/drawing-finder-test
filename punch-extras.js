@@ -298,7 +298,7 @@ function bulkUpload(){
   <h2>Import punch photos</h2>
   <p>Choose photos named with punch numbers or NFI + Walkdown Item numbers. Review matches before uploading.</p>
   <p>Uploads continue while you use this page. Keep this browser tab open; refreshing or closing it discards the remaining queue.</p>
-  <input type="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="Choose punch photos">
+  <label>Choose photos<input type="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="Choose punch photos"></label><label>Or choose a folder (including subfolders)<input type="file" accept="image/jpeg,image/png,image/webp" webkitdirectory multiple aria-label="Choose photo folder"></label>
   <p class="photo-message" role="status"></p>
   <progress aria-label="Photo upload progress" max="1" value="0" style="width:100%"></progress>
   <p class="queue-counts"></p>
@@ -317,7 +317,7 @@ function bulkUpload(){
  const importButton=document.getElementById('punchImportPhotos');
  if(importButton)importButton.after(launcher);else document.body.append(launcher);
  dialog.showModal();dialog.querySelector('.photo-close').onclick=()=>dialog.close();
- const input=dialog.querySelector('input'),start=dialog.querySelector('.photo-upload');
+ const input=dialog.querySelector('input'),folder=dialog.querySelector('input[webkitdirectory]'),start=dialog.querySelector('.photo-upload');
  const pause=dialog.querySelector('.queue-pause'),retry=dialog.querySelector('.queue-retry');
  const message=dialog.querySelector('.photo-message');
  let jobs=[],running=false,paused=false,page=0,choosing=false;
@@ -326,16 +326,16 @@ function bulkUpload(){
  function paint(){
   const total=jobs.filter(job=>job.row).length;
   const done=jobs.filter(job=>job.state==='Uploaded').length;
-  const failed=jobs.filter(job=>job.state==='Failed').length,processed=done+failed;
+  const existing=jobs.filter(job=>job.state==='Already exists — skipped').length;const failed=jobs.filter(job=>job.state==='Failed').length,processed=done+existing+failed;
   dialog.querySelector('progress').max=total||1;
   dialog.querySelector('progress').value=processed;
   const summary=processed+' / '+total+' processed · '+(total?Math.floor(processed/total*100):0)+
-   '% · '+done+' uploaded · '+failed+' failed · '+jobs.filter(job=>!job.row).length+' skipped';
+   '% · '+done+' uploaded · '+existing+' already existed · '+failed+' failed · '+jobs.filter(job=>!job.row).length+' skipped';
   dialog.querySelector('.queue-counts').textContent=summary;
   launcher.textContent='Photos: '+processed+'/'+total+(running?' · Uploading':paused?' · Paused':'');
   launcher.title=summary;
   launcher.hidden=!running&&!pending()&&!failed;
-  input.disabled=choosing||running||pending();
+  input.disabled=folder.disabled=choosing||running||pending();
   start.disabled=choosing||running||!pending();
   pause.disabled=!running||paused;
   retry.disabled=choosing||running||!failed;
@@ -346,8 +346,8 @@ function bulkUpload(){
   dialog.querySelector('.queue-prev').disabled=page===0;
   dialog.querySelector('.queue-next').disabled=(page+1)*50>=jobs.length;
  }
- input.onchange=async()=>{
-  const files=Array.from(input.files);input.value='';
+ input.onchange=folder.onchange=async event=>{
+  const selected=event.target,files=Array.from(selected.files).filter(f=>/\.(jpe?g|png|webp)$/i.test(f.name));selected.value='';
   if(!files.length)return;launcher.classList.remove('upload-done');
   choosing=true;paint();
   try{
@@ -375,8 +375,8 @@ function bulkUpload(){
     if(!job.row||job.state!=='Waiting')continue;
     job.state='Uploading';paint();
     try{
-     await upload(job.row,job.file,text=>message.textContent=text);
-     job.state='Uploaded';job.file=null;job.error='';
+     const result=await upload(job.row,job.file,text=>message.textContent=text);
+     job.state=result.unchanged?'Already exists — skipped':'Uploaded';job.file=null;job.error='';
     }catch(error){job.state='Failed';job.error=error.message}
     paint();await new Promise(resolve=>setTimeout(resolve,200));
    }
