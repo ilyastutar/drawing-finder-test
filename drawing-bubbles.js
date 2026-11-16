@@ -12,9 +12,16 @@ function reference(tokens,b,page){
  const candidates=near.filter(t=>ns.some(n=>n!==t&&Math.abs((n.bbox.x0+n.bbox.x1-t.bbox.x0-t.bbox.x1)/2)<h&&Math.abs((n.bbox.y0+n.bbox.y1)/2-cy)>h*.8&&Math.abs((n.bbox.y0+n.bbox.y1)/2-cy)<h*6));
  const ids=[...new Set(candidates.map(t=>ref(t.text)))];return ids.length===1?ids[0]:'';
 }
+// Reuse OCR row context even when OCR did not rediscover the selected tag text.
+function relink(occurrences,tokens){return occurrences.map(o=>{
+ if(o.location||!o.boxes?.length)return o;
+ const b={x0:Math.min(...o.boxes.map(b=>b.x0)),y0:Math.min(...o.boxes.map(b=>b.y0)),x1:Math.max(...o.boxes.map(b=>b.x1)),y1:Math.max(...o.boxes.map(b=>b.y1))};
+ const id=reference(tokens,b,o.page);
+ return id?{...o,rowNo:id,referenceId:id,referenceVersion:2}:o;
+})}
 function trusted(o){return o.referenceVersion===2&&ref(o.referenceId)&&(!o.location||o.bubbleVersion===2)}
 function sanitize(list){return list.filter(o=>!o.location||trusted(o))}
-function merge(existing,incoming){const out=existing.map(o=>({...o}));for(const o of incoming){const same=out.find(a=>norm(a.tag)===norm(o.tag)&&a.page===o.page&&!!a.location===!!o.location&&a.boxes.some(b=>o.boxes.some(c=>{const intersection=Math.max(0,Math.min(b.x1,c.x1)-Math.max(b.x0,c.x0))*Math.max(0,Math.min(b.y1,c.y1)-Math.max(b.y0,c.y0));return intersection/Math.min((b.x1-b.x0)*(b.y1-b.y0),(c.x1-c.x0)*(c.y1-c.y0))>.7})));if(!same)out.push(o);else if(trusted(o)){same.rowNo=o.referenceId;same.referenceId=o.referenceId;same.referenceVersion=2}else if(!same.rowNo&&o.rowNo)same.rowNo=o.rowNo}return out}
+function merge(existing,incoming){const out=existing.map(o=>({...o}));for(const o of incoming){const same=out.find(a=>norm(a.tag)===norm(o.tag)&&a.page===o.page&&!!a.location===!!o.location&&a.boxes.some(b=>o.boxes.some(c=>{const intersection=Math.max(0,Math.min(b.x1,c.x1)-Math.max(b.x0,c.x0))*Math.max(0,Math.min(b.y1,c.y1)-Math.max(b.y0,c.y0));return intersection/Math.min((b.x1-b.x0)*(b.y1-b.y0),(c.x1-c.x0)*(c.y1-c.y0))>.7})));if(!same)out.push(o);else if(trusted(o)){same.rowNo=o.referenceId;same.referenceId=o.referenceId;same.referenceVersion=2;if(o.location)same.bubbleVersion=o.bubbleVersion}else if(!same.rowNo&&o.rowNo)same.rowNo=o.rowNo}return out}
 // References are page-local. Ambiguous tag/reference relationships are skipped.
 async function find(doc,occurrences,ocrNumbers=[],options={}){
  const out=[];
@@ -49,13 +56,13 @@ async function find(doc,occurrences,ocrNumbers=[],options={}){
     search:for(const shift of shifts)for(const ratio of [1,.85,1.15,.7,1.3])for(let r=Math.max(w,h)*.65*scale;r<50;r+=1){const rx=r*ratio,ry=r;if(rx>54)continue;let hits=0;for(let a=0;a<48;a++){const t=a*Math.PI/24;if([-1,-.5,0,.5,1].some(k=>{const d=k*Math.max(2,r*.09);return ink(60+shift[0]+Math.cos(t)*(rx+d),60+shift[1]+Math.sin(t)*(ry+d))}))hits++}if(hits>=44){ring={x:cx+shift[0]/scale,y:cy+shift[1]/scale,rx:rx/scale,ry:ry/scale};break search}}
     if(!ring)continue;
     const box={x0:Math.max(0,(ring.x-ring.rx)/vp.width),y0:Math.max(0,(ring.y-ring.ry)/vp.height),x1:Math.min(1,(ring.x+ring.rx)/vp.width),y1:Math.min(1,(ring.y+ring.ry)/vp.height)};
-    if(!out.some(o=>o.page===number&&o.rowNo===id&&Math.abs(o.boxes[0].x0-box.x0)<.001))out.push({tag:[...refs.get(id)][0],page:number,rowNo:id,referenceId:id,referenceVersion:2,bubbleVersion:2,source:'reference-circle',location:true,boxes:[box]});
+    if(!out.some(o=>o.page===number&&o.rowNo===id&&Math.abs(o.boxes[0].x0-box.x0)<.001&&Math.abs(o.boxes[0].y0-box.y0)<.001))out.push({tag:[...refs.get(id)][0],page:number,rowNo:id,referenceId:id,referenceVersion:2,bubbleVersion:2,source:'reference-circle',location:true,boxes:[box]});
    }finally{canvas.width=canvas.height=1}
   }
   }finally{if(raster)raster.width=raster.height=1}
  }
  return out;
 }
-window.DrawingBubbles={find,numbers,merge,reference,trusted,sanitize};
+window.DrawingBubbles={find,numbers,merge,reference,trusted,sanitize,relink};
 })();
 
