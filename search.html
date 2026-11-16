@@ -365,7 +365,7 @@ th:nth-child(2n){background:#e1eeec;color:#326c65;border-bottom-color:#bdd8d2}
 
 <div class="project-header"><div><div class="eyebrow">PROJECT DOCUMENTS · FIELD OPERATIONS</div><h1>CHP Dradenau - Hamburg</h1>
 
-<p class="subtitle">TOP Punch Closure <span class="version">v0.35.2</span></p></div></div>
+<p class="subtitle">TOP Punch Closure <span class="version">v0.35.3</span></p></div></div>
 
 
 
@@ -800,7 +800,7 @@ function splitTagInput(text){
 
   // No extraction: every pasted Excel cell/token is used as the full tag value.
 
-  return String(text??'').split(/[\t\r\n,; ]+/).map(norm).filter(Boolean);
+  return String(text??'').split(/[\s,;|\\]+/).map(norm).filter(Boolean);
 
 }
 
@@ -1587,7 +1587,7 @@ async function runBatchTagSearch(){
 
       <span class="stat"><strong>${total}</strong> matching records</span>`;
 
-    const grouped=DrawingGroups.render(groupRecords,missing);$('resultsTable').classList.add('drawing-grouped');$('results').innerHTML=grouped.html;
+    const grouped=DrawingGroups.render(groupRecords,missing,tags);$('resultsTable').classList.add('drawing-grouped');$('results').innerHTML=grouped.html;
     $('summary').innerHTML+='<span class="stat"><strong>'+grouped.count+'</strong> drawings</span>';
 
     $('status').innerHTML=missing.length
@@ -1637,7 +1637,7 @@ getLookup().catch(()=>{});
 <link rel="stylesheet" href="punch-extras.css?v=0.23.0">
 <link rel="stylesheet" href="punch-workspace.css?v=0.25.0">
 <script src="punch-workspace.js?v=0.34.2"></script>
-<link rel="stylesheet" href="drawing-viewer.css?v=0.31.8"><script src="drawing-cache.js?v=0.31.8"></script><script src="drawing-local.js?v=0.31.8"></script><script src="drawing-groups.js?v=0.31.8"></script><script src="drawing-viewer.js?v=0.35.2"></script>
+<link rel="stylesheet" href="drawing-viewer.css?v=0.31.8"><script src="drawing-cache.js?v=0.31.8"></script><script src="drawing-local.js?v=0.31.8"></script><script src="drawing-groups.js?v=0.35.3"></script><script src="drawing-viewer.js?v=0.35.3"></script>
 <script src="value-filter.js?v=0.29.0"></script><script src="cable-columns.js?v=0.26.0"></script><script src="cable-register.js?v=0.34.2"></script><script src="cable-changes.js?v=0.34.2"></script>
 <link rel="stylesheet" href="operations.css?v=0.31.8"><link rel="stylesheet" href="handover-overview.css?v=0.34.2"><script src="handover-model.js?v=0.34.2"></script><script src="handover-status.js?v=0.34.2"></script><script src="operations.js?v=0.34.2"></script><link rel="stylesheet" href="weekly-forecast.css?v=0.35.2"><script src="forecast-model.js?v=0.34.2"></script><script src="skyline-state.js?v=0.35.2"></script><script src="forecast-comment-actions.js?v=0.35.2"></script><script src="weekly-forecast.js?v=0.35.2"></script><script src="skyline-comments.js?v=0.35.2"></script><link rel="stylesheet" href="dashboard-categories.css?v=0.34.2">
 <link rel="stylesheet" href="user-profile.css?v=0.32.1"><script src="user-profile.js?v=0.34.2"></script><link rel="stylesheet" href="cable-polish.css?v=0.34.2">

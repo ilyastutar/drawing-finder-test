@@ -2,6 +2,9 @@
 'use strict';
 const ref=v=>/^\d{1,5}$/.test(String(v).trim())?String(Number(v)):'';
 const norm=v=>String(v||'').toUpperCase().replace(/\s+/g,'').replace(/[•·:]/g,'-');
+function requestedTags(input){return [...new Set((Array.isArray(input)?input:[input]).flatMap(v=>String(v||'').split(/[\s,;|\\]+/)).map(norm).filter(Boolean))]}
+function select(list,tags){const allowed=new Set(requestedTags(tags));return sanitize(Array.isArray(list)?list:[]).filter(o=>allowed.has(norm(o.tag)))}
+function summary(list,tags){tags=requestedTags(tags);const bubbles=select(list,tags).filter(o=>o.location),linked=new Set(bubbles.map(o=>norm(o.tag)));return {requested:tags.length,matched:linked.size,bubbles:bubbles.length,missing:tags.filter(t=>!linked.has(t))}}
 function numbers(tokens){return tokens.filter(t=>ref(t.text)&&t.bbox).map(t=>({page:t.page,id:ref(t.text),b:t.bbox}))}
 // Read a literal reference cell on the same baseline; never use a physical row counter.
 function reference(tokens,b,page){
@@ -63,6 +66,6 @@ async function find(doc,occurrences,ocrNumbers=[],options={}){
  }
  return out;
 }
-window.DrawingBubbles={find,numbers,merge,reference,trusted,sanitize,relink};
+window.DrawingBubbles={find,numbers,merge,reference,trusted,sanitize,relink,requestedTags,select,summary};
 })();
 
