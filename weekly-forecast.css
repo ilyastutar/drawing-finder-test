@@ -17,3 +17,11 @@
 
 #weeklyForecast .wf-add-comment,.wf-quick-comment .wf-add-comment{background:#e3f3e8;color:#236844;border:1px solid #b1d8bf;border-radius:7px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer}#weeklyForecast .wf-add-comment{display:block;margin:-4px 0 12px}#weeklyForecast .wf-add-comment:hover,.wf-quick-comment .wf-add-comment:hover{background:#cdebd7}.wf-quick-comment{width:min(480px,calc(100vw - 32px));box-sizing:border-box;padding:22px;border:1px solid #b9cfdb;border-radius:14px;background:#fff;color:#244356;max-height:85dvh;overflow:auto}.wf-quick-comment::backdrop{background:#17354366}.wf-quick-comment header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.wf-quick-comment h3{margin:0}.wf-quick-comment label{display:grid;gap:8px;margin:18px 0 12px;font-size:13px}.wf-quick-comment textarea{box-sizing:border-box;width:100%;min-height:140px;resize:vertical;border:1px solid #b9cfdb;border-radius:8px;padding:12px;font:inherit;background:inherit;color:inherit}.wf-quick-comment-actions{display:flex;gap:8px}.wf-quick-comment [role=status]{font-size:12px;white-space:pre-wrap}.wf-quick-comment button:disabled{opacity:.55;cursor:wait}html[data-theme=dark] .wf-quick-comment{background:#193342;color:#e1edf3}html[data-theme=dark] #weeklyForecast .wf-add-comment,html[data-theme=dark] .wf-quick-comment .wf-add-comment{background:#244d3c;color:#c8f0d7;border-color:#568368}
 .wf-comment-actions{display:flex;gap:8px;margin-top:8px}.wf-comment-actions .action{font-size:12px;padding:5px 10px}.wf-delete-comment{color:#a43434!important;border-color:#e5b9b9!important;background:#fff0f0!important}.wf-quick-comment blockquote{margin:16px 0;padding:12px;border-left:3px solid #c5d8e1;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Compact Skyline heading; fit five readable weeks on wide displays. */
+#weeklyForecast{padding:4px 14px 14px}
+#weeklyForecast .wf-heading h2{margin:4px 0}
+#weeklyForecast .wf-controls{margin:12px 0 8px;padding:12px}
+#weeklyForecast .wf-metrics{margin:10px 0}
+#weeklyForecast .wf-rule{margin:8px 0}
+@media(min-width:1400px){#weeklyForecast .wf-week{flex-basis:calc((100% - 72px)/5);min-width:0}}
