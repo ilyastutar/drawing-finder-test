@@ -25,3 +25,5 @@
 #weeklyForecast .wf-metrics{margin:10px 0}
 #weeklyForecast .wf-rule{margin:8px 0}
 @media(min-width:1400px){#weeklyForecast .wf-week{flex-basis:calc((100% - 72px)/5);min-width:0}}
+
+#weeklyForecast [data-message]:empty{display:none}#weeklyForecast .wf-metrics{margin:8px 0}#weeklyForecast .wf-board{padding-top:4px}
