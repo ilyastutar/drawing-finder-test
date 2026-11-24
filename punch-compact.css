@@ -15,3 +15,19 @@
 body.punch-focus-mode .access-bar{display:none!important}
 body.operations.punch-focus-mode main{padding-top:6px!important}
 body.operations.punch-focus-mode #punchPanel.punch-expanded{top:4px!important}
+
+/* Punch filters own their visual styles; do not depend on legacy dashboard CSS. */
+#punchPanel .punch-filter-menu{display:block;margin-top:5px;padding:3px 6px;border:1px solid #b9cddd;border-radius:5px;background:#f7fafc;color:#34546a;font-size:10px;max-width:100%;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.punch-value-picker{box-sizing:border-box;width:min(450px,calc(100vw - 24px));max-height:90vh;overflow:auto;border:1px solid #bfd0dc;border-radius:12px;padding:18px;color:#263e50;background:#fff;box-shadow:0 16px 60px #18334533;font:14px system-ui,sans-serif}.punch-value-picker::backdrop{background:#18334533}.punch-value-picker .value-picker-heading,.punch-value-picker .value-picker-search,.punch-value-picker .value-picker-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}.punch-value-picker .value-picker-heading strong{font-size:17px}.punch-value-picker button,.punch-value-picker select,.punch-value-picker input:not([type=checkbox]){font:inherit;border:1px solid #becfdb;border-radius:6px;padding:7px 9px;background:#f8fafc;color:inherit}.punch-value-picker button{cursor:pointer}.punch-value-picker .value-picker-search input{min-width:0;flex:1}.punch-value-picker .value-picker-list{height:288px;overflow:auto;margin:10px 0 16px;border:1px solid #e0e8ee;border-radius:6px}.punch-value-picker .value-picker-option{height:36px;box-sizing:border-box;display:flex;align-items:center;gap:9px;padding:0 10px;border-bottom:1px solid #f0f3f6;cursor:pointer}.punch-value-picker .value-picker-option:hover{background:#edf4f8}.punch-value-picker .value-picker-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.punch-value-picker .value-picker-option input{accent-color:#345e7a;flex:none}.punch-value-picker #valuePickerCount{font-size:12px;color:#60798c}.punch-value-picker #valuePickerApply{background:#345e7a;color:white;border-color:#345e7a}.punch-value-picker button:focus-visible,#punchPanel .punch-filter-menu:focus-visible{outline:2px solid #4784af;outline-offset:2px}
+
+.punch-value-picker{max-block-size:90dvh}
+.punch-value-picker .value-picker-search select{max-inline-size:45%}
+.punch-value-picker .value-picker-actions{flex-wrap:wrap}
+.punch-value-picker .value-picker-option span{min-inline-size:0}
+.punch-value-picker button{min-block-size:32px}
+html[data-theme=dark] .punch-value-picker{background:#193342;color:#e1edf3;border-color:#496e84}
+html[data-theme=dark] .punch-value-picker :is(button,select,input:not([type=checkbox])){background:#294b60;color:#dfedf6;border-color:#496e84}
+html[data-theme=dark] .punch-value-picker .value-picker-list{border-color:#496e84}
+html[data-theme=dark] .punch-value-picker .value-picker-option{border-color:#365365}
+html[data-theme=dark] .punch-value-picker .value-picker-option:hover{background:#294b60}
+html[data-theme=dark] .punch-value-picker #valuePickerCount{color:#adc6d5}
+html[data-theme=dark] .punch-value-picker #valuePickerApply{background:#347c9a;color:#fff}
