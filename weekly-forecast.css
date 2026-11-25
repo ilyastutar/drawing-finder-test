@@ -27,3 +27,20 @@
 @media(min-width:1400px){#weeklyForecast .wf-week{flex-basis:calc((100% - 72px)/5);min-width:0}}
 
 #weeklyForecast [data-message]:empty{display:none}#weeklyForecast .wf-metrics{margin:8px 0}#weeklyForecast .wf-board{padding-top:4px}
+
+/* Skyline-only compact header and filter counters. */
+body.operations:has(#weeklyForecast:not([hidden])) main{padding-block-start:calc(var(--access-bar-height,66px) + 2px)}
+body.operations:has(#weeklyForecast:not([hidden])) main>.card{padding-block-start:0}
+#weeklyForecast{padding-block-start:0}
+#weeklyForecast .wf-heading{gap:6px}
+#weeklyForecast .wf-heading h2{margin:2px 0}
+#weeklyForecast .wf-controls{margin:8px 0 6px;padding:10px 12px;gap:10px}
+#weeklyForecast .wf-metrics{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+#weeklyForecast .wf-metrics button{display:inline-flex;align-items:center;justify-content:space-between;gap:16px;min-block-size:36px;padding:6px 12px;border:1px solid #bdd2df;border-radius:8px;background:#fff;color:#294e68;font:inherit;cursor:pointer}
+#weeklyForecast .wf-metrics button span{font-size:12px}
+#weeklyForecast .wf-metrics button strong{font-size:18px;line-height:1.2}
+#weeklyForecast .wf-metrics button:hover{background:#edf6fa}
+#weeklyForecast .wf-metrics button[aria-pressed=true]{background:#e1f1f5;border-color:#438b9f;color:#245968}
+#weeklyForecast .wf-metrics button:focus-visible{outline:2px solid #32849e;outline-offset:2px}
+html[data-theme=dark] #weeklyForecast .wf-metrics button{background:#213d50;color:#dfedf7;border-color:#4a6577}
+html[data-theme=dark] #weeklyForecast .wf-metrics button[aria-pressed=true]{background:#305e68;border-color:#8ab8c4;color:#fff}
